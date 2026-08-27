@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
@@ -11,17 +11,19 @@ import { useAuth } from "@/components/providers/AuthProvider";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user } = useAuth();
+  const [mounted, setMounted] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-  // If on login page or auth callbacks, show clean full-page view
-  if (pathname?.startsWith("/login") || pathname?.startsWith("/auth")) {
-    return <main className="min-h-screen bg-surface-base">{children}</main>;
-  }
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-  // If not logged in, user will be redirected to /login by middleware
-  if (!user) {
-    return <main className="min-h-screen bg-surface-base">{children}</main>;
+  const isAuthPage = pathname?.startsWith("/login") || pathname?.startsWith("/auth");
+
+  // On auth pages or before client mount on auth routes, render clean page without sidebar
+  if (!mounted || isAuthPage || !user) {
+    return <div className="min-h-screen bg-surface-base text-txt-primary">{children}</div>;
   }
 
   return (

@@ -13,6 +13,7 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: "/icon.svg",
+    shortcut: "/icon.svg",
     apple: "/icon.svg",
   },
 };
@@ -31,8 +32,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className="bg-surface-base text-txt-primary antialiased selection:bg-apple-accent selection:text-white">
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+      </head>
+      <body
+        className="bg-surface-base text-txt-primary antialiased selection:bg-apple-accent selection:text-white"
+        suppressHydrationWarning
+      >
         <AuthProvider>
           <AppShell>{children}</AppShell>
         </AuthProvider>
