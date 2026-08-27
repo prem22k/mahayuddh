@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-primary: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+    
+    /* Surfaces */
+    --surface-base: #000000;
+    --surface-sidebar: #121212;
+    --surface-muted: #1c1c1e;
+    --surface-raised: #2c2c2e;
+    --surface-strong: #3a3a3c;
+    --surface-bar: rgba(22, 22, 24, 0.85);
+
+    /* Text */
+    --text-primary: #ffffff;
+    --text-secondary: #8e8e93;
+    --text-tertiary: #636366;
+    --text-accent: #fa586a;
+    --text-accent-dark: #d60017;
+
+    /* Difficulties */
+    --difficulty-easy: #30d158;
+    --difficulty-medium: #ff9f0a;
+    --difficulty-hard: #ff453a;
+
+    /* Borders */
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --focus-ring: #fa586a;
+  }
+
+  * {
+    border-color: var(--border-subtle);
+  }
+
+  body {
+    background-color: var(--surface-base);
+    color: var(--text-primary);
+    font-family: var(--font-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  /* Focus visible accessibility */
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Custom Apple Music dark scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Backdrop blur support */
+.glass-panel {
+  background: var(--surface-bar);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+}
+
+.glass-card {
+  background: rgba(28, 28, 30, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+}
+
+/* Gradients for Category Bento Cards */
+.gradient-crimson {
+  background: linear-gradient(135deg, #e52d27 0%, #b31217 100%);
+}
+
+.gradient-sunset {
+  background: linear-gradient(135deg, #ff9966 0%, #ff5e62 100%);
+}
+
+.gradient-royal {
+  background: linear-gradient(135deg, #2b5876 0%, #4e4376 100%);
+}
+
+.gradient-purple {
+  background: linear-gradient(135deg, #8e2de2 0%, #4a00e0 100%);
+}
+
+.gradient-emerald {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+}
+
+.gradient-amber {
+  background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%);
+}
+
+.gradient-violet {
+  background: linear-gradient(135deg, #654ea3 0%, #eaafc8 100%);
+}
+
+.gradient-rose {
+  background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+}
+
+.gradient-dark-card {
+  background: linear-gradient(180deg, rgba(38, 38, 40, 0.6) 0%, rgba(20, 20, 22, 0.9) 100%);
+}

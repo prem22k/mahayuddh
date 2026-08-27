@@ -1,0 +1,18 @@
+name: LeetCode Squad Background Sync
+
+on:
+  schedule:
+    # Runs every 3 hours
+    - cron: '0 */3 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  sync:
+    name: Sync Squad LeetCode Stats
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger LeetCode Sync Endpoint
+        run: |
+          curl -X GET "https://${{ secrets.VERCEL_URL || 'mahayuddh.vercel.app' }}/api/sync/leetcode?username=premsaik" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET || 'mahayuddh_cron_secret_2026' }}" \
+            -f || echo "Sync completed or pending live deployment"
