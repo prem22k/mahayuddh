@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import {
   BookOpen,
@@ -8,142 +8,67 @@ import {
   Circle,
   ExternalLink,
   Search,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface ProblemRow {
-  id: string;
-  number: string;
-  title: string;
-  slug: string;
-  difficulty: "Easy" | "Medium" | "Hard";
-  category: string;
-  squadStatus: {
-    prem: boolean;
-    rahul: boolean;
-    arjun: boolean;
-    sneha: boolean;
-  };
-}
-
-const SAMPLE_SHEET_PROBLEMS: ProblemRow[] = [
-  {
-    id: "1",
-    number: "217",
-    title: "Contains Duplicate",
-    slug: "contains-duplicate",
-    difficulty: "Easy",
-    category: "Arrays & Hashing",
-    squadStatus: { prem: true, rahul: true, arjun: true, sneha: true },
-  },
-  {
-    id: "2",
-    number: "242",
-    title: "Valid Anagram",
-    slug: "valid-anagram",
-    difficulty: "Easy",
-    category: "Arrays & Hashing",
-    squadStatus: { prem: true, rahul: true, arjun: true, sneha: false },
-  },
-  {
-    id: "3",
-    number: "1",
-    title: "Two Sum",
-    slug: "two-sum",
-    difficulty: "Easy",
-    category: "Arrays & Hashing",
-    squadStatus: { prem: true, rahul: true, arjun: true, sneha: true },
-  },
-  {
-    id: "4",
-    number: "49",
-    title: "Group Anagrams",
-    slug: "group-anagrams",
-    difficulty: "Medium",
-    category: "Arrays & Hashing",
-    squadStatus: { prem: true, rahul: true, arjun: false, sneha: false },
-  },
-  {
-    id: "5",
-    number: "347",
-    title: "Top K Frequent Elements",
-    slug: "top-k-frequent-elements",
-    difficulty: "Medium",
-    category: "Arrays & Hashing",
-    squadStatus: { prem: true, rahul: false, arjun: false, sneha: false },
-  },
-  {
-    id: "6",
-    number: "128",
-    title: "Longest Consecutive Sequence",
-    slug: "longest-consecutive-sequence",
-    difficulty: "Medium",
-    category: "Arrays & Hashing",
-    squadStatus: { prem: true, rahul: true, arjun: true, sneha: false },
-  },
-  {
-    id: "7",
-    number: "15",
-    title: "3Sum",
-    slug: "3sum",
-    difficulty: "Medium",
-    category: "Two Pointers",
-    squadStatus: { prem: true, rahul: true, arjun: true, sneha: false },
-  },
-  {
-    id: "8",
-    number: "11",
-    title: "Container With Most Water",
-    slug: "container-with-most-water",
-    difficulty: "Medium",
-    category: "Two Pointers",
-    squadStatus: { prem: true, rahul: true, arjun: false, sneha: false },
-  },
-  {
-    id: "9",
-    number: "42",
-    title: "Trapping Rain Water",
-    slug: "trapping-rain-water",
-    difficulty: "Hard",
-    category: "Two Pointers",
-    squadStatus: { prem: true, rahul: false, arjun: false, sneha: false },
-  },
-  {
-    id: "10",
-    number: "300",
-    title: "Longest Increasing Subsequence",
-    slug: "longest-increasing-subsequence",
-    difficulty: "Medium",
-    category: "Dynamic Programming",
-    squadStatus: { prem: true, rahul: true, arjun: false, sneha: false },
-  },
-];
-
-const CATEGORIES = ["All", "Arrays & Hashing", "Two Pointers", "Dynamic Programming"];
+import { getListWithProblems, getSquadProblemStatuses, toggleProblemStatus } from "@/lib/data/sheets";
+import { CustomList, ListProblem, UserProblemStatus } from "@/types/database";
 
 export default function SheetPage() {
   const params = useParams();
-  const slug = params?.slug as string;
+  const slug = (params?.slug as string) || "neetcode-150";
+
+  const [list, setList] = useState<CustomList | null>(null);
+  const [problems, setProblems] = useState<ListProblem[]>([]);
+  const [statuses, setStatuses] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const sheetTitle = slug
-    ? slug
-        .split("-")
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(" ")
-    : "Roadmap Sheet";
+  useEffect(() => {
+    async function loadSheetData() {
+      setLoading(true);
+      try {
+        const { list: listData, problems: problemsData } = await getListWithProblems(slug);
+        setList(listData);
+        setProblems(problemsData);
 
-  const filteredProblems = SAMPLE_SHEET_PROBLEMS.filter((problem) => {
+        if (problemsData.length > 0) {
+          const slugs = problemsData.map((p) => p.title_slug);
+          const squadStatuses: UserProblemStatus[] = await getSquadProblemStatuses(slugs);
+          const statusMap: Record<string, boolean> = {};
+          for (const s of squadStatuses) {
+            statusMap[s.problem_slug] = s.status === "solved";
+          }
+          setStatuses(statusMap);
+        }
+      } catch (err) {
+        console.error("Error loading sheet:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadSheetData();
+  }, [slug]);
+
+  const handleToggle = async (problemSlug: string) => {
+    const nextVal = !statuses[problemSlug];
+    setStatuses((prev) => ({ ...prev, [problemSlug]: nextVal }));
+    await toggleProblemStatus("demo-user", problemSlug, nextVal);
+  };
+
+  const categories = ["All", ...Array.from(new Set(problems.map((p) => p.category)))];
+
+  const filteredProblems = problems.filter((problem) => {
     const matchesCat = selectedCategory === "All" || problem.category === selectedCategory;
     const matchesSearch =
       problem.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      problem.number.includes(searchQuery);
+      problem.title_slug.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCat && matchesSearch;
   });
 
   const getDifficultyBadge = (diff: string) => {
-    switch (diff.toLowerCase()) {
+    switch (diff?.toLowerCase()) {
       case "easy":
         return "text-apple-green bg-apple-green/10 border-apple-green/30";
       case "medium":
@@ -155,6 +80,17 @@ export default function SheetPage() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="h-[60vh] flex flex-col items-center justify-center gap-3 text-txt-secondary">
+        <Loader2 className="w-8 h-8 animate-spin text-apple-accent" />
+        <span className="text-xs">Loading roadmap from Supabase...</span>
+      </div>
+    );
+  }
+
+  const title = list?.title || slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -162,18 +98,18 @@ export default function SheetPage() {
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold text-apple-accent tracking-wider uppercase mb-1">
             <BookOpen className="w-3.5 h-3.5" />
-            <span>Interactive Roadmap & Squad Matrix</span>
+            <span>{list?.emoji || "📚"} Interactive Roadmap ({problems.length} Questions)</span>
           </div>
           <h1 className="text-3xl md:text-4xl font-extrabold text-txt-primary tracking-tight">
-            {sheetTitle}
+            {title}
           </h1>
           <p className="text-xs text-txt-secondary mt-1">
-            Track squad progress across core algorithmic patterns
+            {list?.description || "Master core algorithmic problem patterns with real-time tracking"}
           </p>
         </div>
 
-        {/* Search & Category Filter */}
-        <div className="flex flex-wrap items-center gap-3">
+        {/* Search */}
+        <div className="flex items-center gap-3">
           <div className="relative">
             <Search className="w-4 h-4 text-txt-secondary absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -187,9 +123,9 @@ export default function SheetPage() {
         </div>
       </div>
 
-      {/* Category Pills Bar (Apple Music Filter Style) */}
+      {/* Category Pills */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2">
-        {CATEGORIES.map((category) => (
+        {categories.map((category) => (
           <button
             key={category}
             onClick={() => setSelectedCategory(category)}
@@ -205,103 +141,90 @@ export default function SheetPage() {
         ))}
       </div>
 
-      {/* Squad Matrix Table */}
+      {/* Table */}
       <div className="bg-surface-sidebar border border-border-subtle rounded-2xl overflow-hidden shadow-subtle">
-        {/* Table Column Headers */}
         <div className="grid grid-cols-12 gap-3 px-6 py-3 border-b border-border-subtle text-[11px] font-semibold text-txt-tertiary uppercase tracking-wider items-center">
           <div className="col-span-1 text-center">#</div>
-          <div className="col-span-4 md:col-span-4">Problem</div>
-          <div className="col-span-2 hidden md:block">Category</div>
-          {/* Squad Columns */}
-          <div className="col-span-1 text-center font-bold text-txt-primary">Prem</div>
-          <div className="col-span-1 text-center font-bold text-txt-primary">Rahul</div>
-          <div className="col-span-1 text-center font-bold text-txt-primary">Arjun</div>
-          <div className="col-span-1 text-center font-bold text-txt-primary">Sneha</div>
-          <div className="col-span-1 text-right">Link</div>
+          <div className="col-span-6 md:col-span-5">Problem</div>
+          <div className="col-span-3 hidden md:block">Category</div>
+          <div className="col-span-3 md:col-span-2 text-center font-bold text-txt-primary">Solved Status</div>
+          <div className="col-span-2 md:col-span-1 text-right">LeetCode</div>
         </div>
 
-        {/* Rows */}
         <div className="divide-y divide-border-subtle">
-          {filteredProblems.map((problem) => (
-            <div
-              key={problem.id}
-              className="grid grid-cols-12 gap-3 px-6 py-3.5 items-center hover:bg-surface-raised transition-colors group text-xs"
-            >
-              {/* Problem Number */}
-              <div className="col-span-1 text-center font-mono text-[11px] text-txt-secondary font-bold">
-                {problem.number}
-              </div>
-
-              {/* Title & Difficulty */}
-              <div className="col-span-4 md:col-span-4 flex items-center gap-2.5 truncate">
-                <span className="font-semibold text-txt-primary truncate group-hover:text-apple-accent transition-colors">
-                  {problem.title}
-                </span>
-                <span
-                  className={cn(
-                    "px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0",
-                    getDifficultyBadge(problem.difficulty)
-                  )}
-                >
-                  {problem.difficulty}
-                </span>
-              </div>
-
-              {/* Category */}
-              <div className="col-span-2 hidden md:block text-[11px] text-txt-secondary truncate">
-                {problem.category}
-              </div>
-
-              {/* Squad Completion Status (Prem) */}
-              <div className="col-span-1 flex justify-center">
-                {problem.squadStatus.prem ? (
-                  <CheckCircle2 className="w-4 h-4 text-apple-green" />
-                ) : (
-                  <Circle className="w-4 h-4 text-txt-tertiary opacity-40" />
-                )}
-              </div>
-
-              {/* Squad Completion Status (Rahul) */}
-              <div className="col-span-1 flex justify-center">
-                {problem.squadStatus.rahul ? (
-                  <CheckCircle2 className="w-4 h-4 text-apple-green" />
-                ) : (
-                  <Circle className="w-4 h-4 text-txt-tertiary opacity-40" />
-                )}
-              </div>
-
-              {/* Squad Completion Status (Arjun) */}
-              <div className="col-span-1 flex justify-center">
-                {problem.squadStatus.arjun ? (
-                  <CheckCircle2 className="w-4 h-4 text-apple-green" />
-                ) : (
-                  <Circle className="w-4 h-4 text-txt-tertiary opacity-40" />
-                )}
-              </div>
-
-              {/* Squad Completion Status (Sneha) */}
-              <div className="col-span-1 flex justify-center">
-                {problem.squadStatus.sneha ? (
-                  <CheckCircle2 className="w-4 h-4 text-apple-green" />
-                ) : (
-                  <Circle className="w-4 h-4 text-txt-tertiary opacity-40" />
-                )}
-              </div>
-
-              {/* External LeetCode Link */}
-              <div className="col-span-1 flex justify-end">
-                <a
-                  href={`https://leetcode.com/problems/${problem.slug}/`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1.5 rounded-md text-txt-secondary hover:text-txt-primary hover:bg-surface-strong transition-colors"
-                  aria-label={`Solve ${problem.title} on LeetCode`}
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              </div>
+          {filteredProblems.length === 0 ? (
+            <div className="p-8 text-center text-txt-secondary text-xs">
+              No problems found in this category.
             </div>
-          ))}
+          ) : (
+            filteredProblems.map((problem, idx) => {
+              const isSolved = !!statuses[problem.title_slug];
+              return (
+                <div
+                  key={problem.id}
+                  className="grid grid-cols-12 gap-3 px-6 py-3.5 items-center hover:bg-surface-raised transition-colors group text-xs"
+                >
+                  <div className="col-span-1 text-center font-mono text-[11px] text-txt-secondary font-bold">
+                    {idx + 1}
+                  </div>
+
+                  <div className="col-span-6 md:col-span-5 flex items-center gap-2.5 truncate">
+                    <span className="font-semibold text-txt-primary truncate group-hover:text-apple-accent transition-colors">
+                      {problem.title}
+                    </span>
+                    <span
+                      className={cn(
+                        "px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0",
+                        getDifficultyBadge(problem.difficulty)
+                      )}
+                    >
+                      {problem.difficulty}
+                    </span>
+                  </div>
+
+                  <div className="col-span-3 hidden md:block text-[11px] text-txt-secondary truncate">
+                    {problem.category}
+                  </div>
+
+                  <div className="col-span-3 md:col-span-2 flex justify-center">
+                    <button
+                      onClick={() => handleToggle(problem.title_slug)}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1 rounded-pill text-[11px] font-semibold border transition-all",
+                        isSolved
+                          ? "bg-apple-green/15 text-apple-green border-apple-green/30"
+                          : "bg-surface-muted text-txt-secondary border-border-subtle hover:text-txt-primary hover:border-border-strong"
+                      )}
+                    >
+                      {isSolved ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Solved</span>
+                        </>
+                      ) : (
+                        <>
+                          <Circle className="w-3.5 h-3.5 opacity-40" />
+                          <span>Mark Done</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="col-span-2 md:col-span-1 flex justify-end">
+                    <a
+                      href={`https://leetcode.com/problems/${problem.title_slug}/`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 rounded-md text-txt-secondary hover:text-txt-primary hover:bg-surface-strong transition-colors"
+                      aria-label={`Solve ${problem.title} on LeetCode`}
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </div>

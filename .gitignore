@@ -27,6 +27,7 @@ yarn-error.log*
 *.pem
 image*.png
 *.screenshot.png
+scripts/
 
 # TypeScript cache
 *.tsbuildinfo

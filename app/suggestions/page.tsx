@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Inbox,
   Send,
@@ -9,102 +9,90 @@ import {
   ExternalLink,
   Plus,
   MessageSquare,
+  Loader2,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { cn } from "@/lib/utils";
-
-interface SuggestionItem {
-  id: string;
-  from: string;
-  to: string;
-  problemTitle: string;
-  problemSlug: string;
-  difficulty: "Easy" | "Medium" | "Hard";
-  note: string;
-  status: "pending" | "completed";
-  time: string;
-}
-
-const SAMPLE_SUGGESTIONS: SuggestionItem[] = [
-  {
-    id: "1",
-    from: "Rahul K",
-    to: "Prem Sai",
-    problemTitle: "Word Ladder II",
-    problemSlug: "word-ladder-ii",
-    difficulty: "Hard",
-    note: "Notice how level-by-level BFS optimization avoids exponential path branching!",
-    status: "pending",
-    time: "2h ago",
-  },
-  {
-    id: "2",
-    from: "Arjun V",
-    to: "Prem Sai",
-    problemTitle: "Target Sum",
-    problemSlug: "target-sum",
-    difficulty: "Medium",
-    note: "Translate this into standard 0/1 subset sum with rolling 1D array.",
-    status: "completed",
-    time: "Yesterday",
-  },
-  {
-    id: "3",
-    from: "Prem Sai",
-    to: "Rahul K",
-    problemTitle: "Daily Temperatures",
-    problemSlug: "daily-temperatures",
-    difficulty: "Medium",
-    note: "Classic monotonic decreasing stack pattern.",
-    status: "completed",
-    time: "2 days ago",
-  },
-];
+import { getSuggestions, createSuggestion } from "@/lib/data/suggestions";
+import { getSquadProfiles } from "@/lib/data/profiles";
+import { Suggestion, Profile, Difficulty } from "@/types/database";
 
 export default function SuggestionsPage() {
-  const [suggestions, setSuggestions] = useState<SuggestionItem[]>(SAMPLE_SUGGESTIONS);
-  const [activeTab, setActiveTab] = useState<"inbox" | "outbox">("inbox");
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"all" | "pending" | "completed">("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Form State
-  const [targetFriend, setTargetFriend] = useState("Rahul K");
+  const [targetUserId, setTargetUserId] = useState("");
   const [problemTitle, setProblemTitle] = useState("");
   const [problemSlug, setProblemSlug] = useState("");
-  const [difficulty, setDifficulty] = useState<"Easy" | "Medium" | "Hard">("Medium");
+  const [difficulty, setDifficulty] = useState<Difficulty>("Medium");
   const [note, setNote] = useState("");
 
-  const handleSendChallenge = (e: React.FormEvent) => {
+  useEffect(() => {
+    async function loadData() {
+      setLoading(true);
+      try {
+        const [suggestionsData, profilesData] = await Promise.all([
+          getSuggestions(),
+          getSquadProfiles(),
+        ]);
+        setSuggestions(suggestionsData);
+        setProfiles(profilesData);
+        if (profilesData.length > 0) {
+          setTargetUserId(profilesData[0].id);
+        }
+      } catch (err) {
+        console.error("Error loading suggestions:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  const handleSendChallenge = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!problemTitle) return;
 
-    const newSuggestion: SuggestionItem = {
-      id: Date.now().toString(),
-      from: "Prem Sai",
-      to: targetFriend,
-      problemTitle,
-      problemSlug: problemSlug || problemTitle.toLowerCase().replace(/\s+/g, "-"),
-      difficulty,
-      note,
-      status: "pending",
-      time: "Just now",
-    };
+    setSubmitting(true);
+    try {
+      const slug = problemSlug || problemTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      const created = await createSuggestion({
+        fromUser: profiles[0]?.id || "00000000-0000-0000-0000-000000000001",
+        toUser: targetUserId || profiles[0]?.id || "00000000-0000-0000-0000-000000000001",
+        problemTitle,
+        problemSlug: slug,
+        difficulty,
+        note,
+      });
 
-    setSuggestions([newSuggestion, ...suggestions]);
-    setIsModalOpen(false);
-    setProblemTitle("");
-    setProblemSlug("");
-    setNote("");
+      if (created) {
+        setSuggestions([created, ...suggestions]);
+        setIsModalOpen(false);
+        setProblemTitle("");
+        setProblemSlug("");
+        setNote("");
 
-    confetti({
-      particleCount: 50,
-      spread: 60,
-      origin: { y: 0.8 },
-      colors: ["#fa586a", "#ffffff"],
-    });
+        confetti({
+          particleCount: 50,
+          spread: 60,
+          origin: { y: 0.8 },
+          colors: ["#fa586a", "#ffffff"],
+        });
+      }
+    } catch (err) {
+      console.error("Error creating challenge:", err);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const getDifficultyBadge = (diff: string) => {
-    switch (diff.toLowerCase()) {
+    switch (diff?.toLowerCase()) {
       case "easy":
         return "text-apple-green bg-apple-green/10 border-apple-green/30";
       case "medium":
@@ -116,9 +104,11 @@ export default function SuggestionsPage() {
     }
   };
 
-  const displayedList = suggestions.filter((s) =>
-    activeTab === "inbox" ? s.to === "Prem Sai" : s.from === "Prem Sai"
-  );
+  const filteredList = suggestions.filter((s) => {
+    if (activeTab === "pending") return s.status === "pending";
+    if (activeTab === "completed") return s.status === "completed";
+    return true;
+  });
 
   return (
     <div className="space-y-8">
@@ -133,7 +123,7 @@ export default function SuggestionsPage() {
             Suggestion Box
           </h1>
           <p className="text-xs text-txt-secondary mt-1">
-            Recommend questions with custom intuition hints, verified automatically on LeetCode.
+            Recommend questions with custom intuition hints, verified automatically in Supabase via LeetCode sync.
           </p>
         </div>
 
@@ -150,37 +140,53 @@ export default function SuggestionsPage() {
       {/* Tab Filter */}
       <div className="flex items-center gap-2 border-b border-border-subtle pb-3">
         <button
-          onClick={() => setActiveTab("inbox")}
+          onClick={() => setActiveTab("all")}
           className={cn(
             "px-3.5 py-1.5 rounded-pill text-xs font-semibold transition-all",
-            activeTab === "inbox"
+            activeTab === "all"
               ? "bg-surface-raised text-txt-primary border border-border-strong"
               : "text-txt-secondary hover:text-txt-primary"
           )}
         >
-          Incoming Challenges ({suggestions.filter((s) => s.to === "Prem Sai").length})
+          All Challenges ({suggestions.length})
         </button>
         <button
-          onClick={() => setActiveTab("outbox")}
+          onClick={() => setActiveTab("pending")}
           className={cn(
             "px-3.5 py-1.5 rounded-pill text-xs font-semibold transition-all",
-            activeTab === "outbox"
+            activeTab === "pending"
               ? "bg-surface-raised text-txt-primary border border-border-strong"
               : "text-txt-secondary hover:text-txt-primary"
           )}
         >
-          Sent Challenges ({suggestions.filter((s) => s.from === "Prem Sai").length})
+          Pending ({suggestions.filter((s) => s.status === "pending").length})
+        </button>
+        <button
+          onClick={() => setActiveTab("completed")}
+          className={cn(
+            "px-3.5 py-1.5 rounded-pill text-xs font-semibold transition-all",
+            activeTab === "completed"
+              ? "bg-surface-raised text-txt-primary border border-border-strong"
+              : "text-txt-secondary hover:text-txt-primary"
+          )}
+        >
+          Completed ({suggestions.filter((s) => s.status === "completed").length})
         </button>
       </div>
 
       {/* Suggestion Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {displayedList.length === 0 ? (
-          <div className="col-span-2 p-12 text-center text-txt-secondary text-xs bg-surface-sidebar rounded-2xl border border-border-subtle">
-            No suggestions found in this view. Use &ldquo;Challenge a Friend&rdquo; above!
-          </div>
-        ) : (
-          displayedList.map((item) => (
+      {loading ? (
+        <div className="h-60 flex items-center justify-center gap-3 text-txt-secondary">
+          <Loader2 className="w-6 h-6 animate-spin text-apple-accent" />
+          <span className="text-xs">Loading challenges from database...</span>
+        </div>
+      ) : filteredList.length === 0 ? (
+        <div className="p-12 text-center text-txt-secondary text-xs bg-surface-sidebar rounded-2xl border border-border-subtle">
+          No suggestions found in this view. Click &ldquo;Challenge a Friend&rdquo; above!
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredList.map((item) => (
             <div
               key={item.id}
               className="bg-surface-sidebar border border-border-subtle hover:border-border-strong rounded-2xl p-5 flex flex-col justify-between shadow-subtle transition-all space-y-4"
@@ -188,7 +194,8 @@ export default function SuggestionsPage() {
               <div>
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] text-txt-secondary font-medium">
-                    {activeTab === "inbox" ? `From @${item.from}` : `To @${item.to}`} • {item.time}
+                    {item.from_profile ? `@${item.from_profile.username}` : "Squad Member"} •{" "}
+                    {new Date(item.created_at).toLocaleDateString()}
                   </span>
                   {item.status === "completed" ? (
                     <span className="px-2 py-0.5 rounded-full bg-apple-green/15 text-apple-green border border-apple-green/30 text-[10px] font-bold flex items-center gap-1">
@@ -204,7 +211,7 @@ export default function SuggestionsPage() {
                 </div>
 
                 <div className="mt-3 flex items-center gap-2">
-                  <h3 className="text-base font-bold text-txt-primary">{item.problemTitle}</h3>
+                  <h3 className="text-base font-bold text-txt-primary">{item.problem_title}</h3>
                   <span
                     className={cn(
                       "px-2 py-0.5 rounded-full text-[10px] font-semibold border",
@@ -225,10 +232,10 @@ export default function SuggestionsPage() {
 
               <div className="flex items-center justify-between pt-3 border-t border-border-subtle/50 text-xs">
                 <span className="text-[11px] text-txt-tertiary">
-                  Auto-syncs with LeetCode recent submissions
+                  Auto-syncs with LeetCode submissions
                 </span>
                 <a
-                  href={`https://leetcode.com/problems/${item.problemSlug}/`}
+                  href={`https://leetcode.com/problems/${item.problem_slug}/`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-3 py-1.5 rounded-pill bg-surface-muted hover:bg-surface-raised border border-border-subtle text-txt-primary font-semibold flex items-center gap-1.5 transition-colors"
@@ -238,17 +245,14 @@ export default function SuggestionsPage() {
                 </a>
               </div>
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Challenge Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="fixed inset-0 bg-black/80 backdrop-blur-md"
-            onClick={() => setIsModalOpen(false)}
-          />
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md" onClick={() => setIsModalOpen(false)} />
           <div className="relative w-full max-w-lg bg-surface-muted border border-border-strong rounded-2xl shadow-modal p-6 z-10 animate-in fade-in zoom-in-95">
             <h2 className="text-xl font-bold text-txt-primary mb-1">Challenge a Friend</h2>
             <p className="text-xs text-txt-secondary mb-5">
@@ -261,13 +265,19 @@ export default function SuggestionsPage() {
                   Recipient Friend
                 </label>
                 <select
-                  value={targetFriend}
-                  onChange={(e) => setTargetFriend(e.target.value)}
+                  value={targetUserId}
+                  onChange={(e) => setTargetUserId(e.target.value)}
                   className="w-full bg-surface-sidebar border border-border-subtle rounded-lg p-2.5 text-xs text-txt-primary focus:outline-none focus:border-apple-accent"
                 >
-                  <option value="Rahul K">Rahul K (@rahulk_dev)</option>
-                  <option value="Arjun V">Arjun V (@arjun_v)</option>
-                  <option value="Sneha M">Sneha M (@sneha_codes)</option>
+                  {profiles.length === 0 ? (
+                    <option value="demo">Squad Friends</option>
+                  ) : (
+                    profiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.username} (@{p.leetcode_username})
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
 
@@ -305,7 +315,7 @@ export default function SuggestionsPage() {
                   </label>
                   <select
                     value={difficulty}
-                    onChange={(e) => setDifficulty(e.target.value as "Easy" | "Medium" | "Hard")}
+                    onChange={(e) => setDifficulty(e.target.value as Difficulty)}
                     className="w-full bg-surface-sidebar border border-border-subtle rounded-lg p-2.5 text-xs text-txt-primary focus:outline-none focus:border-apple-accent"
                   >
                     <option value="Easy">Easy</option>
@@ -338,9 +348,10 @@ export default function SuggestionsPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-pill bg-apple-accent hover:opacity-90 text-white text-xs font-semibold shadow-glow flex items-center gap-1.5"
+                  disabled={submitting}
+                  className="px-4 py-2 rounded-pill bg-apple-accent hover:opacity-90 text-white text-xs font-semibold shadow-glow flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  <Send className="w-3.5 h-3.5" />
+                  {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                   <span>Send Challenge</span>
                 </button>
               </div>

@@ -1,145 +1,76 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Code2,
   Copy,
   Check,
   Building,
+  Plus,
+  Loader2,
+  Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface TemplateItem {
-  id: string;
-  title: string;
-  category: string;
-  timeComplexity: string;
-  spaceComplexity: string;
-  code: string;
-  description: string;
-}
-
-interface InterviewLog {
-  id: string;
-  company: string;
-  role: string;
-  author: string;
-  date: string;
-  roundsSummary: string;
-  questions: Array<{ name: string; difficulty: string; topic: string }>;
-}
-
-const SAMPLE_TEMPLATES: TemplateItem[] = [
-  {
-    id: "1",
-    title: "Monotonic Decreasing Stack (Next Greater Element)",
-    category: "Stack",
-    timeComplexity: "O(N)",
-    spaceComplexity: "O(N)",
-    description: "Standard template to find next greater element to the right in linear time.",
-    code: `def next_greater_elements(nums: list[int]) -> list[int]:
-    n = len(nums)
-    res = [-1] * n
-    stack = []  # stores indices
-
-    for i in range(n):
-        while stack and nums[i] > nums[stack[-1]]:
-            prev_idx = stack.pop()
-            res[prev_idx] = nums[i]
-        stack.append(i)
-    return res`,
-  },
-  {
-    id: "2",
-    title: "Disjoint Set Union (Union-Find with Path Compression)",
-    category: "Graphs",
-    timeComplexity: "O(α(N))",
-    spaceComplexity: "O(N)",
-    description: "Efficient connected component management with path compression & union by rank.",
-    code: `class UnionFind:
-    def __init__(self, size: int):
-        self.parent = list(range(size))
-        self.rank = [1] * size
-
-    def find(self, x: int) -> int:
-        if self.parent[x] != x:
-            self.parent[x] = self.find(self.parent[x])  # Path compression
-        return self.parent[x]
-
-    def union(self, x: int, y: int) -> bool:
-        root_x, root_y = self.find(x), self.find(y)
-        if root_x == root_y:
-            return False
-        if self.rank[root_x] > self.rank[root_y]:
-            self.parent[root_y] = root_x
-        elif self.rank[root_x] < self.rank[root_y]:
-            self.parent[root_x] = root_y
-        else:
-            self.parent[root_y] = root_x
-            self.rank[root_x] += 1
-        return True`,
-  },
-  {
-    id: "3",
-    title: "Binary Search on Answer (Predicate/Feasibility)",
-    category: "Binary Search",
-    timeComplexity: "O(N log(Range))",
-    spaceComplexity: "O(1)",
-    description: "Template for min-max capacity / rate allocation problems (e.g. Koko Eating Bananas).",
-    code: `def binary_search_answer(nums: list[int], k: int) -> int:
-    def is_valid(target: int) -> bool:
-        # Feasibility check logic
-        pass
-
-    low, high = min_possible, max_possible
-    ans = high
-
-    while low <= high:
-        mid = (low + high) // 2
-        if is_valid(mid):
-            ans = mid
-            high = mid - 1  # Minimize answer
-        else:
-            low = mid + 1
-    return ans`,
-  },
-];
-
-const SAMPLE_INTERVIEWS: InterviewLog[] = [
-  {
-    id: "1",
-    company: "Google",
-    role: "Software Engineer (L4)",
-    author: "Prem Sai",
-    date: "August 2026",
-    roundsSummary: "3 Coding Rounds + 1 System Design. Focus was heavily on graph cycle detection and dynamic programming on trees.",
-    questions: [
-      { name: "Parallel Courses III (LC #2050)", difficulty: "Hard", topic: "Topological Sort & DP" },
-      { name: "Longest Valid Parentheses (LC #32)", difficulty: "Hard", topic: "Stack / DP" },
-    ],
-  },
-  {
-    id: "2",
-    company: "Uber",
-    role: "Software Engineer II",
-    author: "Rahul K",
-    date: "July 2026",
-    roundsSummary: "Online Assessment + 2 Tech Interviews. Fast-paced graph traversal and state memoization.",
-    questions: [
-      { name: "Cheapest Flights Within K Stops (LC #787)", difficulty: "Medium", topic: "Bellman-Ford / Dijkstra" },
-      { name: "Sliding Window Maximum (LC #239)", difficulty: "Hard", topic: "Monotonic Queue" },
-    ],
-  },
-];
+import { getSharedResources, createSharedResource } from "@/lib/data/vault";
+import { SharedResource, ResourceCategory } from "@/types/database";
 
 export default function VaultPage() {
-  const [activeTab, setActiveTab] = useState<"templates" | "interviews">("templates");
+  const [activeTab, setActiveTab] = useState<ResourceCategory>("Template");
+  const [resources, setResources] = useState<SharedResource[]>([]);
+  const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Form State
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState<ResourceCategory>("Template");
+  const [content, setContent] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    async function loadResources() {
+      setLoading(true);
+      try {
+        const data = await getSharedResources(activeTab);
+        setResources(data);
+      } catch (err) {
+        console.error("Error loading resources:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadResources();
+  }, [activeTab]);
 
   const handleCopy = (id: string, code: string) => {
     navigator.clipboard.writeText(code);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title || !content) return;
+
+    setSubmitting(true);
+    try {
+      const created = await createSharedResource({
+        title,
+        category,
+        content,
+      });
+
+      if (created) {
+        setResources([created, ...resources]);
+        setIsModalOpen(false);
+        setTitle("");
+        setContent("");
+      }
+    } catch (err) {
+      console.error("Error creating resource:", err);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -155,150 +86,172 @@ export default function VaultPage() {
             Knowledge Vault
           </h1>
           <p className="text-xs text-txt-secondary mt-1">
-            Reusable algorithm templates and real-world company interview debriefs.
+            Reusable algorithm templates and real-world company interview debriefs stored in Supabase.
           </p>
         </div>
 
-        {/* Tab Pills */}
-        <div className="flex items-center p-1 bg-surface-sidebar rounded-pill border border-border-subtle self-start md:self-auto">
+        <div className="flex items-center gap-3 self-start md:self-auto">
+          {/* Add Resource Button */}
           <button
-            onClick={() => setActiveTab("templates")}
-            className={cn(
-              "px-4 py-1.5 rounded-pill text-xs font-semibold transition-all flex items-center gap-1.5",
-              activeTab === "templates"
-                ? "bg-apple-accent text-white shadow-sm"
-                : "text-txt-secondary hover:text-txt-primary"
-            )}
+            onClick={() => setIsModalOpen(true)}
+            className="px-3.5 py-1.5 rounded-pill bg-apple-accent hover:opacity-90 text-white font-semibold text-xs flex items-center gap-1.5 shadow-glow"
           >
-            <Code2 className="w-3.5 h-3.5" />
-            <span>Code Templates</span>
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add to Vault</span>
           </button>
-          <button
-            onClick={() => setActiveTab("interviews")}
-            className={cn(
-              "px-4 py-1.5 rounded-pill text-xs font-semibold transition-all flex items-center gap-1.5",
-              activeTab === "interviews"
-                ? "bg-apple-accent text-white shadow-sm"
-                : "text-txt-secondary hover:text-txt-primary"
-            )}
-          >
-            <Building className="w-3.5 h-3.5" />
-            <span>Interview Logs</span>
-          </button>
+
+          {/* Tab Pills */}
+          <div className="flex items-center p-1 bg-surface-sidebar rounded-pill border border-border-subtle">
+            <button
+              onClick={() => setActiveTab("Template")}
+              className={cn(
+                "px-3.5 py-1.5 rounded-pill text-xs font-semibold transition-all flex items-center gap-1.5",
+                activeTab === "Template"
+                  ? "bg-apple-accent text-white shadow-sm"
+                  : "text-txt-secondary hover:text-txt-primary"
+              )}
+            >
+              <Code2 className="w-3.5 h-3.5" />
+              <span>Templates</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("Interview Log")}
+              className={cn(
+                "px-3.5 py-1.5 rounded-pill text-xs font-semibold transition-all flex items-center gap-1.5",
+                activeTab === "Interview Log"
+                  ? "bg-apple-accent text-white shadow-sm"
+                  : "text-txt-secondary hover:text-txt-primary"
+              )}
+            >
+              <Building className="w-3.5 h-3.5" />
+              <span>Interview Logs</span>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Content */}
-      {activeTab === "templates" ? (
+      {loading ? (
+        <div className="h-60 flex items-center justify-center gap-3 text-txt-secondary">
+          <Loader2 className="w-6 h-6 animate-spin text-apple-accent" />
+          <span className="text-xs">Loading vault items from database...</span>
+        </div>
+      ) : resources.length === 0 ? (
+        <div className="p-12 text-center text-txt-secondary text-xs bg-surface-sidebar rounded-2xl border border-border-subtle">
+          No resources found in this category. Click &ldquo;Add to Vault&rdquo; to contribute!
+        </div>
+      ) : (
         <div className="space-y-6">
-          {SAMPLE_TEMPLATES.map((tmpl) => (
+          {resources.map((item) => (
             <div
-              key={tmpl.id}
+              key={item.id}
               className="bg-surface-sidebar border border-border-subtle rounded-2xl overflow-hidden shadow-subtle"
             >
-              {/* Card Header */}
-              <div className="p-5 border-b border-border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-muted/50">
+              <div className="p-5 border-b border-border-subtle flex items-center justify-between bg-surface-muted/50">
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="px-2 py-0.5 rounded bg-apple-purple/15 text-apple-purple border border-apple-purple/30 text-[10px] font-bold">
-                      {tmpl.category}
+                      {item.category}
                     </span>
-                    <h3 className="text-sm font-bold text-txt-primary">{tmpl.title}</h3>
+                    <h3 className="text-sm font-bold text-txt-primary">{item.title}</h3>
                   </div>
-                  <p className="text-xs text-txt-secondary mt-1">{tmpl.description}</p>
+                  <span className="text-[11px] text-txt-tertiary mt-1 block">
+                    Added on {new Date(item.created_at).toLocaleDateString()}
+                  </span>
                 </div>
 
-                <div className="flex items-center gap-2 self-start sm:self-auto">
-                  <div className="flex items-center gap-2 font-mono text-[11px] text-txt-tertiary">
-                    <span className="px-2 py-0.5 rounded bg-surface-base border border-border-subtle">
-                      Time: {tmpl.timeComplexity}
-                    </span>
-                    <span className="px-2 py-0.5 rounded bg-surface-base border border-border-subtle">
-                      Space: {tmpl.spaceComplexity}
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={() => handleCopy(tmpl.id, tmpl.code)}
-                    className="p-1.5 rounded-lg bg-surface-base hover:bg-surface-raised border border-border-subtle text-txt-secondary hover:text-txt-primary transition-all flex items-center gap-1 text-xs"
-                    title="Copy snippet"
-                  >
-                    {copiedId === tmpl.id ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-apple-green" />
-                        <span className="text-apple-green text-[11px]">Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span className="text-[11px]">Copy</span>
-                      </>
-                    )}
-                  </button>
-                </div>
+                <button
+                  onClick={() => handleCopy(item.id, item.content)}
+                  className="p-1.5 rounded-lg bg-surface-base hover:bg-surface-raised border border-border-subtle text-txt-secondary hover:text-txt-primary transition-all flex items-center gap-1 text-xs"
+                  title="Copy content"
+                >
+                  {copiedId === item.id ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-apple-green" />
+                      <span className="text-apple-green text-[11px]">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span className="text-[11px]">Copy</span>
+                    </>
+                  )}
+                </button>
               </div>
 
-              {/* Code Snippet Box */}
-              <div className="p-4 bg-surface-base/90 overflow-x-auto font-mono text-xs text-txt-primary leading-relaxed">
-                <pre>
-                  <code>{tmpl.code}</code>
-                </pre>
+              <div className="p-5 bg-surface-base/90 overflow-x-auto font-mono text-xs text-txt-primary leading-relaxed whitespace-pre-wrap">
+                {item.content}
               </div>
             </div>
           ))}
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {SAMPLE_INTERVIEWS.map((log) => (
-            <div
-              key={log.id}
-              className="bg-surface-sidebar border border-border-subtle rounded-2xl p-5 shadow-subtle flex flex-col justify-between space-y-4"
-            >
+      )}
+
+      {/* Add Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md" onClick={() => setIsModalOpen(false)} />
+          <div className="relative w-full max-w-lg bg-surface-muted border border-border-strong rounded-2xl shadow-modal p-6 z-10 animate-in fade-in zoom-in-95">
+            <h2 className="text-xl font-bold text-txt-primary mb-1">Add to Knowledge Vault</h2>
+            <p className="text-xs text-txt-secondary mb-5">Share an algorithm template or interview debrief.</p>
+
+            <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <div className="flex items-center justify-between">
-                  <span className="px-2.5 py-0.5 rounded-full bg-apple-accent/15 text-apple-accent border border-apple-accent/30 text-xs font-bold">
-                    {log.company}
-                  </span>
-                  <span className="text-[11px] text-txt-tertiary">
-                    {log.date} • By @{log.author}
-                  </span>
-                </div>
-
-                <h3 className="text-base font-bold text-txt-primary mt-3">{log.role}</h3>
-                <p className="text-xs text-txt-secondary mt-2 leading-relaxed">
-                  {log.roundsSummary}
-                </p>
-
-                {/* Questions List */}
-                <div className="mt-4 space-y-2">
-                  <span className="text-[11px] font-semibold text-txt-tertiary uppercase tracking-wider">
-                    Questions Encountered
-                  </span>
-                  {log.questions.map((q, idx) => (
-                    <div
-                      key={idx}
-                      className="p-2.5 rounded-xl bg-surface-muted border border-border-subtle flex items-center justify-between text-xs"
-                    >
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-txt-primary">{q.name}</span>
-                        <span className="text-[11px] text-txt-secondary">{q.topic}</span>
-                      </div>
-                      <span
-                        className={cn(
-                          "px-2 py-0.5 rounded text-[10px] font-semibold",
-                          q.difficulty === "Hard"
-                            ? "text-apple-red bg-apple-red/10"
-                            : "text-apple-orange bg-apple-orange/10"
-                        )}
-                      >
-                        {q.difficulty}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                <label className="block text-xs font-semibold text-txt-secondary mb-1">Title</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g., 'Monotonic Queue Pattern' or 'Meta Phone Screen Log'"
+                  className="w-full bg-surface-sidebar border border-border-subtle rounded-lg p-2.5 text-xs text-txt-primary focus:outline-none focus:border-apple-accent"
+                  required
+                />
               </div>
-            </div>
-          ))}
+
+              <div>
+                <label className="block text-xs font-semibold text-txt-secondary mb-1">Category</label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as ResourceCategory)}
+                  className="w-full bg-surface-sidebar border border-border-subtle rounded-lg p-2.5 text-xs text-txt-primary focus:outline-none focus:border-apple-accent"
+                >
+                  <option value="Template">Code Template</option>
+                  <option value="Interview Log">Interview Log</option>
+                  <option value="Cheat Sheet">Cheat Sheet</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-txt-secondary mb-1">Content (Markdown / Code)</label>
+                <textarea
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder="Write your template explanation, complexity, and code snippet..."
+                  rows={6}
+                  className="w-full bg-surface-sidebar border border-border-subtle rounded-lg p-2.5 text-xs text-txt-primary focus:outline-none focus:border-apple-accent font-mono resize-none"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-border-subtle">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 rounded-pill bg-surface-raised text-txt-secondary hover:text-txt-primary text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-4 py-2 rounded-pill bg-apple-accent hover:opacity-90 text-white text-xs font-semibold shadow-glow flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  <span>Save to Vault</span>
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

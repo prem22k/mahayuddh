@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Flame,
@@ -9,7 +9,6 @@ import {
   ArrowRight,
   Inbox,
   CheckCircle2,
-  ExternalLink,
   Users,
   Sparkles,
 } from "lucide-react";
@@ -21,123 +20,63 @@ import {
   SlidingWindowPattern,
   StackPattern,
 } from "@/components/vectors/BentoPatterns";
+import { getSquadProfiles } from "@/lib/data/profiles";
+import { getAllLists } from "@/lib/data/sheets";
+import { Profile, CustomList } from "@/types/database";
 
 interface TopicCategory {
   id: string;
   title: string;
   gradientClass: string;
-  solvedCount: number;
-  totalCount: number;
   pattern: React.ComponentType<{ className?: string }>;
 }
 
 const CATEGORIES: TopicCategory[] = [
-  {
-    id: "arrays-hashing",
-    title: "Arrays & Hashing",
-    gradientClass: "gradient-crimson",
-    solvedCount: 28,
-    totalCount: 32,
-    pattern: SlidingWindowPattern,
-  },
-  {
-    id: "two-pointers",
-    title: "Two Pointers & Window",
-    gradientClass: "gradient-sunset",
-    solvedCount: 19,
-    totalCount: 22,
-    pattern: SlidingWindowPattern,
-  },
-  {
-    id: "dynamic-programming",
-    title: "Dynamic Programming",
-    gradientClass: "gradient-purple",
-    solvedCount: 14,
-    totalCount: 45,
-    pattern: DPPattern,
-  },
-  {
-    id: "graphs",
-    title: "Graphs & BFS/DFS",
-    gradientClass: "gradient-amber",
-    solvedCount: 16,
-    totalCount: 30,
-    pattern: GraphPattern,
-  },
-  {
-    id: "trees-tries",
-    title: "Trees & Tries",
-    gradientClass: "gradient-emerald",
-    solvedCount: 22,
-    totalCount: 25,
-    pattern: TreePattern,
-  },
-  {
-    id: "binary-search",
-    title: "Binary Search & Stack",
-    gradientClass: "gradient-royal",
-    solvedCount: 15,
-    totalCount: 18,
-    pattern: BinarySearchPattern,
-  },
-  {
-    id: "backtracking",
-    title: "Backtracking & Recursion",
-    gradientClass: "gradient-violet",
-    solvedCount: 8,
-    totalCount: 12,
-    pattern: StackPattern,
-  },
-  {
-    id: "bit-manipulation",
-    title: "Bit Manipulation & Math",
-    gradientClass: "gradient-rose",
-    solvedCount: 6,
-    totalCount: 10,
-    pattern: DPPattern,
-  },
-];
-
-const RECENT_FEED = [
-  {
-    id: "1",
-    user: "Rahul K",
-    avatar: "R",
-    action: "solved",
-    problem: "Longest Increasing Subsequence",
-    difficulty: "Medium",
-    slug: "longest-increasing-subsequence",
-    time: "14m ago",
-  },
-  {
-    id: "2",
-    user: "Arjun V",
-    avatar: "A",
-    action: "streak",
-    details: "hit a 7-day streak! 🔥",
-    time: "1h ago",
-  },
-  {
-    id: "3",
-    user: "Prem Sai",
-    avatar: "P",
-    action: "solved",
-    problem: "Trapping Rain Water",
-    difficulty: "Hard",
-    slug: "trapping-rain-water",
-    time: "3h ago",
-  },
-  {
-    id: "4",
-    user: "Sneha M",
-    avatar: "S",
-    action: "suggested",
-    details: "suggested 'Word Ladder' to Rahul K",
-    time: "4h ago",
-  },
+  { id: "arrays-hashing", title: "Arrays & Hashing", gradientClass: "gradient-crimson", pattern: SlidingWindowPattern },
+  { id: "two-pointers", title: "Two Pointers & Window", gradientClass: "gradient-sunset", pattern: SlidingWindowPattern },
+  { id: "dynamic-programming", title: "Dynamic Programming", gradientClass: "gradient-purple", pattern: DPPattern },
+  { id: "graphs", title: "Graphs & BFS/DFS", gradientClass: "gradient-amber", pattern: GraphPattern },
+  { id: "trees-tries", title: "Trees & Tries", gradientClass: "gradient-emerald", pattern: TreePattern },
+  { id: "binary-search", title: "Binary Search & Stack", gradientClass: "gradient-royal", pattern: BinarySearchPattern },
+  { id: "backtracking", title: "Backtracking & Recursion", gradientClass: "gradient-violet", pattern: StackPattern },
+  { id: "bit-manipulation", title: "Bit Manipulation & Math", gradientClass: "gradient-rose", pattern: DPPattern },
 ];
 
 export default function ArenaPage() {
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [lists, setLists] = useState<CustomList[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadArenaData() {
+      try {
+        const [profilesData, listsData] = await Promise.all([
+          getSquadProfiles(),
+          getAllLists(),
+        ]);
+        setProfiles(profilesData);
+        setLists(listsData);
+      } catch (err) {
+        console.error("Error loading Arena data:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadArenaData();
+  }, []);
+
+  const totalStreak = profiles.reduce((acc, p) => acc + (p.streak || 0), 0);
+  const topMember = profiles[0];
+
+  if (loading) {
+    return (
+      <div className="h-[60vh] flex flex-col items-center justify-center gap-3 text-txt-secondary">
+        <Sparkles className="w-8 h-8 animate-spin text-apple-accent" />
+        <span className="text-xs">Loading Arena from Supabase...</span>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-9">
       {/* Page Title Header */}
@@ -154,40 +93,41 @@ export default function ArenaPage() {
 
         {/* Squad Status Pill */}
         <div className="flex items-center gap-3 self-start md:self-auto">
-          <div className="flex -space-x-2 overflow-hidden">
-            <div className="inline-block h-8 w-8 rounded-full ring-2 ring-surface-base bg-apple-purple text-white text-xs font-bold flex items-center justify-center">
-              P
+          {profiles.length > 0 ? (
+            <div className="flex -space-x-2 overflow-hidden">
+              {profiles.slice(0, 4).map((p) => (
+                <div
+                  key={p.id}
+                  className="inline-block h-8 w-8 rounded-full ring-2 ring-surface-base bg-surface-muted text-txt-primary text-xs font-bold flex items-center justify-center border border-border-subtle"
+                >
+                  {p.username.charAt(0).toUpperCase()}
+                </div>
+              ))}
             </div>
-            <div className="inline-block h-8 w-8 rounded-full ring-2 ring-surface-base bg-apple-blue text-white text-xs font-bold flex items-center justify-center">
-              R
-            </div>
-            <div className="inline-block h-8 w-8 rounded-full ring-2 ring-surface-base bg-apple-green text-white text-xs font-bold flex items-center justify-center">
-              A
-            </div>
-            <div className="inline-block h-8 w-8 rounded-full ring-2 ring-surface-base bg-apple-orange text-white text-xs font-bold flex items-center justify-center">
-              S
-            </div>
-          </div>
+          ) : null}
           <span className="text-xs text-txt-secondary font-medium">
-            4 / 4 Squad Active Today
+            {profiles.length} Squad Members Registered
           </span>
         </div>
       </div>
 
-      {/* 1. TOP PICKS FOR SQUAD (Hero Cards Section - Modeled after Apple Music) */}
+      {/* 1. TOP PICKS FOR SQUAD (Hero Cards Section) */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-txt-primary tracking-tight flex items-center gap-2">
-            <span>Top Picks for Squad</span>
+          <h2 className="text-xl font-bold text-txt-primary tracking-tight">
+            Top Picks for Squad
           </h2>
           <span className="text-xs text-txt-secondary font-medium">
-            Curated daily highlights
+            Live Daily Highlights
           </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Card 1: POTD */}
-          <div className="relative h-64 rounded-2xl p-5 overflow-hidden gradient-crimson border border-white/10 flex flex-col justify-between shadow-subtle group hover:scale-[1.01] transition-all cursor-pointer">
+          <Link
+            href="/sheets/neetcode-150"
+            className="relative h-64 rounded-2xl p-5 overflow-hidden gradient-crimson border border-white/10 flex flex-col justify-between shadow-subtle group hover:scale-[1.01] transition-all"
+          >
             <div className="absolute inset-0 opacity-20 group-hover:opacity-30 transition-opacity">
               <DPPattern />
             </div>
@@ -207,10 +147,10 @@ export default function ArenaPage() {
               </h3>
               <p className="text-xs text-white/70 mt-1 flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5 text-apple-green" />
-                <span>3/5 friends solved</span>
+                <span>Solve & auto-sync today</span>
               </p>
             </div>
-          </div>
+          </Link>
 
           {/* Card 2: Streak Guardian */}
           <div className="relative h-64 rounded-2xl p-5 overflow-hidden gradient-sunset border border-white/10 flex flex-col justify-between shadow-subtle group hover:scale-[1.01] transition-all cursor-pointer">
@@ -226,14 +166,14 @@ export default function ArenaPage() {
 
             <div className="relative z-10">
               <div className="text-[11px] text-white/80 font-medium mb-1">
-                Daily Consistency
+                Squad Combined Streak
               </div>
               <h3 className="text-2xl font-black text-white">
-                14-Day Streak 🔥
+                {totalStreak} Days Active 🔥
               </h3>
               <p className="text-xs text-white/80 mt-1 flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5" />
-                <span>2h 45m left to solve today</span>
+                <span>Protect your streak before midnight</span>
               </p>
             </div>
           </div>
@@ -245,53 +185,56 @@ export default function ArenaPage() {
             </div>
             <div className="relative z-10 flex justify-between items-start">
               <span className="px-2.5 py-1 rounded-full bg-black/40 backdrop-blur-md text-[10px] font-bold text-white uppercase tracking-wider border border-white/20">
-                Weekend Battle
+                Weekly Battle
               </span>
               <Trophy className="w-4 h-4 text-white" />
             </div>
 
             <div className="relative z-10">
               <div className="text-[11px] text-white/80 font-medium mb-1">
-                Saturday • 8:00 PM IST
+                Upcoming LeetCode Contest
               </div>
               <h3 className="text-xl font-bold text-white leading-snug">
-                Biweekly 148
+                Weekly Contest
               </h3>
               <p className="text-xs text-white/80 mt-1 flex items-center gap-1.5">
                 <Users className="w-3.5 h-3.5" />
-                <span>4 squad members registered</span>
+                <span>{topMember ? `@${topMember.username} leads rating` : "Ready for contest"}</span>
               </p>
             </div>
           </div>
 
-          {/* Card 4: Top Suggestion */}
-          <div className="relative h-64 rounded-2xl p-5 overflow-hidden gradient-royal border border-white/10 flex flex-col justify-between shadow-subtle group hover:scale-[1.01] transition-all cursor-pointer">
+          {/* Card 4: Suggestions Hub */}
+          <Link
+            href="/suggestions"
+            className="relative h-64 rounded-2xl p-5 overflow-hidden gradient-royal border border-white/10 flex flex-col justify-between shadow-subtle group hover:scale-[1.01] transition-all"
+          >
             <div className="absolute inset-0 opacity-25 group-hover:opacity-35 transition-opacity">
               <BinarySearchPattern />
             </div>
             <div className="relative z-10 flex justify-between items-start">
               <span className="px-2.5 py-1 rounded-full bg-black/40 backdrop-blur-md text-[10px] font-bold text-white uppercase tracking-wider border border-white/20">
-                Friend Challenge
+                Suggestion Box
               </span>
               <Inbox className="w-4 h-4 text-white" />
             </div>
 
             <div className="relative z-10">
               <div className="text-[11px] text-white/80 font-medium mb-1">
-                From Rahul K • Hard
+                Peer Accountability
               </div>
               <h3 className="text-xl font-bold text-white leading-snug">
-                Word Ladder II
+                Challenge Squad
               </h3>
-              <p className="text-xs text-white/70 mt-1 line-clamp-1 italic">
-                &ldquo;Notice level-by-level BFS optimization&rdquo;
+              <p className="text-xs text-white/70 mt-1">
+                Drop a problem challenge with a 3-line intuition hint
               </p>
             </div>
-          </div>
+          </Link>
         </div>
       </section>
 
-      {/* 2. BROWSE DSA TOPICS (Category Bento Grid - Modeled after Apple Music Browse) */}
+      {/* 2. BROWSE DSA TOPICS (Category Bento Grid) */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -299,14 +242,14 @@ export default function ArenaPage() {
               Browse DSA Topics
             </h2>
             <p className="text-xs text-txt-secondary mt-0.5">
-              Structured patterns with algorithmic progress rings
+              Structured patterns backed by Supabase roadmaps
             </p>
           </div>
           <Link
             href="/sheets/neetcode-150"
             className="text-xs text-apple-accent hover:underline flex items-center gap-1 font-semibold"
           >
-            <span>View Complete Roadmap</span>
+            <span>View All ({lists.length} Sheets)</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
@@ -314,27 +257,23 @@ export default function ArenaPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {CATEGORIES.map((cat) => {
             const PatternComponent = cat.pattern;
-            const progressPercent = Math.round((cat.solvedCount / cat.totalCount) * 100);
 
             return (
               <Link
                 key={cat.id}
-                href={`/sheets/neetcode-150?category=${cat.id}`}
+                href={`/sheets/neetcode-150`}
                 className={`relative aspect-[16/10] rounded-2xl p-4 overflow-hidden ${cat.gradientClass} border border-white/10 shadow-subtle group hover:scale-[1.02] transition-transform flex flex-col justify-between`}
               >
-                {/* Algorithmic SVG Background */}
                 <div className="absolute inset-0 group-hover:scale-105 transition-transform">
                   <PatternComponent />
                 </div>
 
-                {/* Progress Chip */}
                 <div className="relative z-10 flex justify-end">
                   <span className="px-2 py-0.5 rounded-full bg-black/45 backdrop-blur-md text-[10px] font-bold text-white border border-white/20">
-                    {cat.solvedCount} / {cat.totalCount} ({progressPercent}%)
+                    Roadmap
                   </span>
                 </div>
 
-                {/* Card Title */}
                 <div className="relative z-10">
                   <h3 className="text-base md:text-lg font-extrabold text-white leading-tight drop-shadow-md">
                     {cat.title}
@@ -343,69 +282,6 @@ export default function ArenaPage() {
               </Link>
             );
           })}
-        </div>
-      </section>
-
-      {/* 3. LIVE SQUAD ACTIVITY FEED */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-txt-primary tracking-tight">
-            Live Squad Feed
-          </h2>
-          <span className="text-xs text-txt-secondary">Real-time LeetCode sync</span>
-        </div>
-
-        <div className="bg-surface-sidebar border border-border-subtle rounded-2xl divide-y divide-border-subtle overflow-hidden">
-          {RECENT_FEED.map((item) => (
-            <div
-              key={item.id}
-              className="p-3.5 hover:bg-surface-raised transition-colors flex items-center justify-between text-xs"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-surface-muted border border-border-subtle flex items-center justify-center font-bold text-txt-primary">
-                  {item.avatar}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-txt-primary">{item.user}</span>
-                    {item.action === "solved" && (
-                      <>
-                        <span className="text-txt-secondary">solved</span>
-                        <span className="font-semibold text-txt-primary hover:text-apple-accent cursor-pointer">
-                          {item.problem}
-                        </span>
-                        <span
-                          className={`px-1.5 py-0.2 rounded text-[10px] font-semibold ${
-                            item.difficulty === "Hard"
-                              ? "text-apple-red bg-apple-red/10"
-                              : "text-apple-orange bg-apple-orange/10"
-                          }`}
-                        >
-                          {item.difficulty}
-                        </span>
-                      </>
-                    )}
-                    {item.details && (
-                      <span className="text-txt-secondary">{item.details}</span>
-                    )}
-                  </div>
-                  <span className="text-[11px] text-txt-tertiary">{item.time}</span>
-                </div>
-              </div>
-
-              {item.slug && (
-                <a
-                  href={`https://leetcode.com/problems/${item.slug}/`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1.5 text-txt-secondary hover:text-txt-primary rounded-md"
-                  aria-label={`View ${item.problem} on LeetCode`}
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              )}
-            </div>
-          ))}
         </div>
       </section>
     </div>
