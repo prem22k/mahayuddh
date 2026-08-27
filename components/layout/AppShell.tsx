@@ -1,14 +1,28 @@
 "use client";
 
 import React, { useState } from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { NowSolvingBar } from "./NowSolvingBar";
 import { SearchModal } from "../modals/SearchModal";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const { user } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  // If on login page or auth callbacks, show clean full-page view
+  if (pathname?.startsWith("/login") || pathname?.startsWith("/auth")) {
+    return <main className="min-h-screen bg-surface-base">{children}</main>;
+  }
+
+  // If not logged in, user will be redirected to /login by middleware
+  if (!user) {
+    return <main className="min-h-screen bg-surface-base">{children}</main>;
+  }
 
   return (
     <div className="min-h-screen bg-surface-base text-txt-primary flex">
@@ -25,10 +39,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setIsMobileMenuOpen(false)}
           />
           <div className="relative w-64 max-w-[80vw] h-full bg-surface-sidebar z-10 animate-in slide-in-from-left">
-            <Sidebar onSearchOpen={() => {
-              setIsMobileMenuOpen(false);
-              setIsSearchOpen(true);
-            }} />
+            <Sidebar
+              onSearchOpen={() => {
+                setIsMobileMenuOpen(false);
+                setIsSearchOpen(true);
+              }}
+            />
           </div>
         </div>
       )}

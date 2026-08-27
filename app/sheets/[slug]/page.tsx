@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getListWithProblems, getSquadProblemStatuses, toggleProblemStatus } from "@/lib/data/sheets";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { CustomList, ListProblem, UserProblemStatus } from "@/types/database";
 
 export default function SheetPage() {
@@ -51,10 +52,13 @@ export default function SheetPage() {
     loadSheetData();
   }, [slug]);
 
+  const { user } = useAuth();
+
   const handleToggle = async (problemSlug: string) => {
+    if (!user) return;
     const nextVal = !statuses[problemSlug];
     setStatuses((prev) => ({ ...prev, [problemSlug]: nextVal }));
-    await toggleProblemStatus("demo-user", problemSlug, nextVal);
+    await toggleProblemStatus(user.id, problemSlug, nextVal);
   };
 
   const categories = ["All", ...Array.from(new Set(problems.map((p) => p.category)))];

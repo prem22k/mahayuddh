@@ -15,6 +15,7 @@ import confetti from "canvas-confetti";
 import { cn } from "@/lib/utils";
 import { getSuggestions, createSuggestion } from "@/lib/data/suggestions";
 import { getSquadProfiles } from "@/lib/data/profiles";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { Suggestion, Profile, Difficulty } from "@/types/database";
 
 export default function SuggestionsPage() {
@@ -54,16 +55,18 @@ export default function SuggestionsPage() {
     loadData();
   }, []);
 
+  const { user } = useAuth();
+
   const handleSendChallenge = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!problemTitle) return;
+    if (!problemTitle || !user) return;
 
     setSubmitting(true);
     try {
       const slug = problemSlug || problemTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-");
       const created = await createSuggestion({
-        fromUser: profiles[0]?.id || "00000000-0000-0000-0000-000000000001",
-        toUser: targetUserId || profiles[0]?.id || "00000000-0000-0000-0000-000000000001",
+        fromUser: user.id,
+        toUser: targetUserId || user.id,
         problemTitle,
         problemSlug: slug,
         difficulty,

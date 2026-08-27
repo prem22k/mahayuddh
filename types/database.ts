@@ -27,6 +27,7 @@ export interface Profile {
 
 export interface CustomList {
   id: string;
+  slug: string;
   title: string;
   emoji: string;
   description: string | null;

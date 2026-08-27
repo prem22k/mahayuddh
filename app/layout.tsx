@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
+import { AuthProvider } from "@/components/providers/AuthProvider";
 
 export const metadata: Metadata = {
   title: "Mahayuddh | Developer Squad DSA Arena",
@@ -11,8 +12,8 @@ export const metadata: Metadata = {
     title: "Mahayuddh",
   },
   icons: {
-    icon: "/favicon.ico",
-    apple: "/apple-touch-icon.png",
+    icon: "/icon.svg",
+    apple: "/icon.svg",
   },
 };
 
@@ -32,7 +33,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="bg-surface-base text-txt-primary antialiased selection:bg-apple-accent selection:text-white">
-        <AppShell>{children}</AppShell>
+        <AuthProvider>
+          <AppShell>{children}</AppShell>
+        </AuthProvider>
       </body>
     </html>
   );
