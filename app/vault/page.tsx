@@ -3,13 +3,9 @@
 import React, { useState } from "react";
 import {
   Code2,
-  FileText,
   Copy,
   Check,
   Building,
-  Sparkles,
-  BookOpen,
-  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 

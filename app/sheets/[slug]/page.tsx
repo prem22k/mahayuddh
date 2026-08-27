@@ -7,10 +7,7 @@ import {
   CheckCircle2,
   Circle,
   ExternalLink,
-  Filter,
-  Flame,
   Search,
-  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 

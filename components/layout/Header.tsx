@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Bell, BellRing, RefreshCw, Menu } from "lucide-react";
+import { Bell, BellRing, RefreshCw, Menu, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
@@ -35,6 +35,14 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
           <Menu className="w-5 h-5" />
         </button>
 
+        <button
+          onClick={onSearchOpen}
+          className="md:hidden p-2 rounded-lg text-txt-secondary hover:text-txt-primary hover:bg-surface-raised transition-colors"
+          aria-label="Search problems"
+        >
+          <Search className="w-5 h-5" />
+        </button>
+
         <div className="hidden sm:flex items-center gap-2 text-txt-secondary text-xs">
           <span className="w-2 h-2 rounded-full bg-apple-green animate-pulse-subtle" />
           <span className="font-medium text-txt-primary">Squad Online:</span>
@@ -47,7 +55,7 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
         {/* Segment Pill Toggle (Apple Style) */}
         <div className="flex items-center p-0.5 bg-surface-muted rounded-pill border border-border-subtle text-xs">
           <button
-            onClick={() => setActiveSegment("squad")}
+            onClick={() => setActiveTabSafe("squad", setActiveSegment)}
             className={cn(
               "px-3 py-1 rounded-pill font-medium transition-all",
               activeSegment === "squad"
@@ -58,7 +66,7 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
             Squad
           </button>
           <button
-            onClick={() => setActiveSegment("all")}
+            onClick={() => setActiveTabSafe("all", setActiveSegment)}
             className={cn(
               "px-3 py-1 rounded-pill font-medium transition-all",
               activeSegment === "all"
@@ -107,4 +115,8 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
       </div>
     </header>
   );
+}
+
+function setActiveTabSafe(tab: "squad" | "all", setter: (v: "squad" | "all") => void) {
+  setter(tab);
 }

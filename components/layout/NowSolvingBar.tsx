@@ -27,7 +27,7 @@ export function NowSolvingBar() {
   const [seconds, setSeconds] = useState(1455); // 24m 15s default
   const [isScratchpadOpen, setIsScratchpadOpen] = useState(false);
   const [scratchpadNote, setScratchpadNote] = useState("");
-  const [activeProblem, setActiveProblem] = useState<ActiveProblem>({
+  const [activeProblem] = useState<ActiveProblem>({
     id: "15",
     title: "3Sum",
     slug: "3sum",

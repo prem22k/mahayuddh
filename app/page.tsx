@@ -7,7 +7,6 @@ import {
   Clock,
   Trophy,
   ArrowRight,
-  TrendingUp,
   Inbox,
   CheckCircle2,
   ExternalLink,

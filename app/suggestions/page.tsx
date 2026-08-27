@@ -6,10 +6,8 @@ import {
   Send,
   CheckCircle2,
   Clock,
-  Sparkles,
   ExternalLink,
   Plus,
-  Flame,
   MessageSquare,
 } from "lucide-react";
 import confetti from "canvas-confetti";

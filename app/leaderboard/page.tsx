@@ -9,8 +9,6 @@ import {
   Award,
   Inbox,
   ExternalLink,
-  ChevronUp,
-  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
