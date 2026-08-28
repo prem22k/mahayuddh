@@ -278,7 +278,7 @@ export function UserStatsDossierModal({
             {/* Contest Rating */}
             <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex flex-col justify-between">
               <div className="flex items-center justify-between text-white/40 text-[11px] font-semibold uppercase">
-                <span>Elo Rating</span>
+                <span>Contest Rating</span>
                 <Trophy className="w-3.5 h-3.5 text-[#bf5af2]" />
               </div>
               <div className="text-2xl font-black text-white font-mono mt-2">

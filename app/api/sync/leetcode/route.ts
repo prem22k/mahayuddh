@@ -37,6 +37,9 @@ async function persistStats(
     totalHard: number;
     contestRating: number;
     contestGlobalRank?: number | null;
+    contestTotalParticipants?: number | null;
+    contestTopPercentage?: number | null;
+    contestAttended?: number | null;
     ranking?: number | null;
     streak: number;
     avatar?: string | null;
@@ -64,7 +67,7 @@ async function persistStats(
     total_medium: stats.totalMedium ?? 0,
     total_hard: stats.totalHard ?? 0,
     contest_rating: stats.contestRating ?? 1500,
-    global_rank: stats.contestGlobalRank ?? stats.ranking ?? null,
+    global_rank: stats.ranking ?? null, // Official LeetCode Profile Global Rank (e.g. 2328998)
     streak: stats.streak ?? 0,
     last_synced_at: new Date().toISOString(),
   };

@@ -9,15 +9,17 @@ export interface LeetCodeUserProfile {
   username: string;
   realName?: string;
   avatar?: string;
-  ranking?: number;
+  ranking?: number; // Official LeetCode Profile Global Rank
   totalEasy: number;
   totalMedium: number;
   totalHard: number;
   totalSolved: number;
   acceptanceRate: number;
-  contestRating?: number;
-  contestGlobalRank?: number;
-  contestTopPercentage?: number;
+  contestRating?: number; // Official LeetCode Contest Rating
+  contestGlobalRank?: number; // Official LeetCode Contest Global Ranking
+  contestTotalParticipants?: number; // Official Contest Total Participants
+  contestTopPercentage?: number; // Official Contest Top Percentage
+  contestAttended?: number; // Official Contests Attended
 }
 
 export interface RecentSubmission {
@@ -59,6 +61,7 @@ export async function fetchLeetCodeProfile(username: string): Promise<LeetCodeUs
         globalRanking
         totalParticipants
         topPercentage
+        attendedContestsCount
       }
     }
   `;
@@ -72,7 +75,7 @@ export async function fetchLeetCodeProfile(username: string): Promise<LeetCodeUs
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       },
       body: JSON.stringify({ query, variables: { username } }),
-      next: { revalidate: 600 }, // Cache for 10 minutes
+      next: { revalidate: 300 }, // Cache for 5 minutes
     });
 
     if (!res.ok) return null;
@@ -96,7 +99,7 @@ export async function fetchLeetCodeProfile(username: string): Promise<LeetCodeUs
       username: user.username,
       realName: user.profile?.realName,
       avatar: user.profile?.userAvatar,
-      ranking: user.profile?.ranking,
+      ranking: user.profile?.ranking, // Exact LeetCode Profile Global Rank (e.g. 2328998)
       totalEasy,
       totalMedium,
       totalHard,
@@ -104,7 +107,9 @@ export async function fetchLeetCodeProfile(username: string): Promise<LeetCodeUs
       acceptanceRate,
       contestRating: contest?.rating ? Math.round(contest.rating) : 1500,
       contestGlobalRank: contest?.globalRanking,
+      contestTotalParticipants: contest?.totalParticipants,
       contestTopPercentage: contest?.topPercentage,
+      contestAttended: contest?.attendedContestsCount,
     };
   } catch (error) {
     console.error("Error fetching LeetCode profile:", error);

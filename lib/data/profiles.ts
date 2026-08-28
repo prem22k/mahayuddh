@@ -54,7 +54,7 @@ export async function syncUserProfileStats(
         total_medium: stats.totalMedium ?? 0,
         total_hard: stats.totalHard ?? 0,
         contest_rating: stats.contestRating ?? 1500,
-        global_rank: stats.contestGlobalRank ?? stats.ranking ?? null,
+        global_rank: stats.ranking ?? null, // Official LeetCode Profile Global Rank (e.g. 2328998)
         streak: stats.streak ?? 0,
       };
 

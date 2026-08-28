@@ -456,8 +456,8 @@ export default function LeaderboardPage() {
                     <span className="font-mono font-bold text-white text-sm">
                       {Math.round(member.contest_rating)}
                     </span>
-                    <span className="text-[10px] text-white/30 font-mono">
-                      Rank #{member.global_rank || "—"}
+                    <span className="text-[10px] text-white/40 font-mono">
+                      Rank #{member.global_rank ? member.global_rank.toLocaleString() : "—"}
                     </span>
                   </div>
 
