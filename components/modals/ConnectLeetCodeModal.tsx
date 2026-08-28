@@ -1,7 +1,19 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Link2, Sparkles, Key, HelpCircle, Check, ArrowRight } from "lucide-react";
+import {
+  X,
+  Link2,
+  Sparkles,
+  Zap,
+  Key,
+  HelpCircle,
+  Check,
+  Copy,
+  ArrowRight,
+  ExternalLink,
+  Bookmark,
+} from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { syncUserProfileStats } from "@/lib/data/profiles";
 import { cn } from "@/lib/utils";
@@ -15,18 +27,53 @@ interface ConnectLeetCodeModalProps {
 
 export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLeetCodeModalProps) {
   const { user, profile, session, refreshProfile } = useAuth();
-  const [activeTab, setActiveTab] = useState<"handle" | "session">("handle");
+  const [activeTab, setActiveTab] = useState<"handle" | "bookmarklet" | "session">("handle");
   const [username, setUsername] = useState(profile?.leetcode_username || "");
   const [password, setPassword] = useState("");
   const [sessionCookie, setSessionCookie] = useState("");
   const [showCookieGuide, setShowCookieGuide] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [copiedSnippet, setCopiedSnippet] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  // 1. Instant Handle Sync (No password required, 100% reliable)
+  const currentOrigin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+  const userToken = session?.access_token || "";
+
+  // The 1-click browser snippet / bookmarklet script
+  const bookmarkletCode = `javascript:(async()=>{try{const r=await fetch('https://leetcode.com/api/problems/algorithms/');if(!r.ok)throw new Error('Please login to leetcode.com first');const d=await r.json();const slugs=(d.stat_status_pairs||[]).filter(p=>p.status==='ac').map(p=>p.stat.question__title_slug);const s=await fetch('${currentOrigin}/api/sync/solved-slugs',{method:'POST',headers:{'Content-Type':'application/json','x-mahayuddh-token':'${userToken}'},body:JSON.stringify({slugs})});const res=await s.json();if(res.success){alert('🔥 Mahayuddh: Successfully synced '+res.imported+' solved problems to your roadmaps!');}else{alert('Error: '+(res.error||'Failed to sync'));}}catch(e){alert('Sync error: '+e.message);}})();`;
+
+  const consoleSnippet = `(async () => {
+  try {
+    const res = await fetch('https://leetcode.com/api/problems/algorithms/');
+    const data = await res.json();
+    const slugs = (data.stat_status_pairs || [])
+      .filter(p => p.status === 'ac')
+      .map(p => p.stat.question__title_slug);
+    
+    console.log('Found ' + slugs.length + ' solved problems. Sending to Mahayuddh...');
+    const syncRes = await fetch('${currentOrigin}/api/sync/solved-slugs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-mahayuddh-token': '${userToken}'
+      },
+      body: JSON.stringify({ slugs })
+    });
+    const result = await syncRes.json();
+    if (result.success) {
+      alert('🎉 Mahayuddh: ' + result.imported + ' solved problems synced!');
+    } else {
+      console.error(result);
+    }
+  } catch (err) {
+    console.error(err);
+  }
+})();`;
+
+  // 1. Instant Handle Sync
   const handleInstantSync = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !username.trim()) return;
@@ -37,12 +84,12 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
     try {
       const updated = await syncUserProfileStats(user.id, username.trim());
       if (!updated) {
-        setError("Could not find LeetCode account. Please check the spelling of your username.");
+        setError("Could not find LeetCode account. Please check your username.");
         return;
       }
 
       await refreshProfile();
-      setSuccess(`Connected @${username.trim()}! Contest rating, streak, and stats synced.`);
+      setSuccess(`Connected @${username.trim()}! Solved stats, rating, and last 100 ACs synced.`);
       confetti({
         particleCount: 60,
         spread: 60,
@@ -111,17 +158,23 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
     }
   };
 
+  const handleCopySnippet = () => {
+    navigator.clipboard.writeText(consoleSnippet);
+    setCopiedSnippet(true);
+    setTimeout(() => setCopiedSnippet(false), 2500);
+  };
+
   return (
     <div className="fixed inset-0 z-[350] flex items-center justify-center p-4 select-none">
       <div className="fixed inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-[#1c1c1e] border border-white/[0.1] rounded-3xl shadow-modal p-6 z-10 animate-in fade-in zoom-in-95">
+      <div className="relative w-full max-w-lg bg-[#1c1c1e] border border-white/[0.1] rounded-3xl shadow-modal p-6 z-10 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-[#fa586a]/15 border border-[#fa586a]/30 flex items-center justify-center text-[#fa586a]">
               <Link2 className="w-4 h-4" />
             </div>
-            <h2 className="text-xl font-bold text-white">Connect LeetCode</h2>
+            <h2 className="text-xl font-bold text-white">Sync LeetCode Status</h2>
           </div>
           <button
             onClick={onClose}
@@ -133,7 +186,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
         </div>
 
         {/* Tab Switcher */}
-        <div className="grid grid-cols-2 gap-1 p-1 bg-white/[0.04] rounded-2xl border border-white/[0.06] my-4">
+        <div className="grid grid-cols-3 gap-1 p-1 bg-white/[0.04] rounded-2xl border border-white/[0.06] my-4">
           <button
             type="button"
             onClick={() => {
@@ -141,14 +194,30 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
               setError(null);
             }}
             className={cn(
-              "py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5",
+              "py-2 text-[11px] font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1",
               activeTab === "handle"
                 ? "bg-[#fa586a] text-white shadow-sm"
                 : "text-white/50 hover:text-white"
             )}
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Instant Handle (Fast)</span>
+            <Sparkles className="w-3 h-3" />
+            <span>Handle (Fast)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("bookmarklet");
+              setError(null);
+            }}
+            className={cn(
+              "py-2 text-[11px] font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1",
+              activeTab === "bookmarklet"
+                ? "bg-[#30d158] text-black shadow-sm font-black"
+                : "text-white/50 hover:text-white"
+            )}
+          >
+            <Zap className="w-3 h-3" />
+            <span>1-Click Sync</span>
           </button>
           <button
             type="button"
@@ -157,22 +226,22 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
               setError(null);
             }}
             className={cn(
-              "py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5",
+              "py-2 text-[11px] font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1",
               activeTab === "session"
                 ? "bg-white/[0.12] text-white shadow-sm"
                 : "text-white/50 hover:text-white"
             )}
           >
-            <Key className="w-3.5 h-3.5" />
-            <span>Full History (Advanced)</span>
+            <Key className="w-3 h-3" />
+            <span>Session</span>
           </button>
         </div>
 
         {/* ── Tab 1: Instant Handle Connect ── */}
         {activeTab === "handle" && (
           <form onSubmit={handleInstantSync} className="space-y-4">
-            <p className="text-xs text-white/40 leading-relaxed">
-              Sync your <span className="text-white/80 font-semibold">live contest rating, global rank, daily streak, and problem breakdown</span> instantly. No password required!
+            <p className="text-xs text-white/50 leading-relaxed">
+              Sync your <strong className="text-white">contest rating, global rank, daily streak, and last 100 accepted problems</strong> automatically.
             </p>
 
             <div>
@@ -213,17 +282,91 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
           </form>
         )}
 
-        {/* ── Tab 2: Full History Session Sync ── */}
+        {/* ── Tab 2: 1-Click Browser Sync (Zero-Friction) ── */}
+        {activeTab === "bookmarklet" && (
+          <div className="space-y-4">
+            <div className="p-3.5 rounded-2xl bg-[#30d158]/10 border border-[#30d158]/20 text-xs text-[#30d158] space-y-1">
+              <div className="font-bold flex items-center gap-1.5">
+                <Zap className="w-4 h-4" />
+                <span>Zero Passwords • 1-Click Full History Sync</span>
+              </div>
+              <p className="text-[11px] text-white/70">
+                Syncs all 500+ of your past solved questions into your roadmaps directly from your logged-in browser tab.
+              </p>
+            </div>
+
+            {/* Method A: Drag Bookmarklet */}
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] space-y-2.5">
+              <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Bookmark className="w-3.5 h-3.5 text-[#fa586a]" />
+                <span>Option 1: Drag to Bookmarks Bar</span>
+              </div>
+              <p className="text-[11px] text-white/40">
+                Drag this button to your browser bookmarks bar once. Then click it while viewing LeetCode!
+              </p>
+              <div className="pt-1">
+                {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+                <a
+                  href={bookmarkletCode}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    alert("Drag this button to your browser bookmarks bar (Ctrl+Shift+B)!");
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-[#fa586a] to-[#ff8a9c] text-white text-xs font-black shadow-glow cursor-grab active:cursor-grabbing"
+                  title="Drag me to your bookmarks toolbar!"
+                >
+                  <Zap className="w-3.5 h-3.5 fill-current" />
+                  <span>⚡ Sync to Mahayuddh</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Method B: Console Snippet */}
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <ExternalLink className="w-3.5 h-3.5 text-white/70" />
+                  <span>Option 2: 1-Click Console Snippet</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopySnippet}
+                  className="px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-[11px] font-bold text-white flex items-center gap-1 transition-all cursor-pointer"
+                >
+                  {copiedSnippet ? (
+                    <>
+                      <Check className="w-3 h-3 text-[#30d158]" />
+                      <span className="text-[#30d158]">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      <span>Copy Script</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <ol className="text-[11px] text-white/50 list-decimal pl-4 space-y-1">
+                <li>Copy the script above.</li>
+                <li>Open <a href="https://leetcode.com" target="_blank" rel="noreferrer" className="text-[#fa586a] underline">leetcode.com</a> in another tab.</li>
+                <li>Press <kbd className="px-1 bg-white/10 rounded font-mono text-[10px]">F12</kbd> → Click <strong className="text-white/70">Console</strong> → Paste & Press <kbd className="px-1 bg-white/10 rounded font-mono text-[10px]">Enter</kbd>.</li>
+              </ol>
+            </div>
+          </div>
+        )}
+
+        {/* ── Tab 3: Session Cookie Sync ── */}
         {activeTab === "session" && (
           <form onSubmit={handleSessionSync} className="space-y-4">
             <p className="text-xs text-white/40 leading-relaxed">
-              Import all historical solved questions into your roadmap trackers. Paste your <span className="text-white/80 font-mono">LEETCODE_SESSION</span> cookie from browser DevTools:
+              Paste your <span className="text-white/80 font-mono">LEETCODE_SESSION</span> cookie from browser DevTools:
             </p>
 
             <div>
               <div className="flex items-center justify-between mb-1 pl-1">
                 <label className="text-[11px] font-semibold text-white/50 uppercase tracking-wider">
-                  LeetCode Session Cookie
+                  Session Cookie
                 </label>
                 <button
                   type="button"
@@ -237,12 +380,11 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
 
               {showCookieGuide && (
                 <div className="mb-2.5 p-3 rounded-xl bg-white/[0.03] border border-white/[0.08] text-[11px] text-white/60 space-y-1.5">
-                  <div className="font-bold text-white">How to get your session cookie in 30 seconds:</div>
+                  <div className="font-bold text-white">How to get your session cookie:</div>
                   <ol className="list-decimal pl-4 space-y-1 text-white/50">
-                    <li>Open <a href="https://leetcode.com" target="_blank" rel="noreferrer" className="text-[#fa586a] underline">leetcode.com</a> and make sure you are logged in.</li>
-                    <li>Press <kbd className="px-1 bg-white/10 rounded font-mono">F12</kbd> (or Right Click → Inspect).</li>
-                    <li>Go to <strong className="text-white/70">Application</strong> → <strong className="text-white/70">Cookies</strong> → <code className="text-white/70 font-mono">https://leetcode.com</code>.</li>
-                    <li>Double-click the value of <code className="text-[#fa586a] font-mono">LEETCODE_SESSION</code>, copy, and paste below.</li>
+                    <li>Open <a href="https://leetcode.com" target="_blank" rel="noreferrer" className="text-[#fa586a] underline">leetcode.com</a> and login.</li>
+                    <li>Press <kbd className="px-1 bg-white/10 rounded font-mono">F12</kbd> → <strong className="text-white/70">Application</strong> → <strong className="text-white/70">Cookies</strong>.</li>
+                    <li>Copy value of <code className="text-[#fa586a] font-mono">LEETCODE_SESSION</code>.</li>
                   </ol>
                 </div>
               )}
@@ -256,35 +398,12 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
               />
             </div>
 
-            <div className="relative flex py-1 items-center">
-              <div className="flex-grow border-t border-white/[0.08]"></div>
-              <span className="flex-shrink mx-3 text-[10px] text-white/30 uppercase font-bold tracking-wider">Or Login Credentials</span>
-              <div className="flex-grow border-t border-white/[0.08]"></div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Username"
-                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl p-2 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 font-mono"
-              />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
-                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl p-2 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60"
-              />
-            </div>
-
             {error && <div className="text-xs text-[#ff453a] font-medium bg-[#ff453a]/10 p-3 rounded-xl border border-[#ff453a]/20">{error}</div>}
             {success && <div className="text-xs text-[#30d158] font-medium bg-[#30d158]/10 p-3 rounded-xl border border-[#30d158]/20 flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /><span>{success}</span></div>}
 
             <button
               type="submit"
-              disabled={submitting || (!sessionCookie.trim() && (!username.trim() || !password.trim()))}
+              disabled={submitting || !sessionCookie.trim()}
               className="w-full py-2.5 rounded-xl bg-[#fa586a] hover:bg-[#fa586a]/90 text-white font-bold text-xs shadow-glow transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
             >
               {submitting ? (
@@ -294,7 +413,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
                 </>
               ) : (
                 <>
-                  <span>Import Full Solved History</span>
+                  <span>Import History via Cookie</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </>
               )}

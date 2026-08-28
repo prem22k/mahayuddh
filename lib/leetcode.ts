@@ -115,7 +115,7 @@ export async function fetchLeetCodeProfile(username: string): Promise<LeetCodeUs
 export async function fetchRecentSubmissions(username: string): Promise<RecentSubmission[]> {
   const query = `
     query getRecentSubmissions($username: String!) {
-      recentAcSubmissionList(username: $username, limit: 20) {
+      recentAcSubmissionList(username: $username, limit: 100) {
         title
         titleSlug
         timestamp
@@ -132,7 +132,7 @@ export async function fetchRecentSubmissions(username: string): Promise<RecentSu
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       },
       body: JSON.stringify({ query, variables: { username } }),
-      next: { revalidate: 120 }, // Cache for 2 minutes
+      next: { revalidate: 30 }, // Cache for 30 seconds
     });
 
     if (!res.ok) return [];
