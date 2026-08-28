@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowRight, Play } from "lucide-react";
+import { ArrowRight, Play, Link2, Shield } from "lucide-react";
 import {
   DPPattern,
   GraphPattern,
@@ -14,9 +14,11 @@ import {
 import { getSquadProfiles } from "@/lib/data/profiles";
 import { getAllLists, getAllProblems, getUserStatusesBySlugs, toStatusMap } from "@/lib/data/sheets";
 import { getPendingSuggestionCount } from "@/lib/data/suggestions";
-import { getCatalogTopicsSummary } from "@/lib/data/problems";
+import { getCatalogTopicsSummary, getCatalogCount } from "@/lib/data/problems";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { ConnectLeetCodeModal } from "@/components/modals/ConnectLeetCodeModal";
+import { UserStatsDossierModal } from "@/components/profile/UserStatsDossierModal";
 import { Profile, CustomList, ListProblem, TriState } from "@/types/database";
 
 const GRADIENTS = [
@@ -40,11 +42,12 @@ const PATTERNS = [
 ];
 
 export default function ArenaPage() {
-  const { profile, user } = useAuth();
+  const { profile, user, refreshProfile } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [lists, setLists] = useState<CustomList[]>([]);
   const [problems, setProblems] = useState<ListProblem[]>([]);
   const [suggestionsCount, setSuggestionsCount] = useState(0);
+  const [catalogCount, setCatalogCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const { startSolving } = useSolving();
 
@@ -52,24 +55,29 @@ export default function ArenaPage() {
   const [topics, setTopics] = useState<{ topic: string; count: number; solved: number; attempted: number }[]>([]);
   const [statusMap, setStatusMap] = useState<Record<string, TriState>>({});
   const [showAllTopics, setShowAllTopics] = useState(false);
+  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [isDossierOpen, setIsDossierOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const currentDisplayName = profile?.username || user?.email?.split("@")[0] || "Squad Member";
 
   useEffect(() => {
     async function loadArenaData() {
       try {
-        const [profilesData, listsData, problemsData, pendingCount, userStatuses] =
+        const [profilesData, listsData, problemsData, pendingCount, userStatuses, totalCatalog] =
           await Promise.all([
             getSquadProfiles(),
             getAllLists(),
             getAllProblems(),
             getPendingSuggestionCount(),
             user ? getUserStatusesBySlugs(user.id) : Promise.resolve([]),
+            getCatalogCount(),
           ]);
         setProfiles(profilesData);
         setLists(listsData);
         setProblems(problemsData);
         setSuggestionsCount(pendingCount);
+        setCatalogCount(totalCatalog);
         const userMap = toStatusMap(userStatuses);
         setStatusMap(userMap);
         // Topic summary depends on the user's status map, so compute it after.
@@ -81,7 +89,7 @@ export default function ArenaPage() {
       }
     }
     loadArenaData();
-  }, [user]);
+  }, [user, refreshKey]);
 
   const totalStreak = profiles.reduce((acc, p) => acc + (p.streak || 0), 0);
   const topMember = profiles[0];
@@ -100,7 +108,7 @@ export default function ArenaPage() {
   // Global progress from the user's status map vs the full catalog size.
   const totalSolved = Object.values(statusMap).filter((s) => s === "solved").length;
   const totalAttempted = Object.values(statusMap).filter((s) => s === "attempted").length;
-  const catalogTotal = topics.reduce((acc, t) => acc + t.count, 0) || 0;
+  const catalogTotal = catalogCount || topics.reduce((acc, t) => acc + t.count, 0) || 0;
 
   if (loading) {
     return (
@@ -311,7 +319,27 @@ export default function ArenaPage() {
       {/* ── 1.5 YOUR PROGRESS ── */}
       {user && (
         <section className="space-y-4">
-          <h2 className="text-xl font-bold text-white tracking-tight">Your Progress</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-white tracking-tight">Your Progress</h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsDossierOpen(true)}
+                className="text-xs text-white hover:text-white/80 flex items-center gap-1.5 font-bold px-3 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] transition-all cursor-pointer shadow-sm"
+              >
+                <Shield className="w-3.5 h-3.5 text-[#fa586a]" />
+                <span>Warrior Dossier</span>
+              </button>
+              <button
+                onClick={() => setIsConnectModalOpen(true)}
+                className="text-xs text-[#fa586a] hover:text-[#fa586a]/80 flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-full bg-[#fa586a]/10 border border-[#fa586a]/20 transition-all cursor-pointer"
+              >
+                <Link2 className="w-3.5 h-3.5" />
+                <span>
+                  {profile?.leetcode_session_synced_at ? "Re-sync LeetCode" : "Connect LeetCode"}
+                </span>
+              </button>
+            </div>
+          </div>
           <div className="grid grid-cols-3 gap-4">
             {[
               { label: "Solved", value: totalSolved, total: catalogTotal, color: "#30d158" },
@@ -410,6 +438,24 @@ export default function ArenaPage() {
           })}
         </div>
       </section>
+
+      {/* User Stats Holographic Dossier Modal */}
+      <UserStatsDossierModal
+        isOpen={isDossierOpen}
+        onClose={() => setIsDossierOpen(false)}
+        profile={profile}
+        statusMap={statusMap}
+      />
+
+      {/* Connect LeetCode Modal */}
+      <ConnectLeetCodeModal
+        isOpen={isConnectModalOpen}
+        onClose={() => setIsConnectModalOpen(false)}
+        onConnected={async () => {
+          await refreshProfile();
+          setRefreshKey((k) => k + 1);
+        }}
+      />
     </div>
   );
 }

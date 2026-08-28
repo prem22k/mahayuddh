@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { ExternalLink, RefreshCw, ArrowRight } from "lucide-react";
+import { ExternalLink, RefreshCw, ArrowRight, Link2, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getSquadProfiles, syncUserProfileStats } from "@/lib/data/profiles";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { ConnectLeetCodeModal } from "@/components/modals/ConnectLeetCodeModal";
+import { UserStatsDossierModal } from "@/components/profile/UserStatsDossierModal";
 import { Profile } from "@/types/database";
 
 type LeaderboardTab = "rating" | "streak" | "hard" | "easy";
@@ -14,6 +16,7 @@ export default function LeaderboardPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<LeaderboardTab>("rating");
+  const [inspectedProfile, setInspectedProfile] = useState<Profile | null>(null);
 
   // Syncing state
   const [isSyncing, setIsSyncing] = useState(false);
@@ -23,6 +26,7 @@ export default function LeaderboardPage() {
   const [inputHandle, setInputHandle] = useState("");
   const [isConnectingHandle, setIsConnectingHandle] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
 
   const loadLeaderboardData = async () => {
     try {
@@ -276,6 +280,26 @@ export default function LeaderboardPage() {
               </div>
             </div>
 
+            {/* View Personal Dossier Button */}
+            <button
+              onClick={() => setInspectedProfile(profile)}
+              className="px-4 py-2 rounded-full border border-[#fa586a]/40 bg-gradient-to-r from-[#fa586a]/20 to-[#bf5af2]/20 hover:from-[#fa586a]/30 hover:to-[#bf5af2]/30 text-white text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer shadow-glow"
+              title="Open your unique Holographic Battle Dossier & Combat Radar"
+            >
+              <Shield className="w-3.5 h-3.5 text-[#fa586a]" />
+              <span>Your Dossier</span>
+            </button>
+
+            {/* Full History Sync Button */}
+            <button
+              onClick={() => setIsConnectModalOpen(true)}
+              className="px-3.5 py-2 rounded-full border border-white/[0.08] bg-white/[0.04] hover:bg-white/[0.08] text-white/80 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title="Import all historical solved problems with your LeetCode session"
+            >
+              <Link2 className="w-3.5 h-3.5 text-[#fa586a]" />
+              <span>Full History</span>
+            </button>
+
             {/* Sync Button */}
             <button
               onClick={handleSyncMyStats}
@@ -309,30 +333,40 @@ export default function LeaderboardPage() {
             </p>
           </div>
 
-          <form onSubmit={handleConnectHandle} className="flex items-center gap-2 w-full md:w-auto">
-            <input
-              type="text"
-              value={inputHandle}
-              onChange={(e) => setInputHandle(e.target.value)}
-              placeholder="Your LeetCode username"
-              className="px-3.5 py-2 bg-white/[0.04] border border-white/[0.08] rounded-xl text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 font-mono w-full md:w-56"
-              required
-            />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full md:w-auto">
+            <form onSubmit={handleConnectHandle} className="flex items-center gap-2 w-full sm:w-auto">
+              <input
+                type="text"
+                value={inputHandle}
+                onChange={(e) => setInputHandle(e.target.value)}
+                placeholder="Your LeetCode username"
+                className="px-3.5 py-2 bg-white/[0.04] border border-white/[0.08] rounded-xl text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 font-mono w-full md:w-56"
+                required
+              />
+              <button
+                type="submit"
+                disabled={isConnectingHandle || !inputHandle.trim()}
+                className="px-4 py-2 rounded-xl bg-[#fa586a] hover:bg-[#fa586a]/90 text-white font-bold text-xs transition-all disabled:opacity-40 shrink-0 cursor-pointer flex items-center gap-1.5"
+              >
+                {isConnectingHandle ? (
+                  <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                ) : (
+                  <>
+                    <span>Connect</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </>
+                )}
+              </button>
+            </form>
             <button
-              type="submit"
-              disabled={isConnectingHandle || !inputHandle.trim()}
-              className="px-4 py-2 rounded-xl bg-[#fa586a] hover:bg-[#fa586a]/90 text-white font-bold text-xs transition-all disabled:opacity-40 shrink-0 cursor-pointer flex items-center gap-1.5"
+              onClick={() => setIsConnectModalOpen(true)}
+              className="px-3 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/70 hover:text-white text-xs font-semibold transition-all shrink-0 cursor-pointer flex items-center gap-1.5"
+              title="Connect with credentials to import complete solved history"
             >
-              {isConnectingHandle ? (
-                <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-              ) : (
-                <>
-                  <span>Connect</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </>
-              )}
+              <Link2 className="w-3.5 h-3.5 text-[#fa586a]" />
+              <span>Full History Import</span>
             </button>
-          </form>
+          </div>
           {connectError && (
             <div className="text-xs text-[#ff453a] font-medium w-full">{connectError}</div>
           )}
@@ -439,17 +473,25 @@ export default function LeaderboardPage() {
                     </span>
                   </div>
 
-                  <div className="col-span-3 md:col-span-2 flex justify-end">
+                  <div className="col-span-3 md:col-span-2 flex items-center justify-end gap-1.5">
+                    <button
+                      onClick={() => setInspectedProfile(member)}
+                      className="px-2.5 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#fa586a]/15 hover:border-[#fa586a]/30 border border-white/[0.08] text-white/70 hover:text-[#fa586a] text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+                      title="Inspect Battle Dossier"
+                    >
+                      <Shield className="w-3 h-3" />
+                      <span className="hidden md:inline">Dossier</span>
+                    </button>
                     {!isCurrentUser ? (
                       <a
                         href={`/suggestions?to=${member.id}`}
-                        className="px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#fa586a] hover:text-white border border-white/[0.08] text-white/60 text-xs font-semibold transition-all shadow-sm"
+                        className="px-2.5 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#fa586a] hover:text-white border border-white/[0.08] text-white/60 text-xs font-semibold transition-all shadow-sm"
                       >
                         Challenge
                       </a>
                     ) : (
-                      <span className="text-[11px] text-white/30 font-medium italic pr-2">
-                        Your Standing
+                      <span className="text-[11px] text-white/30 font-medium italic pr-1 hidden lg:inline">
+                        You
                       </span>
                     )}
                   </div>
@@ -459,6 +501,23 @@ export default function LeaderboardPage() {
           </div>
         )}
       </div>
+
+      {/* User Stats Holographic Dossier Modal */}
+      <UserStatsDossierModal
+        isOpen={!!inspectedProfile}
+        onClose={() => setInspectedProfile(null)}
+        profile={inspectedProfile}
+      />
+
+      {/* Connect LeetCode Modal */}
+      <ConnectLeetCodeModal
+        isOpen={isConnectModalOpen}
+        onClose={() => setIsConnectModalOpen(false)}
+        onConnected={async () => {
+          await refreshProfile();
+          await loadLeaderboardData();
+        }}
+      />
     </div>
   );
 }
