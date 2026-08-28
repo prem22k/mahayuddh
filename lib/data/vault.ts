@@ -46,3 +46,14 @@ export async function createSharedResource(params: {
   if (error || !data) return null;
   return data as SharedResource;
 }
+
+export async function deleteSharedResource(id: string, authorId: string): Promise<boolean> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("shared_resources")
+    .delete()
+    .eq("id", id)
+    .eq("author_id", authorId);
+
+  return !error;
+}
