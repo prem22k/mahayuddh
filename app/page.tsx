@@ -18,23 +18,24 @@ import { useSolving } from "@/components/providers/SolvingProvider";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Profile, CustomList, ListProblem } from "@/types/database";
 
-interface TopicCategory {
-  id: string;
-  title: string;
-  queryCategory: string;
-  gradientClass: string;
-  pattern: React.ComponentType<{ className?: string }>;
-}
+const GRADIENTS = [
+  "gradient-crimson",
+  "gradient-sunset",
+  "gradient-purple",
+  "gradient-amber",
+  "gradient-emerald",
+  "gradient-royal",
+  "gradient-violet",
+  "gradient-rose",
+];
 
-const CATEGORIES: TopicCategory[] = [
-  { id: "arrays-hashing", title: "Arrays & Hashing", queryCategory: "Arrays & Hashing", gradientClass: "gradient-crimson", pattern: SlidingWindowPattern },
-  { id: "two-pointers", title: "Two Pointers", queryCategory: "Two Pointers", gradientClass: "gradient-sunset", pattern: SlidingWindowPattern },
-  { id: "dynamic-programming", title: "Dynamic Programming", queryCategory: "Dynamic Programming", gradientClass: "gradient-purple", pattern: DPPattern },
-  { id: "graphs", title: "Graphs", queryCategory: "Graphs", gradientClass: "gradient-amber", pattern: GraphPattern },
-  { id: "trees-tries", title: "Trees & Tries", queryCategory: "Trees", gradientClass: "gradient-emerald", pattern: TreePattern },
-  { id: "binary-search", title: "Binary Search", queryCategory: "Binary Search", gradientClass: "gradient-royal", pattern: BinarySearchPattern },
-  { id: "backtracking", title: "Backtracking", queryCategory: "Backtracking", gradientClass: "gradient-violet", pattern: StackPattern },
-  { id: "bit-manipulation", title: "Bit Manipulation", queryCategory: "Bit Manipulation", gradientClass: "gradient-rose", pattern: DPPattern },
+const PATTERNS = [
+  SlidingWindowPattern,
+  DPPattern,
+  GraphPattern,
+  TreePattern,
+  BinarySearchPattern,
+  StackPattern,
 ];
 
 export default function ArenaPage() {
@@ -76,6 +77,14 @@ export default function ArenaPage() {
   // Pick deterministic Problem of the Day from real database problems
   const potdIndex = problems.length > 0 ? (new Date().getDate() * 13) % problems.length : 0;
   const potd = problems[potdIndex] || null;
+
+  // Primary list slug to link to
+  const primaryListSlug = lists[0]?.slug || "neetcode-150";
+
+  // Derive unique categories dynamically from loaded database problems
+  const uniqueCategories = Array.from(
+    new Set(problems.map((p) => p.category).filter(Boolean))
+  );
 
   if (loading) {
     return (
@@ -295,7 +304,7 @@ export default function ArenaPage() {
             </p>
           </div>
           <Link
-            href="/sheets/neetcode-150"
+            href={`/sheets/${primaryListSlug}`}
             className="text-xs text-[#fa586a] hover:underline flex items-center gap-1 font-semibold"
           >
             <span>View All ({lists.length} Sheets)</span>
@@ -304,28 +313,30 @@ export default function ArenaPage() {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {CATEGORIES.map((cat) => {
-            const PatternComponent = cat.pattern;
+          {uniqueCategories.map((catName, idx) => {
+            const PatternComponent = PATTERNS[idx % PATTERNS.length];
+            const gradientClass = GRADIENTS[idx % GRADIENTS.length];
+            const problemCount = problems.filter((p) => p.category === catName).length;
 
             return (
               <Link
-                key={cat.id}
-                href={`/sheets/neetcode-150?category=${encodeURIComponent(cat.queryCategory)}`}
-                className={`relative aspect-[16/10] rounded-2xl p-4 overflow-hidden ${cat.gradientClass} border border-white/10 shadow-subtle group hover:scale-[1.02] transition-transform flex flex-col justify-between`}
+                key={catName}
+                href={`/sheets/${primaryListSlug}?category=${encodeURIComponent(catName)}`}
+                className={`relative aspect-[16/10] rounded-2xl p-4 overflow-hidden ${gradientClass} border border-white/10 shadow-subtle group hover:scale-[1.02] transition-transform flex flex-col justify-between`}
               >
-                <div className="absolute inset-0 group-hover:scale-105 transition-transform">
+                <div className="absolute inset-0 group-hover:scale-105 transition-transform opacity-30">
                   <PatternComponent />
                 </div>
 
-                <div className="relative z-10 flex justify-end">
+                <div className="relative z-10 flex justify-between items-start">
                   <span className="px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-md text-[10px] font-bold text-white/90 border border-white/15">
-                    Roadmap
+                    {problemCount} {problemCount === 1 ? "Problem" : "Problems"}
                   </span>
                 </div>
 
                 <div className="relative z-10">
                   <h3 className="text-base md:text-lg font-extrabold text-white leading-tight drop-shadow-md">
-                    {cat.title}
+                    {catName}
                   </h3>
                 </div>
               </Link>
