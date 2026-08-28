@@ -12,11 +12,13 @@ import {
   StackPattern,
 } from "@/components/vectors/BentoPatterns";
 import { getSquadProfiles } from "@/lib/data/profiles";
-import { getAllLists, getAllProblems } from "@/lib/data/sheets";
-import { getSuggestions } from "@/lib/data/suggestions";
+import { getAllLists, getAllProblems, getUserStatusesBySlugs, toStatusMap } from "@/lib/data/sheets";
+import { getPendingSuggestionCount } from "@/lib/data/suggestions";
+import { getCatalogTopicsSummary } from "@/lib/data/problems";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { Profile, CustomList, ListProblem } from "@/types/database";
+import { ConnectLeetCodeModal } from "@/components/modals/ConnectLeetCodeModal";
+import { Profile, CustomList, ListProblem, TriState } from "@/types/database";
 
 const GRADIENTS = [
   "gradient-crimson",
@@ -39,7 +41,7 @@ const PATTERNS = [
 ];
 
 export default function ArenaPage() {
-  const { profile, user } = useAuth();
+  const { profile, user, refreshProfile } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [lists, setLists] = useState<CustomList[]>([]);
   const [problems, setProblems] = useState<ListProblem[]>([]);
@@ -47,21 +49,32 @@ export default function ArenaPage() {
   const [loading, setLoading] = useState(true);
   const { startSolving } = useSolving();
 
+  // Catalog + correctness
+  const [topics, setTopics] = useState<{ topic: string; count: number; solved: number; attempted: number }[]>([]);
+  const [statusMap, setStatusMap] = useState<Record<string, TriState>>({});
+  const [showAllTopics, setShowAllTopics] = useState(false);
+
   const currentDisplayName = profile?.username || user?.email?.split("@")[0] || "Squad Member";
 
   useEffect(() => {
     async function loadArenaData() {
       try {
-        const [profilesData, listsData, problemsData, suggestionsData] = await Promise.all([
-          getSquadProfiles(),
-          getAllLists(),
-          getAllProblems(),
-          getSuggestions(),
-        ]);
+        const [profilesData, listsData, problemsData, pendingCount, userStatuses] =
+          await Promise.all([
+            getSquadProfiles(),
+            getAllLists(),
+            getAllProblems(),
+            getPendingSuggestionCount(),
+            user ? getUserStatusesBySlugs(user.id) : Promise.resolve([]),
+          ]);
         setProfiles(profilesData);
         setLists(listsData);
         setProblems(problemsData);
-        setSuggestionsCount(suggestionsData.length);
+        setSuggestionsCount(pendingCount);
+        const userMap = toStatusMap(userStatuses);
+        setStatusMap(userMap);
+        // Topic summary depends on the user's status map, so compute it after.
+        setTopics(await getCatalogTopicsSummary(userMap));
       } catch (err) {
         console.error("Error loading Arena data:", err);
       } finally {
@@ -69,10 +82,14 @@ export default function ArenaPage() {
       }
     }
     loadArenaData();
-  }, []);
+  }, [user]);
 
   const totalStreak = profiles.reduce((acc, p) => acc + (p.streak || 0), 0);
   const topMember = profiles[0];
+  const streakLeader = profiles.reduce<Profile | null>(
+    (best, p) => (!best || (p.streak || 0) > (best.streak || 0) ? p : best),
+    null
+  );
 
   // Pick deterministic Problem of the Day from real database problems
   const potdIndex = problems.length > 0 ? (new Date().getDate() * 13) % problems.length : 0;
@@ -81,10 +98,10 @@ export default function ArenaPage() {
   // Primary list slug to link to
   const primaryListSlug = lists[0]?.slug || "neetcode-150";
 
-  // Derive unique categories dynamically from loaded database problems
-  const uniqueCategories = Array.from(
-    new Set(problems.map((p) => p.category).filter(Boolean))
-  );
+  // Global progress from the user's status map vs the full catalog size.
+  const totalSolved = Object.values(statusMap).filter((s) => s === "solved").length;
+  const totalAttempted = Object.values(statusMap).filter((s) => s === "attempted").length;
+  const catalogTotal = topics.reduce((acc, t) => acc + t.count, 0) || 0;
 
   if (loading) {
     return (
@@ -223,8 +240,8 @@ export default function ArenaPage() {
                 {totalStreak} {totalStreak === 1 ? "Day" : "Days"}
               </h3>
               <p className="text-xs text-white/80 mt-1">
-                {topMember && topMember.streak > 0
-                  ? `@${topMember.username} leads with ${topMember.streak}d`
+                {streakLeader && streakLeader.streak > 0
+                  ? `@${streakLeader.username} leads with ${streakLeader.streak}d`
                   : "Solve a problem today to start squad streak"}
               </p>
             </div>
@@ -292,6 +309,42 @@ export default function ArenaPage() {
         </div>
       </section>
 
+      {/* ── 1.5 YOUR PROGRESS ── */}
+      {user && (
+        <section className="space-y-4">
+          <h2 className="text-xl font-bold text-white tracking-tight">Your Progress</h2>
+          <div className="grid grid-cols-3 gap-4">
+            {[
+              { label: "Solved", value: totalSolved, total: catalogTotal, color: "#30d158" },
+              { label: "Attempted", value: totalAttempted, total: catalogTotal, color: "#ff9f0a" },
+              { label: "Catalog", value: catalogTotal, total: catalogTotal, color: "#fa586a" },
+            ].map((stat) => {
+              const pct = stat.total > 0 ? Math.round((stat.value / stat.total) * 100) : 0;
+              return (
+                <div
+                  key={stat.label}
+                  className="relative h-28 rounded-2xl p-4 overflow-hidden bg-[#1c1c1e]/60 border border-white/[0.06] shadow-subtle flex flex-col justify-between"
+                >
+                  <span className="text-[11px] text-white/40 font-medium">{stat.label}</span>
+                  <div>
+                    <div className="text-2xl font-black text-white leading-none">{stat.value}</div>
+                    {stat.label !== "Catalog" && (
+                      <div className="text-[11px] text-white/40 mt-1">{pct}% of catalog</div>
+                    )}
+                  </div>
+                  <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${pct}%`, backgroundColor: stat.color }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* ── 2. BROWSE DSA TOPICS ── */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
@@ -300,28 +353,31 @@ export default function ArenaPage() {
               Browse Topics
             </h2>
             <p className="text-xs text-white/40 mt-0.5">
-              Structured patterns backed by roadmaps
+              {catalogTotal > 0 ? `${catalogTotal} problems across ${topics.length} LeetCode topics` : "Structured patterns backed by roadmaps"}
             </p>
           </div>
-          <Link
-            href={`/sheets/${primaryListSlug}`}
-            className="text-xs text-[#fa586a] hover:underline flex items-center gap-1 font-semibold"
-          >
-            <span>View All ({lists.length} Sheets)</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
+          {topics.length > 24 && (
+            <button
+              onClick={() => setShowAllTopics((v) => !v)}
+              className="text-xs text-[#fa586a] hover:underline flex items-center gap-1 font-semibold"
+            >
+              <span>{showAllTopics ? "Show Less" : `Show All (${topics.length})`}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {uniqueCategories.map((catName, idx) => {
+          {(showAllTopics ? topics : topics.slice(0, 24)).map((t, idx) => {
             const PatternComponent = PATTERNS[idx % PATTERNS.length];
             const gradientClass = GRADIENTS[idx % GRADIENTS.length];
-            const problemCount = problems.filter((p) => p.category === catName).length;
+            const solvedPct = t.count > 0 ? (t.solved / t.count) * 100 : 0;
+            const attemptedPct = t.count > 0 ? (t.attempted / t.count) * 100 : 0;
 
             return (
               <Link
-                key={catName}
-                href={`/sheets/${primaryListSlug}?category=${encodeURIComponent(catName)}`}
+                key={t.topic}
+                href={`/sheets/${primaryListSlug}?topic=${encodeURIComponent(t.topic)}`}
                 className={`relative aspect-[16/10] rounded-2xl p-4 overflow-hidden ${gradientClass} border border-white/10 shadow-subtle group hover:scale-[1.02] transition-transform flex flex-col justify-between`}
               >
                 <div className="absolute inset-0 group-hover:scale-105 transition-transform opacity-30">
@@ -330,14 +386,25 @@ export default function ArenaPage() {
 
                 <div className="relative z-10 flex justify-between items-start">
                   <span className="px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-md text-[10px] font-bold text-white/90 border border-white/15">
-                    {problemCount} {problemCount === 1 ? "Problem" : "Problems"}
+                    {t.count} {t.count === 1 ? "Problem" : "Problems"}
                   </span>
+                  {user && (t.solved > 0 || t.attempted > 0) && (
+                    <span className="px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-md text-[10px] font-bold text-white/90 border border-white/15">
+                      {t.solved}/{t.count} ✓
+                    </span>
+                  )}
                 </div>
 
                 <div className="relative z-10">
-                  <h3 className="text-base md:text-lg font-extrabold text-white leading-tight drop-shadow-md">
-                    {catName}
+                  <h3 className="text-xs md:text-sm font-extrabold text-white leading-tight drop-shadow-md">
+                    {t.topic}
                   </h3>
+                  {user && t.count > 0 && (
+                    <div className="mt-1.5 h-1.5 rounded-full bg-white/10 overflow-hidden flex">
+                      <div style={{ width: `${solvedPct}%`, backgroundColor: "#30d158" }} />
+                      <div style={{ width: `${attemptedPct}%`, backgroundColor: "#ff9f0a" }} />
+                    </div>
+                  )}
                 </div>
               </Link>
             );

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
-import { CustomList, ListProblem, UserProblemStatus } from "@/types/database";
+import { getCatalogBySlugs } from "@/lib/data/problems";
+import { CustomList, ListProblem, UserProblemStatus, TriState, Problem } from "@/types/database";
 
 export async function getAllLists(): Promise<CustomList[]> {
   const supabase = createClient();
@@ -115,36 +116,103 @@ export async function createCustomList(
   return { success: true, slug };
 }
 
-export async function getSquadProblemStatuses(problemSlugs: string[]): Promise<UserProblemStatus[]> {
+export async function getSquadProblemStatuses(
+  problemSlugs: string[],
+  userId?: string
+): Promise<UserProblemStatus[]> {
   if (problemSlugs.length === 0) return [];
   const supabase = createClient();
 
+  const rows: UserProblemStatus[] = [];
+  const CHUNK = 200;
+  for (let i = 0; i < problemSlugs.length; i += CHUNK) {
+    const slice = problemSlugs.slice(i, i + CHUNK);
+    let query = supabase
+      .from("user_problem_status")
+      .select("*")
+      .in("problem_slug", slice);
+    if (userId) query = query.eq("user_id", userId);
+    const { data, error } = await query;
+    if (error) continue;
+    if (data) rows.push(...(data as UserProblemStatus[]));
+  }
+  return rows;
+}
+
+// Fetch all of a user's statuses at once (used by Arena instead of passing ~3500 slugs).
+export async function getUserStatusesBySlugs(userId: string): Promise<UserProblemStatus[]> {
+  const supabase = createClient();
   const { data, error } = await supabase
     .from("user_problem_status")
-    .select("*")
-    .in("problem_slug", problemSlugs);
+    .select("problem_slug, status, solved_at, notes")
+    .eq("user_id", userId);
 
   if (error || !data) return [];
   return data as UserProblemStatus[];
 }
 
-export async function toggleProblemStatus(userId: string, problemSlug: string, isSolved: boolean) {
+export type StatusMap = Record<string, TriState>;
+
+export function toStatusMap(
+  rows: { problem_slug: string; status: "solved" | "attempted" }[]
+): StatusMap {
+  const map: StatusMap = {};
+  for (const r of rows) map[r.problem_slug] = r.status;
+  return map;
+}
+
+// Tri-state setter: "solved" | "attempted" | "unsolved" (deletes the row).
+export async function setProblemStatus(userId: string, slug: string, next: TriState) {
   const supabase = createClient();
 
-  if (isSolved) {
-    await supabase
-      .from("user_problem_status")
-      .upsert({
-        user_id: userId,
-        problem_slug: problemSlug,
-        status: "solved",
-        solved_at: new Date().toISOString(),
-      }, { onConflict: "user_id,problem_slug" });
-  } else {
+  if (next === "unsolved") {
     await supabase
       .from("user_problem_status")
       .delete()
       .eq("user_id", userId)
-      .eq("problem_slug", problemSlug);
+      .eq("problem_slug", slug);
+    return;
   }
+
+  await supabase
+    .from("user_problem_status")
+    .upsert(
+      {
+        user_id: userId,
+        problem_slug: slug,
+        status: next,
+        solved_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,problem_slug" }
+    );
+}
+
+export async function toggleProblemStatus(userId: string, problemSlug: string, isSolved: boolean) {
+  return setProblemStatus(userId, problemSlug, isSolved ? "solved" : "unsolved");
+}
+
+// Joins a curated sheet's problems with the catalog + the user's status map.
+export async function getSheetWithCatalog(
+  slug: string,
+  userId?: string
+): Promise<{
+  list: CustomList | null;
+  problems: ListProblem[];
+  catalogBySlug: Map<string, Problem>;
+  statusMap: StatusMap;
+}> {
+  const { list, problems } = await getListWithProblems(slug);
+  const slugs = problems.map((p) => p.title_slug);
+
+  const [catalog, statuses] = await Promise.all([
+    getCatalogBySlugs(slugs),
+    userId ? getUserStatusesBySlugs(userId) : Promise.resolve([] as UserProblemStatus[]),
+  ]);
+
+  return {
+    list,
+    problems,
+    catalogBySlug: new Map(catalog.map((c) => [c.title_slug, c])),
+    statusMap: toStatusMap(statuses),
+  };
 }

@@ -8,50 +8,44 @@ import {
   Play,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getListWithProblems, getSquadProblemStatuses, toggleProblemStatus } from "@/lib/data/sheets";
+import { getSheetWithCatalog, setProblemStatus } from "@/lib/data/sheets";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
-import { CustomList, ListProblem, UserProblemStatus } from "@/types/database";
+import { CustomList, ListProblem, Problem, TriState } from "@/types/database";
 
 function SheetContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const slug = (params?.slug as string) || "neetcode-150";
   const initialCat = searchParams.get("category");
+  const initialTopic = searchParams.get("topic");
 
   const [list, setList] = useState<CustomList | null>(null);
   const [problems, setProblems] = useState<ListProblem[]>([]);
-  const [statuses, setStatuses] = useState<Record<string, boolean>>({});
+  const [catalogBySlug, setCatalogBySlug] = useState<Map<string, Problem>>(new Map());
+  const [statuses, setStatuses] = useState<Record<string, TriState>>({});
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState(initialCat || "All");
+  const [selectedTopic, setSelectedTopic] = useState(initialTopic || "");
   const [searchQuery, setSearchQuery] = useState("");
 
   const { user } = useAuth();
   const { activeProblem, startSolving } = useSolving();
 
   useEffect(() => {
-    if (initialCat) {
-      setSelectedCategory(initialCat);
-    }
-  }, [initialCat]);
+    if (initialCat) setSelectedCategory(initialCat);
+    if (initialTopic) setSelectedTopic(initialTopic);
+  }, [initialCat, initialTopic]);
 
   useEffect(() => {
     async function loadSheetData() {
       setLoading(true);
       try {
-        const { list: listData, problems: problemsData } = await getListWithProblems(slug);
-        setList(listData);
-        setProblems(problemsData);
-
-        if (problemsData.length > 0) {
-          const slugs = problemsData.map((p) => p.title_slug);
-          const squadStatuses: UserProblemStatus[] = await getSquadProblemStatuses(slugs);
-          const statusMap: Record<string, boolean> = {};
-          for (const s of squadStatuses) {
-            statusMap[s.problem_slug] = s.status === "solved";
-          }
-          setStatuses(statusMap);
-        }
+        const result = await getSheetWithCatalog(slug, user?.id);
+        setList(result.list);
+        setProblems(result.problems);
+        setCatalogBySlug(result.catalogBySlug);
+        setStatuses(result.statusMap);
       } catch (err) {
         console.error("Error loading sheet:", err);
       } finally {
@@ -59,13 +53,24 @@ function SheetContent() {
       }
     }
     loadSheetData();
-  }, [slug]);
+  }, [slug, user?.id]);
 
-  const handleToggle = async (problemSlug: string) => {
+  // Refresh status when the dock (or another tab) marks a problem done.
+  useEffect(() => {
+    const onStatusChanged = (e: Event) => {
+      const { slug: changedSlug, status } = (e as CustomEvent).detail ?? {};
+      if (changedSlug) {
+        setStatuses((prev) => ({ ...prev, [changedSlug]: (status as TriState) || "solved" }));
+      }
+    };
+    window.addEventListener("problem-status-changed", onStatusChanged);
+    return () => window.removeEventListener("problem-status-changed", onStatusChanged);
+  }, []);
+
+  const handleToggle = async (problemSlug: string, next: TriState) => {
     if (!user) return;
-    const nextVal = !statuses[problemSlug];
-    setStatuses((prev) => ({ ...prev, [problemSlug]: nextVal }));
-    await toggleProblemStatus(user.id, problemSlug, nextVal);
+    setStatuses((prev) => ({ ...prev, [problemSlug]: next }));
+    await setProblemStatus(user.id, problemSlug, next);
   };
 
   const handleStartSolving = (p: ListProblem) => {
@@ -78,7 +83,8 @@ function SheetContent() {
     });
   };
 
-  const categories = ["All", ...Array.from(new Set(problems.map((p) => p.category)))];
+  const topicSet = (slug: string): string[] =>
+    catalogBySlug.get(slug)?.topics ?? [];
 
   const filteredProblems = problems.filter((problem) => {
     const matchesCat =
@@ -86,13 +92,25 @@ function SheetContent() {
       problem.category.toLowerCase().includes(selectedCategory.toLowerCase()) ||
       selectedCategory.toLowerCase().includes(problem.category.toLowerCase());
 
+    const matchesTopic =
+      !selectedTopic ||
+      topicSet(problem.title_slug).some((t) => t.toLowerCase() === selectedTopic.toLowerCase());
+
     const matchesSearch =
       problem.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       problem.title_slug.toLowerCase().includes(searchQuery.toLowerCase()) ||
       problem.order_index.toString().includes(searchQuery);
 
-    return matchesCat && matchesSearch;
+    return matchesCat && matchesTopic && matchesSearch;
   });
+
+  const solvedCount = filteredProblems.filter((p) => statuses[p.title_slug] === "solved").length;
+  const attemptedCount = filteredProblems.filter((p) => statuses[p.title_slug] === "attempted").length;
+
+  const categories = ["All", ...Array.from(new Set(problems.map((p) => p.category)))];
+  const activeTopics = Array.from(
+    new Set(filteredProblems.flatMap((p) => topicSet(p.title_slug)))
+  ).sort();
 
   const getDifficultyBadge = (diff: string) => {
     switch (diff?.toLowerCase()) {
@@ -130,7 +148,9 @@ function SheetContent() {
             {title}
           </h1>
           <p className="text-xs text-white/40 mt-1">
-            {list?.description || "Master core algorithmic problem patterns with real-time tracking"}
+            {user
+              ? `${solvedCount} solved · ${attemptedCount} attempted · ${filteredProblems.length - solvedCount - attemptedCount} unsolved`
+              : list?.description || "Master core algorithmic problem patterns with real-time tracking"}
           </p>
         </div>
 
@@ -139,7 +159,6 @@ function SheetContent() {
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-white/30 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
-              type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search in roadmap..."
@@ -149,8 +168,8 @@ function SheetContent() {
         </div>
       </div>
 
-      {/* ── Category Pills (Apple Music Clean Scrolling Pills) ── */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+      {/* ── Filter Pills ── */}
+      <div className="flex flex-wrap items-center gap-2 overflow-x-auto pb-1">
         {categories.map((category) => (
           <button
             key={category}
@@ -165,7 +184,29 @@ function SheetContent() {
             {category}
           </button>
         ))}
+        {selectedTopic && (
+          <button
+            onClick={() => setSelectedTopic("")}
+            className="px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap bg-[#fa586a]/15 text-[#fa586a] border border-[#fa586a]/30 flex items-center gap-1 cursor-pointer"
+          >
+            {selectedTopic}
+            <span className="text-[10px]">✕</span>
+          </button>
+        )}
       </div>
+
+      {activeTopics.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {activeTopics.map((t) => (
+            <span
+              key={t}
+              className="px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/[0.06] text-[10px] font-semibold text-white/50 uppercase tracking-wider"
+            >
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* ── Problem List Table ── */}
       <div className="bg-[#1c1c1e]/60 border border-white/[0.06] rounded-2xl overflow-hidden shadow-subtle backdrop-blur-xl">
@@ -184,7 +225,8 @@ function SheetContent() {
             </div>
           ) : (
             filteredProblems.map((problem, idx) => {
-              const isSolved = !!statuses[problem.title_slug];
+              const isSolved = statuses[problem.title_slug] === "solved";
+              const isAttempted = statuses[problem.title_slug] === "attempted";
               const isCurrentActive = activeProblem?.slug === problem.title_slug;
 
               return (
@@ -225,17 +267,28 @@ function SheetContent() {
                     {problem.category}
                   </div>
 
-                  <div className="col-span-3 md:col-span-2 flex justify-center" onClick={(e) => e.stopPropagation()}>
+                  <div className="col-span-3 md:col-span-2 flex justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                     <button
-                      onClick={() => handleToggle(problem.title_slug)}
+                      onClick={() => handleToggle(problem.title_slug, isSolved ? "unsolved" : "solved")}
                       className={cn(
-                        "px-3 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer",
+                        "px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer",
                         isSolved
                           ? "bg-[#30d158]/15 text-[#30d158] border-[#30d158]/30"
                           : "bg-white/[0.03] text-white/40 border-white/[0.06] hover:text-white/80 hover:border-white/[0.12]"
                       )}
                     >
-                      {isSolved ? "Solved" : "Mark Done"}
+                      {isSolved ? "Solved" : "Mark Solved"}
+                    </button>
+                    <button
+                      onClick={() => handleToggle(problem.title_slug, isAttempted ? "unsolved" : "attempted")}
+                      className={cn(
+                        "px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer",
+                        isAttempted
+                          ? "bg-[#ff9f0a]/15 text-[#ff9f0a] border-[#ff9f0a]/30"
+                          : "bg-white/[0.03] text-white/40 border-white/[0.06] hover:text-white/80 hover:border-white/[0.12]"
+                      )}
+                    >
+                      {isAttempted ? "Attempted" : "Attempt"}
                     </button>
                   </div>
 

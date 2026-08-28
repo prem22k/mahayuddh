@@ -16,6 +16,17 @@ export async function getSuggestions(): Promise<Suggestion[]> {
   return data as Suggestion[];
 }
 
+export async function getPendingSuggestionCount(): Promise<number> {
+  const supabase = createClient();
+  const { count, error } = await supabase
+    .from("suggestions")
+    .select("*", { count: "exact", head: true })
+    .eq("status", "pending");
+
+  if (error) return 0;
+  return count ?? 0;
+}
+
 export async function createSuggestion(params: {
   fromUser: string;
   toUser: string;
@@ -36,7 +47,11 @@ export async function createSuggestion(params: {
       note: params.note || null,
       status: "pending",
     })
-    .select()
+    .select(`
+      *,
+      from_profile:from_user (id, username, leetcode_username, avatar_url),
+      to_profile:to_user (id, username, leetcode_username, avatar_url)
+    `)
     .single();
 
   if (error || !data) return null;

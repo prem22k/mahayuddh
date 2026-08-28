@@ -51,16 +51,29 @@ export default function SuggestionsPage() {
 
   const { user } = useAuth();
 
+  // Honor ?to=<user_id> from the leaderboard "Challenge" action.
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const to = new URLSearchParams(window.location.search).get("to");
+      if (to) setTargetUserId(to);
+    }
+  }, []);
+
   const handleSendChallenge = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!problemTitle || !user) return;
+    // Guard: never submit the placeholder "demo" option (no profiles yet).
+    if (!targetUserId || targetUserId === "demo") {
+      setSubmitting(false);
+      return;
+    }
 
     setSubmitting(true);
     try {
       const slug = problemSlug || problemTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-");
       const created = await createSuggestion({
         fromUser: user.id,
-        toUser: targetUserId || user.id,
+        toUser: targetUserId,
         problemTitle,
         problemSlug: slug,
         difficulty,

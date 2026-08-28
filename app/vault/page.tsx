@@ -9,8 +9,10 @@ import {
 import { cn } from "@/lib/utils";
 import { getSharedResources, createSharedResource } from "@/lib/data/vault";
 import { SharedResource, ResourceCategory } from "@/types/database";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 export default function VaultPage() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<ResourceCategory>("Template");
   const [resources, setResources] = useState<SharedResource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,6 +56,7 @@ export default function VaultPage() {
         title,
         category,
         content,
+        authorId: user?.id,
       });
 
       if (created) {
@@ -118,6 +121,17 @@ export default function VaultPage() {
               )}
             >
               Interview Logs
+            </button>
+            <button
+              onClick={() => setActiveTab("Cheat Sheet")}
+              className={cn(
+                "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
+                activeTab === "Cheat Sheet"
+                  ? "bg-white/[0.12] text-white shadow-sm"
+                  : "text-white/40 hover:text-white/80"
+              )}
+            >
+              Cheat Sheets
             </button>
           </div>
         </div>

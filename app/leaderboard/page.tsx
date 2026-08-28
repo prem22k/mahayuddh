@@ -45,13 +45,18 @@ export default function LeaderboardPage() {
     setSyncSuccess(false);
 
     try {
-      await syncUserProfileStats(user.id, profile.leetcode_username);
+      const synced = await syncUserProfileStats(user.id, profile.leetcode_username);
+      if (!synced) {
+        setConnectError("Could not sync LeetCode stats. Check the handle and try again.");
+        return;
+      }
       await refreshProfile();
       await loadLeaderboardData();
       setSyncSuccess(true);
       setTimeout(() => setSyncSuccess(false), 3000);
     } catch (e) {
       console.error("Failed to sync:", e);
+      setConnectError("Could not sync LeetCode stats. Please try again.");
     } finally {
       setIsSyncing(false);
     }
