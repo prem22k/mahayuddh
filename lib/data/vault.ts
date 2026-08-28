@@ -38,7 +38,7 @@ export async function createSharedResource(params: {
       external_url: params.externalUrl || null,
     })
     .select()
-    .single();
+    .maybeSingle();
 
   if (error || !data) return null;
   return data as SharedResource;

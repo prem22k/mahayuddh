@@ -21,7 +21,7 @@ export async function getProfileByLeetcodeUsername(leetcodeUsername: string): Pr
     .from("profiles")
     .select("*")
     .eq("leetcode_username", leetcodeUsername)
-    .single();
+    .maybeSingle();
 
   if (error || !data) return null;
   return data as Profile;
@@ -67,7 +67,7 @@ export async function syncUserProfileStats(
         .update(updateData)
         .eq("id", userId)
         .select()
-        .single();
+        .maybeSingle();
 
       if (!error && data) {
         return data as Profile;

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { getCatalogBySlugs } from "@/lib/data/problems";
 import { CustomList, ListProblem, UserProblemStatus, TriState, Problem } from "@/types/database";
+import { CURATED_SHEETS } from "@/lib/data/curatedSheetsData";
 
 export async function getAllLists(): Promise<CustomList[]> {
   const supabase = createClient();
@@ -9,8 +10,31 @@ export async function getAllLists(): Promise<CustomList[]> {
     .select("*")
     .order("is_curated", { ascending: false });
 
-  if (error || !data) return [];
-  return data as CustomList[];
+  if (!error && data && data.length > 0) {
+    const existingSlugs = new Set(data.map((l) => l.slug));
+    const missingCurated: CustomList[] = CURATED_SHEETS.filter((s) => !existingSlugs.has(s.slug)).map((s) => ({
+      id: `curated-${s.slug}`,
+      slug: s.slug,
+      title: s.title,
+      emoji: s.emoji,
+      description: s.description,
+      is_curated: true,
+      created_by: null,
+      created_at: new Date().toISOString(),
+    }));
+    return [...data, ...missingCurated] as CustomList[];
+  }
+
+  return CURATED_SHEETS.map((s) => ({
+    id: `curated-${s.slug}`,
+    slug: s.slug,
+    title: s.title,
+    emoji: s.emoji,
+    description: s.description,
+    is_curated: true,
+    created_by: null,
+    created_at: new Date().toISOString(),
+  }));
 }
 
 export async function getAllProblems(): Promise<ListProblem[]> {
@@ -20,8 +44,23 @@ export async function getAllProblems(): Promise<ListProblem[]> {
     .select("*")
     .order("order_index", { ascending: true });
 
-  if (error || !data) return [];
-  return data as ListProblem[];
+  if (!error && data && data.length > 0) {
+    return data as ListProblem[];
+  }
+
+  // Fallback to all curated problems
+  return CURATED_SHEETS.flatMap((s) =>
+    s.problems.map((p, idx) => ({
+      id: `curated-${s.slug}-${p.title_slug}-${idx}`,
+      list_id: `curated-${s.slug}`,
+      title: p.title,
+      title_slug: p.title_slug,
+      difficulty: p.difficulty,
+      category: p.category,
+      order_index: p.order_index,
+      created_at: new Date().toISOString(),
+    }))
+  );
 }
 
 export async function getListWithProblems(slug: string): Promise<{
@@ -29,30 +68,62 @@ export async function getListWithProblems(slug: string): Promise<{
   problems: ListProblem[];
 }> {
   const supabase = createClient();
+  const curated = CURATED_SHEETS.find((s) => s.slug === slug);
 
-  const { data: listData, error: listError } = await supabase
+  const { data: listData } = await supabase
     .from("custom_lists")
     .select("*")
     .eq("slug", slug)
-    .single();
+    .maybeSingle();
 
-  if (listError || !listData) {
+  let targetList: CustomList | null = (listData as CustomList) || null;
+  if (!targetList && curated) {
+    targetList = {
+      id: `curated-${curated.slug}`,
+      slug: curated.slug,
+      title: curated.title,
+      emoji: curated.emoji,
+      description: curated.description,
+      is_curated: true,
+      created_by: null,
+      created_at: new Date().toISOString(),
+    };
+  }
+
+  if (!targetList) {
     return { list: null, problems: [] };
   }
 
-  const { data: problemsData, error: problemsError } = await supabase
-    .from("list_problems")
-    .select("*")
-    .eq("list_id", listData.id)
-    .order("order_index", { ascending: true });
+  let problems: ListProblem[] = [];
+  if (listData?.id) {
+    const { data: problemsData } = await supabase
+      .from("list_problems")
+      .select("*")
+      .eq("list_id", listData.id)
+      .order("order_index", { ascending: true });
 
-  if (problemsError || !problemsData) {
-    return { list: listData as CustomList, problems: [] };
+    if (problemsData && problemsData.length > 0) {
+      problems = problemsData as ListProblem[];
+    }
+  }
+
+  // If database has fewer problems than the curated complete set, use complete curated set
+  if (curated && problems.length < curated.problems.length) {
+    problems = curated.problems.map((p, idx) => ({
+      id: `curated-${slug}-${p.title_slug}-${idx}`,
+      list_id: targetList?.id || `curated-${slug}`,
+      title: p.title,
+      title_slug: p.title_slug,
+      difficulty: p.difficulty,
+      category: p.category,
+      order_index: p.order_index,
+      created_at: new Date().toISOString(),
+    }));
   }
 
   return {
-    list: listData as CustomList,
-    problems: problemsData as ListProblem[],
+    list: targetList,
+    problems,
   };
 }
 
@@ -80,35 +151,72 @@ export async function createCustomList(
       created_by: userId,
     })
     .select()
-    .single();
+    .maybeSingle();
 
   if (listError || !listData) {
     return { success: false, error: listError?.message || "Failed to create list" };
   }
 
   if (problemSlugs.length > 0) {
-    const { data: existingProblems } = await supabase
+    const uniqueSlugs = Array.from(new Set(problemSlugs));
+    const resolvedMap = new Map<string, { title: string; title_slug: string; difficulty: string; category: string }>();
+
+    // 1. Try resolving from list_problems
+    const { data: existingListProblems } = await supabase
       .from("list_problems")
       .select("title, title_slug, difficulty, category")
-      .in("title_slug", problemSlugs);
+      .in("title_slug", uniqueSlugs);
 
-    if (existingProblems && existingProblems.length > 0) {
-      const uniqueProblemsMap = new Map<string, typeof existingProblems[0]>();
-      existingProblems.forEach((p) => {
-        if (!uniqueProblemsMap.has(p.title_slug)) {
-          uniqueProblemsMap.set(p.title_slug, p);
-        }
+    (existingListProblems || []).forEach((p) => {
+      resolvedMap.set(p.title_slug, p);
+    });
+
+    // 2. Resolve missing from problems catalog
+    const missingSlugs = uniqueSlugs.filter((s) => !resolvedMap.has(s));
+    if (missingSlugs.length > 0) {
+      const { data: catalogProblems } = await supabase
+        .from("problems")
+        .select("title, title_slug, difficulty, topics")
+        .in("title_slug", missingSlugs);
+
+      (catalogProblems || []).forEach((c) => {
+        resolvedMap.set(c.title_slug, {
+          title: c.title,
+          title_slug: c.title_slug,
+          difficulty: c.difficulty,
+          category: c.topics?.[0] || "General",
+        });
       });
+    }
 
-      const problemsToInsert = Array.from(uniqueProblemsMap.values()).map((p, idx) => ({
-        list_id: listData.id,
-        title: p.title,
-        title_slug: p.title_slug,
-        difficulty: p.difficulty,
-        category: p.category,
-        order_index: idx + 1,
-      }));
+    // 3. Resolve any remaining from static curated sheets
+    for (const slug of uniqueSlugs) {
+      if (!resolvedMap.has(slug)) {
+        for (const sheet of CURATED_SHEETS) {
+          const found = sheet.problems.find((p) => p.title_slug === slug);
+          if (found) {
+            resolvedMap.set(slug, {
+              title: found.title,
+              title_slug: found.title_slug,
+              difficulty: found.difficulty,
+              category: found.category,
+            });
+            break;
+          }
+        }
+      }
+    }
 
+    const problemsToInsert = Array.from(resolvedMap.values()).map((p, idx) => ({
+      list_id: listData.id,
+      title: p.title,
+      title_slug: p.title_slug,
+      difficulty: p.difficulty,
+      category: p.category,
+      order_index: idx + 1,
+    }));
+
+    if (problemsToInsert.length > 0) {
       await supabase.from("list_problems").insert(problemsToInsert);
     }
   }

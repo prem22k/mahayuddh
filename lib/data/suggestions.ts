@@ -52,8 +52,21 @@ export async function createSuggestion(params: {
       from_profile:from_user (id, username, leetcode_username, avatar_url),
       to_profile:to_user (id, username, leetcode_username, avatar_url)
     `)
-    .single();
+    .maybeSingle();
 
   if (error || !data) return null;
   return data as Suggestion;
+}
+
+export async function markSuggestionCompleted(suggestionId: string): Promise<boolean> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("suggestions")
+    .update({
+      status: "completed",
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", suggestionId);
+
+  return !error;
 }

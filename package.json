@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "sync:sheets": "node scripts/sync.mjs --sheets",
+    "sync:catalog": "node scripts/sync.mjs --catalog",
+    "sync:all": "node scripts/sync.mjs --all"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
