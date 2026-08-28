@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { X, Plus, Search, Check, Trash2 } from "lucide-react";
+import { X, Search, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getAllProblems, createCustomList } from "@/lib/data/sheets";
 import { ListProblem } from "@/types/database";
@@ -101,7 +101,7 @@ export function CreateListModal({
       } else {
         setError(res.error || "Failed to create list");
       }
-    } catch (err) {
+    } catch {
       setError("An unexpected error occurred. Please try again.");
     } finally {
       setIsSubmitting(false);
