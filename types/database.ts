@@ -9,6 +9,7 @@ export type Json =
 export type Difficulty = "Easy" | "Medium" | "Hard";
 export type SuggestionStatus = "pending" | "completed" | "dismissed";
 export type ResourceCategory = "Template" | "Interview Log" | "Cheat Sheet" | "Article";
+export type TriState = "solved" | "attempted" | "unsolved";
 
 export interface Profile {
   id: string;
@@ -22,6 +23,8 @@ export interface Profile {
   total_medium: number;
   total_hard: number;
   last_synced_at: string | null;
+  leetcode_session_encrypted: string | null;
+  leetcode_session_synced_at: string | null;
   created_at: string;
 }
 
@@ -95,4 +98,14 @@ export interface LeetCodeSubmission {
   title: string;
   titleSlug: string;
   timestamp: string;
+}
+
+export interface Problem {
+  title_slug: string;
+  title: string;
+  difficulty: Difficulty;
+  question_id: string;
+  paid_only: boolean;
+  topics: string[];
+  updated_at: string;
 }
