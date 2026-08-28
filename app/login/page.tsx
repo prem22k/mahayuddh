@@ -2,17 +2,6 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Lock,
-  Mail,
-  User as UserIcon,
-  Code2,
-  ArrowRight,
-  Loader2,
-  Sparkles,
-  CheckCircle2,
-  AlertCircle,
-} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchLeetCodeProfile, fetchUserCalendar } from "@/lib/leetcode";
 import { cn } from "@/lib/utils";
@@ -75,7 +64,6 @@ export default function LoginPage() {
         }
 
         if (authData.user) {
-          // Fetch initial LeetCode stats
           let contestRating = 1500;
           let streak = 0;
           let easy = 0;
@@ -101,7 +89,6 @@ export default function LoginPage() {
             console.warn("Could not pre-fetch LeetCode stats:", fetchErr);
           }
 
-          // Insert or update profile in public.profiles
           const { error: profileError } = await supabase.from("profiles").upsert({
             id: authData.user.id,
             username: username.trim(),
@@ -121,7 +108,7 @@ export default function LoginPage() {
             router.push("/");
             router.refresh();
           } else {
-            setSuccessMsg("Account created! Please check your email to confirm your account.");
+            setSuccessMsg("Account created! Check your email to confirm your account.");
           }
         }
       }
@@ -134,7 +121,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black flex flex-col justify-center items-center p-4 selection:bg-[#fa586a] selection:text-white relative overflow-hidden">
+    <div className="min-h-screen bg-black flex flex-col justify-center items-center p-4 selection:bg-[#fa586a] selection:text-white relative overflow-hidden select-none">
       {/* ── Apple Music ambient liquid glow backdrops ── */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/4 w-[600px] h-[600px] bg-[#fa586a]/10 rounded-full blur-[140px]" />
@@ -145,7 +132,7 @@ export default function LoginPage() {
         {/* ── Stylish Logo Wordmark Header ── */}
         <div className="text-center mb-8">
           <div className="inline-block relative">
-            <h1 className="text-4xl sm:text-5xl font-black tracking-[-0.04em] text-white select-none">
+            <h1 className="text-4xl sm:text-5xl font-black tracking-[-0.04em] text-white">
               Mahayuddh
               <span className="text-[#fa586a] drop-shadow-[0_0_18px_rgba(250,88,106,0.85)]">
                 .
@@ -154,13 +141,13 @@ export default function LoginPage() {
             <div className="h-[2px] w-14 bg-gradient-to-r from-[#fa586a] via-[#fa586a]/60 to-transparent mx-auto mt-2.5 rounded-full" />
           </div>
           <p className="text-[11px] text-white/40 tracking-[0.22em] uppercase font-medium mt-3">
-            Developer Squad DSA Arena
+            Developer Squad Arena
           </p>
         </div>
 
         {/* ── Frosted Glass Auth Card ── */}
         <div className="bg-[#1c1c1e]/65 border border-white/[0.08] rounded-3xl p-6 sm:p-8 shadow-[0_20px_60px_rgba(0,0,0,0.6),inset_0_0.5px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl">
-          {/* Segmented Pill Switcher (Apple Music Style) */}
+          {/* Segmented Pill Switcher */}
           <div className="flex items-center p-1 bg-white/[0.04] rounded-full border border-white/[0.06] mb-6">
             <button
               type="button"
@@ -196,17 +183,15 @@ export default function LoginPage() {
 
           {/* Error Message */}
           {errorMsg && (
-            <div className="mb-5 p-3 rounded-2xl bg-[#ff453a]/10 border border-[#ff453a]/25 text-[#ff453a] text-xs flex items-start gap-2.5">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span className="leading-relaxed">{errorMsg}</span>
+            <div className="mb-5 p-3 rounded-2xl bg-[#ff453a]/10 border border-[#ff453a]/25 text-[#ff453a] text-xs leading-relaxed">
+              {errorMsg}
             </div>
           )}
 
           {/* Success Message */}
           {successMsg && (
-            <div className="mb-5 p-3 rounded-2xl bg-[#30d158]/10 border border-[#30d158]/25 text-[#30d158] text-xs flex items-start gap-2.5">
-              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-              <span className="leading-relaxed">{successMsg}</span>
+            <div className="mb-5 p-3 rounded-2xl bg-[#30d158]/10 border border-[#30d158]/25 text-[#30d158] text-xs leading-relaxed">
+              {successMsg}
             </div>
           )}
 
@@ -217,34 +202,28 @@ export default function LoginPage() {
                   <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
                     Squad Member Name
                   </label>
-                  <div className="relative">
-                    <UserIcon className="w-4 h-4 text-white/30 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      placeholder="e.g. Rahul"
-                      className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-[#fa586a]/30 transition-all"
-                      required
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="e.g. Rahul"
+                    className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-[#fa586a]/30 transition-all"
+                    required
+                  />
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
                     LeetCode Username
                   </label>
-                  <div className="relative">
-                    <Code2 className="w-4 h-4 text-white/30 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={leetcodeUsername}
-                      onChange={(e) => setLeetcodeUsername(e.target.value)}
-                      placeholder="e.g. rahul_dev"
-                      className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-[#fa586a]/30 transition-all font-mono"
-                      required
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    value={leetcodeUsername}
+                    onChange={(e) => setLeetcodeUsername(e.target.value)}
+                    placeholder="e.g. rahul_dev"
+                    className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-[#fa586a]/30 transition-all font-mono"
+                    required
+                  />
                   <span className="text-[10px] text-white/30 mt-1.5 pl-1 block">
                     Used to synchronize contest rating, streaks, and problem submissions.
                   </span>
@@ -256,35 +235,29 @@ export default function LoginPage() {
               <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
                 Email Address
               </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-white/30 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@squad.dev"
-                  className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-[#fa586a]/30 transition-all"
-                  required
-                />
-              </div>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@squad.dev"
+                className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-[#fa586a]/30 transition-all"
+                required
+              />
             </div>
 
             <div>
               <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
                 Password
               </label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-white/30 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-[#fa586a]/30 transition-all"
-                  required
-                  minLength={6}
-                />
-              </div>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-[#fa586a]/30 transition-all"
+                required
+                minLength={6}
+              />
             </div>
 
             <button
@@ -293,24 +266,17 @@ export default function LoginPage() {
               className="w-full py-3 mt-6 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 active:scale-[0.99] text-white font-bold text-xs shadow-[0_0_24px_rgba(250,88,106,0.4)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>{mode === "signin" ? "Authenticating..." : "Joining Squad..."}</span>
-                </>
+                <div className="w-4 h-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
               ) : (
-                <>
-                  <span>{mode === "signin" ? "Enter Arena" : "Create Account & Sync"}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
+                <span>{mode === "signin" ? "Enter Arena" : "Create Account & Sync"}</span>
               )}
             </button>
           </form>
         </div>
 
         {/* ── Subtitle Footer ── */}
-        <div className="mt-8 text-center text-xs text-white/30 flex items-center justify-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-[#fa586a]" />
-          <span>Squad LeetCode Leaderboard & Roadmaps</span>
+        <div className="mt-8 text-center text-[11px] text-white/30 tracking-wider">
+          Squad LeetCode Leaderboard & Roadmaps
         </div>
       </div>
     </div>

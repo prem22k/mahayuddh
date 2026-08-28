@@ -3,12 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import {
-  BookOpen,
-  CheckCircle2,
-  Circle,
   ExternalLink,
   Search,
-  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getListWithProblems, getSquadProblemStatuses, toggleProblemStatus } from "@/lib/data/sheets";
@@ -74,21 +70,21 @@ export default function SheetPage() {
   const getDifficultyBadge = (diff: string) => {
     switch (diff?.toLowerCase()) {
       case "easy":
-        return "text-apple-green bg-apple-green/10 border-apple-green/30";
+        return "text-[#30d158] bg-[#30d158]/10 border-[#30d158]/25";
       case "medium":
-        return "text-apple-orange bg-apple-orange/10 border-apple-orange/30";
+        return "text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/25";
       case "hard":
-        return "text-apple-red bg-apple-red/10 border-apple-red/30";
+        return "text-[#ff453a] bg-[#ff453a]/10 border-[#ff453a]/25";
       default:
-        return "text-txt-secondary";
+        return "text-white/40";
     }
   };
 
   if (loading) {
     return (
-      <div className="h-[60vh] flex flex-col items-center justify-center gap-3 text-txt-secondary">
-        <Loader2 className="w-8 h-8 animate-spin text-apple-accent" />
-        <span className="text-xs">Loading roadmap from Supabase...</span>
+      <div className="h-[60vh] flex flex-col items-center justify-center gap-3 text-white/40">
+        <div className="w-7 h-7 animate-spin rounded-full border-2 border-white/10 border-t-[#fa586a]" />
+        <span className="text-xs font-medium tracking-wide">Loading roadmap...</span>
       </div>
     );
   }
@@ -96,18 +92,17 @@ export default function SheetPage() {
   const title = list?.title || slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
+    <div className="space-y-8 select-none">
+      {/* ── Header ── */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-apple-accent tracking-wider uppercase mb-1">
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>{list?.emoji || "📚"} Interactive Roadmap ({problems.length} Questions)</span>
+          <div className="text-[11px] font-semibold text-[#fa586a] tracking-[0.2em] uppercase mb-1">
+            Roadmap • {problems.length} Problems
           </div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-txt-primary tracking-tight">
+          <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
             {title}
           </h1>
-          <p className="text-xs text-txt-secondary mt-1">
+          <p className="text-xs text-white/40 mt-1">
             {list?.description || "Master core algorithmic problem patterns with real-time tracking"}
           </p>
         </div>
@@ -115,29 +110,29 @@ export default function SheetPage() {
         {/* Search */}
         <div className="flex items-center gap-3">
           <div className="relative">
-            <Search className="w-4 h-4 text-txt-secondary absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-white/30 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search problems..."
-              className="pl-9 pr-3 py-1.5 bg-surface-sidebar border border-border-subtle rounded-pill text-xs text-txt-primary placeholder:text-txt-tertiary focus:outline-none focus:border-apple-accent w-48"
+              placeholder="Search in roadmap..."
+              className="pl-8 pr-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-full text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 w-52 transition-all"
             />
           </div>
         </div>
       </div>
 
-      {/* Category Pills */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2">
+      {/* ── Category Pills (Apple Music Clean Scrolling Pills) ── */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
         {categories.map((category) => (
           <button
             key={category}
             onClick={() => setSelectedCategory(category)}
             className={cn(
-              "px-3.5 py-1.5 rounded-pill text-xs font-semibold whitespace-nowrap transition-all border",
+              "px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer",
               selectedCategory === category
-                ? "bg-apple-accent text-white border-apple-accent shadow-sm"
-                : "bg-surface-sidebar text-txt-secondary hover:text-txt-primary border-border-subtle hover:bg-surface-raised"
+                ? "bg-white/[0.12] text-white shadow-sm"
+                : "bg-white/[0.03] text-white/40 hover:text-white/80 border border-white/[0.06] hover:bg-white/[0.06]"
             )}
           >
             {category}
@@ -145,19 +140,19 @@ export default function SheetPage() {
         ))}
       </div>
 
-      {/* Table */}
-      <div className="bg-surface-sidebar border border-border-subtle rounded-2xl overflow-hidden shadow-subtle">
-        <div className="grid grid-cols-12 gap-3 px-6 py-3 border-b border-border-subtle text-[11px] font-semibold text-txt-tertiary uppercase tracking-wider items-center">
+      {/* ── Problem List Table ── */}
+      <div className="bg-[#1c1c1e]/60 border border-white/[0.06] rounded-2xl overflow-hidden shadow-subtle backdrop-blur-xl">
+        <div className="grid grid-cols-12 gap-3 px-6 py-3 border-b border-white/[0.06] text-[11px] font-semibold text-white/30 uppercase tracking-wider items-center">
           <div className="col-span-1 text-center">#</div>
           <div className="col-span-6 md:col-span-5">Problem</div>
           <div className="col-span-3 hidden md:block">Category</div>
-          <div className="col-span-3 md:col-span-2 text-center font-bold text-txt-primary">Solved Status</div>
+          <div className="col-span-3 md:col-span-2 text-center">Status</div>
           <div className="col-span-2 md:col-span-1 text-right">LeetCode</div>
         </div>
 
-        <div className="divide-y divide-border-subtle">
+        <div className="divide-y divide-white/[0.04]">
           {filteredProblems.length === 0 ? (
-            <div className="p-8 text-center text-txt-secondary text-xs">
+            <div className="p-8 text-center text-white/40 text-xs">
               No problems found in this category.
             </div>
           ) : (
@@ -166,14 +161,14 @@ export default function SheetPage() {
               return (
                 <div
                   key={problem.id}
-                  className="grid grid-cols-12 gap-3 px-6 py-3.5 items-center hover:bg-surface-raised transition-colors group text-xs"
+                  className="grid grid-cols-12 gap-3 px-6 py-3 items-center hover:bg-white/[0.03] transition-colors group text-xs"
                 >
-                  <div className="col-span-1 text-center font-mono text-[11px] text-txt-secondary font-bold">
-                    {idx + 1}
+                  <div className="col-span-1 text-center font-mono text-[11px] text-white/30 font-semibold">
+                    {idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
                   </div>
 
                   <div className="col-span-6 md:col-span-5 flex items-center gap-2.5 truncate">
-                    <span className="font-semibold text-txt-primary truncate group-hover:text-apple-accent transition-colors">
+                    <span className="font-semibold text-white truncate group-hover:text-[#fa586a] transition-colors">
                       {problem.title}
                     </span>
                     <span
@@ -186,7 +181,7 @@ export default function SheetPage() {
                     </span>
                   </div>
 
-                  <div className="col-span-3 hidden md:block text-[11px] text-txt-secondary truncate">
+                  <div className="col-span-3 hidden md:block text-[11px] text-white/40 truncate">
                     {problem.category}
                   </div>
 
@@ -194,23 +189,13 @@ export default function SheetPage() {
                     <button
                       onClick={() => handleToggle(problem.title_slug)}
                       className={cn(
-                        "flex items-center gap-1.5 px-3 py-1 rounded-pill text-[11px] font-semibold border transition-all",
+                        "px-3 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer",
                         isSolved
-                          ? "bg-apple-green/15 text-apple-green border-apple-green/30"
-                          : "bg-surface-muted text-txt-secondary border-border-subtle hover:text-txt-primary hover:border-border-strong"
+                          ? "bg-[#30d158]/15 text-[#30d158] border-[#30d158]/30"
+                          : "bg-white/[0.03] text-white/40 border-white/[0.06] hover:text-white/80 hover:border-white/[0.12]"
                       )}
                     >
-                      {isSolved ? (
-                        <>
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Solved</span>
-                        </>
-                      ) : (
-                        <>
-                          <Circle className="w-3.5 h-3.5 opacity-40" />
-                          <span>Mark Done</span>
-                        </>
-                      )}
+                      {isSolved ? "Solved" : "Mark Done"}
                     </button>
                   </div>
 
@@ -219,7 +204,7 @@ export default function SheetPage() {
                       href={`https://leetcode.com/problems/${problem.title_slug}/`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="p-1.5 rounded-md text-txt-secondary hover:text-txt-primary hover:bg-surface-strong transition-colors"
+                      className="p-1.5 rounded-lg text-white/30 hover:text-white hover:bg-white/[0.06] transition-colors"
                       aria-label={`Solve ${problem.title} on LeetCode`}
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
