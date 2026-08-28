@@ -2,8 +2,10 @@ name: LeetCode Squad Background Sync
 
 on:
   schedule:
-    # Runs every 3 hours
+    # Stats sync: every 3 hours
     - cron: '0 */3 * * *'
+    # Catalog sync: weekly (LeetCode adds ~5 problems/week)
+    - cron: '17 4 * * 1'
   workflow_dispatch: # Allows manual trigger from GitHub Actions tab
 
 jobs:
@@ -14,5 +16,15 @@ jobs:
       - name: Trigger LeetCode Sync Endpoint
         run: |
           curl -X GET "https://${{ secrets.VERCEL_URL || 'mahayuddh.vercel.app' }}/api/sync/leetcode?username=premsaik" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET || 'mahayuddh_cron_secret_2026' }}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -f || echo "Sync completed or pending live deployment"
+
+  catalog:
+    name: Sync LeetCode Problem Catalog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger LeetCode Catalog Sync
+        run: |
+          curl -X GET "https://${{ secrets.VERCEL_URL || 'mahayuddh.vercel.app' }}/api/sync/catalog" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -f || echo "Catalog sync completed or pending live deployment"

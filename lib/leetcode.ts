@@ -180,3 +180,182 @@ export async function fetchUserCalendar(username: string): Promise<UserCalendarS
     return { streak: 0, totalActiveDays: 0 };
   }
 }
+
+// ============================================================
+// Full LeetCode Problem Catalog (all ~3500 problems + topic tags)
+// ============================================================
+
+export interface CatalogTopicTag {
+  name: string;
+  slug: string;
+}
+
+export interface CatalogProblem {
+  titleSlug: string;
+  title: string;
+  difficulty: "Easy" | "Medium" | "Hard";
+  questionFrontendId: string;
+  paidOnly: boolean;
+  topicTags: CatalogTopicTag[];
+}
+
+const CATALOG_QUERY = `
+  query problemsetQuestionList($limit: Int!, $skip: Int!, $filters: QuestionListFilterInput) {
+    problemsetQuestionList(limit: $limit, skip: $skip, filters: $filters) {
+      questions: data {
+        title
+        titleSlug
+        difficulty
+        questionFrontendId
+        paidOnly
+        topicTags {
+          name
+          slug
+        }
+      }
+    }
+  }
+`;
+
+export async function fetchProblemCatalogPage(
+  skip: number,
+  limit = 100
+): Promise<CatalogProblem[]> {
+  try {
+    const res = await fetch(LEETCODE_GRAPHQL_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Referer: "https://leetcode.com",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+      body: JSON.stringify({
+        query: CATALOG_QUERY,
+        variables: { limit, skip, filters: {} },
+      }),
+    });
+
+    if (!res.ok) {
+      console.error(`LeetCode catalog HTTP ${res.status}`);
+      return [];
+    }
+
+    const json = await res.json();
+    return json?.data?.problemsetQuestionList?.questions ?? [];
+  } catch (error) {
+    console.error("Error fetching LeetCode catalog page:", error);
+    return [];
+  }
+}
+
+export async function fetchFullProblemCatalog(opts?: {
+  pageSize?: number;
+  maxPages?: number;
+  onProgress?: (count: number) => void;
+}): Promise<CatalogProblem[]> {
+  const pageSize = opts?.pageSize ?? 100;
+  const maxPages = opts?.maxPages ?? 60;
+  const out: CatalogProblem[] = [];
+
+  for (let skip = 0, page = 0; page < maxPages; page++) {
+    const batch = await fetchProblemCatalogPage(skip, pageSize);
+    if (batch.length === 0) break;
+    out.push(...batch);
+    opts?.onProgress?.(out.length);
+    if (batch.length < pageSize) break;
+    skip += pageSize;
+  }
+
+  return out;
+}
+
+// ============================================================
+// Authenticated LeetCode Session (full solved history)
+// ============================================================
+
+const LEETCODE_BASE = "https://leetcode.com";
+const LEETCODE_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
+
+function extractCookie(setCookieHeaders: string[] | undefined, name: string): string | null {
+  if (!setCookieHeaders) return null;
+  for (const header of setCookieHeaders) {
+    const part = header.split(";")[0];
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    const k = part.slice(0, eq);
+    if (k === name) return part;
+  }
+  return null;
+}
+
+// Logs in with username+password and returns the LEETCODE_SESSION cookie string.
+// Returns null on failure (bad creds, 2FA/captcha, or network error).
+export async function loginLeetCode(username: string, password: string): Promise<string | null> {
+  try {
+    // 1. Fetch the login page to grab csrfToken + initial cookies.
+    const pageRes = await fetch(`${LEETCODE_BASE}/accounts/login/`, {
+      headers: { "User-Agent": LEETCODE_UA },
+    });
+    const pageHtml = await pageRes.text();
+    const csrfMatch = pageHtml.match(/name="csrfmiddlewaretoken"[^>]*value="([^"]+)"/);
+    const csrfToken = csrfMatch?.[1];
+    if (!csrfToken) return null;
+
+    const csrfCookie = extractCookie(pageRes.headers.getSetCookie?.(), "csrftoken");
+
+    // 2. POST credentials.
+    const body = new URLSearchParams({
+      login: username,
+      password,
+      csrfmiddlewaretoken: csrfToken,
+    });
+    const loginRes = await fetch(`${LEETCODE_BASE}/accounts/login/`, {
+      method: "POST",
+      headers: {
+        "User-Agent": LEETCODE_UA,
+        "Content-Type": "application/x-www-form-urlencoded",
+        Referer: `${LEETCODE_BASE}/accounts/login/`,
+        ...(csrfCookie ? { Cookie: csrfCookie } : {}),
+      },
+      body,
+      redirect: "manual",
+    });
+
+    const sessionCookie = extractCookie(loginRes.headers.getSetCookie?.(), "LEETCODE_SESSION");
+    if (!sessionCookie) return null;
+    return sessionCookie;
+  } catch (error) {
+    console.error("LeetCode login error:", error);
+    return null;
+  }
+}
+
+// Returns the title slugs of every problem the session user has Accepted.
+export async function fetchSolvedSlugsFromSession(sessionCookie: string): Promise<string[]> {
+  try {
+    const res = await fetch(`${LEETCODE_BASE}/api/problems/algorithms/`, {
+      headers: {
+        "User-Agent": LEETCODE_UA,
+        Referer: `${LEETCODE_BASE}/problemset/all/`,
+        Cookie: sessionCookie,
+      },
+    });
+    if (!res.ok) {
+      console.error(`LeetCode problems API HTTP ${res.status}`);
+      return [];
+    }
+    const json = await res.json();
+    const statStatusPairs = json?.stat_status_pairs ?? [];
+    const solved: string[] = [];
+    for (const pair of statStatusPairs) {
+      if (pair?.status === "ac") {
+        solved.push(pair.stat?.question__title_slug);
+      }
+    }
+    return solved.filter(Boolean);
+  } catch (error) {
+    console.error("LeetCode solved fetch error:", error);
+    return [];
+  }
+}
