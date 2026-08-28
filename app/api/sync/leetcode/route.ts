@@ -14,7 +14,7 @@ function getServiceClient() {
 }
 
 async function fetchLeetCode(username: string): Promise<{
-  profile: Awaited<ReturnType<typeof fetchLeetCodeProfile>>;
+  profile: NonNullable<Awaited<ReturnType<typeof fetchLeetCodeProfile>>>;
   recentSubmissions: Awaited<ReturnType<typeof fetchRecentSubmissions>>;
   calendar: Awaited<ReturnType<typeof fetchUserCalendar>>;
 } | null> {
@@ -265,7 +265,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "User not found on LeetCode" }, { status: 404 });
     }
 
-    // Auto-verify suggestions the client passed in (recent accepted submissions).
+    // 1. Persist live profile stats to squad profiles
+    const persisted = await persistStats(username.trim(), {
+      totalEasy: data.profile.totalEasy,
+      totalMedium: data.profile.totalMedium,
+      totalHard: data.profile.totalHard,
+      contestRating: data.profile.contestRating ?? 1500,
+      contestGlobalRank: data.profile.contestGlobalRank ?? null,
+      ranking: data.profile.ranking ?? null,
+      streak: data.calendar.streak ?? 0,
+      avatar: data.profile.avatar ?? null,
+    });
+
+    // 2. Automatically infer and mark recent accepted questions as solved in user_problem_status
+    let inferred = 0;
+    let verified = 0;
+    if (data.recentSubmissions.length > 0) {
+      inferred = await inferSolvedFromLeetcode(username.trim(), data.recentSubmissions);
+      verified = await verifySuggestions(username.trim(), data.recentSubmissions);
+    }
+
+    // Auto-verify suggestions the client passed in directly
     const verifiedSuggestions: string[] = [];
     if (pendingSuggestions.length > 0 && data.recentSubmissions.length > 0) {
       const recentSlugs = new Set(data.recentSubmissions.map((s) => s.titleSlug.toLowerCase()));
@@ -278,6 +298,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
+      persisted,
+      inferredSolved: inferred,
+      verifiedSuggestionsCount: verified,
       stats: {
         ...data.profile,
         streak: data.calendar.streak,

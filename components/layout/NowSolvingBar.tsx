@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Play,
   Pause,
@@ -18,7 +18,7 @@ interface NowSolvingBarProps {
 }
 
 export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const {
     activeProblem,
     isPlaying,
@@ -61,7 +61,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
     }
   };
 
-  const handleComplete = async () => {
+  const handleComplete = useCallback(async () => {
     if (!activeProblem) return;
     setIsCompleted(true);
     setIsPlaying(false);
@@ -93,7 +93,35 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
     }
 
     setTimeout(() => setIsCompleted(false), 4000);
-  };
+  }, [activeProblem, setIsPlaying, user]);
+
+  // Background auto-detection: check if active problem was accepted on LeetCode while solving
+  useEffect(() => {
+    if (!isPlaying || !activeProblem?.slug || !profile?.leetcode_username) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/sync/leetcode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: profile.leetcode_username }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const activeSlug = activeProblem.slug.toLowerCase();
+        const isAc = (data?.recentSubmissions || []).some(
+          (s: { titleSlug: string }) => s.titleSlug?.toLowerCase() === activeSlug
+        );
+        if (isAc) {
+          handleComplete();
+        }
+      } catch {
+        // silent fail
+      }
+    }, 20000);
+
+    return () => clearInterval(interval);
+  }, [isPlaying, activeProblem?.slug, profile?.leetcode_username, handleComplete]);
 
   const getDifficultyBadge = (diff: string) => {
     switch (diff?.toLowerCase()) {

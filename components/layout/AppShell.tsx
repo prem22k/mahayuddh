@@ -6,6 +6,7 @@ import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { NowSolvingBar } from "./NowSolvingBar";
 import { SearchModal } from "../modals/SearchModal";
+import { LeetCodeAutoSync } from "@/components/providers/LeetCodeAutoSync";
 import { useAuth } from "@/components/providers/AuthProvider";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -83,6 +84,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
       />
+
+      {/* ── Background LeetCode Focus & Milestone Auto-Sync ── */}
+      <LeetCodeAutoSync />
     </div>
   );
 }
