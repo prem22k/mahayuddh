@@ -1,14 +1,16 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { fetchLeetCodeProfile, fetchUserCalendar } from "@/lib/leetcode";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { cn } from "@/lib/utils";
 
 export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
+  const { user, loading: authLoading } = useAuth();
 
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
@@ -20,6 +22,13 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // If user is already logged in, redirect to home immediately
+  useEffect(() => {
+    if (!authLoading && user) {
+      window.location.href = "/";
+    }
+  }, [user, authLoading]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -28,27 +37,31 @@ export default function LoginPage() {
 
     try {
       if (mode === "signin") {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
           password,
         });
 
         if (error) {
           setErrorMsg(error.message);
+          setLoading(false);
           return;
         }
 
-        router.push("/");
-        router.refresh();
+        if (data.session) {
+          window.location.href = "/";
+          return;
+        }
       } else {
         // Sign Up
         if (!username.trim() || !leetcodeUsername.trim()) {
           setErrorMsg("Please provide both Squad username and LeetCode handle.");
+          setLoading(false);
           return;
         }
 
         const { data: authData, error: authError } = await supabase.auth.signUp({
-          email,
+          email: email.trim(),
           password,
           options: {
             data: {
@@ -60,6 +73,7 @@ export default function LoginPage() {
 
         if (authError) {
           setErrorMsg(authError.message);
+          setLoading(false);
           return;
         }
 
@@ -105,20 +119,30 @@ export default function LoginPage() {
           }
 
           if (authData.session) {
-            router.push("/");
-            router.refresh();
+            window.location.href = "/";
+            return;
           } else {
             setSuccessMsg("Account created! Check your email to confirm your account.");
+            setLoading(false);
           }
         }
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "An unexpected error occurred.";
       setErrorMsg(message);
-    } finally {
       setLoading(false);
     }
   };
+
+  // If already logged in, show sleek loader while redirecting
+  if (!authLoading && user) {
+    return (
+      <div className="min-h-screen bg-black flex flex-col justify-center items-center gap-3">
+        <div className="w-7 h-7 animate-spin rounded-full border-2 border-white/10 border-t-[#fa586a]" />
+        <span className="text-xs text-white/40 font-medium">Entering Arena...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-black flex flex-col justify-center items-center p-4 selection:bg-[#fa586a] selection:text-white relative overflow-hidden select-none">
