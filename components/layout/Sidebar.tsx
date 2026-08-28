@@ -60,18 +60,16 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
     <div className="flex flex-col h-full w-full select-none">
       {/* ── Brand Header ───────────────────────────────── */}
       <div className="px-5 pt-5 pb-3">
-        <Link href="/" className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-apple-accent flex items-center justify-center text-white shadow-glow font-bold text-sm">
-            ⚔️
-          </div>
-          <div className="flex flex-col">
-            <span className="font-bold text-[15px] tracking-tight text-white leading-tight">
-              Mahayuddh
+        <Link href="/" className="flex flex-col group">
+          <span className="font-black text-[18px] tracking-[-0.04em] text-white leading-tight">
+            Mahayuddh
+            <span className="text-[#fa586a] drop-shadow-[0_0_12px_rgba(250,88,106,0.8)]">
+              .
             </span>
-            <span className="text-[10px] text-white/40 font-medium tracking-wider uppercase">
-              Developer Arena
-            </span>
-          </div>
+          </span>
+          <span className="text-[10px] text-white/35 font-medium tracking-[0.16em] uppercase mt-0.5">
+            Developer Arena
+          </span>
         </Link>
       </div>
 
