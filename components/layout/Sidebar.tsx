@@ -49,7 +49,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
   ];
 
   const curatedRoadmaps = lists.filter((l) => l.is_curated);
-  const squadLists = lists.filter((l) => !l.is_curated);
+  const squadLists = lists.filter((l) => !l.is_curated && Boolean(l.created_by));
 
   const displayName =
     profile?.username || user?.email?.split("@")[0] || "Squad Member";

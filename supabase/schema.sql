@@ -132,10 +132,7 @@ create policy "Users can manage push subscriptions" on public.push_subscriptions
 -- ============================================================
 insert into public.custom_lists (slug, title, emoji, description, is_curated)
 values 
-  ('neetcode-150', 'NeetCode 150', '📚', 'The premier curated roadmap covering all core coding interview patterns.', true),
-  ('blind-75', 'Blind 75', '⚡', 'The essential 75 classic interview questions for fast review.', true),
-  ('striver-sde', 'Striver SDE Sheet', '🎯', 'Comprehensive DSA sheet tailored for top-tier software engineering roles.', true),
-  ('trees', 'Trees & BST', '🌲', 'Binary trees, BST properties, LCA, and tree traversals.', false),
-  ('dp-patterns', 'DP Patterns', '🧗', '0/1 Knapsack, Unbounded, Interval DP, and Grid Paths.', false),
-  ('3am-lore', '3AM Lore 🔥', '💀', 'Tough brain-melting Hard problems tackled during late night sessions.', false)
+  ('neetcode-150', 'NeetCode 150', 'NeetCode', 'The premier curated roadmap covering all core coding interview patterns.', true),
+  ('blind-75', 'Blind 75', 'Blind', 'The essential 75 classic interview questions for fast review.', true),
+  ('striver-sde', 'Striver SDE Sheet', 'Striver', 'Comprehensive DSA sheet tailored for top-tier software engineering roles.', true)
 on conflict (slug) do nothing;
