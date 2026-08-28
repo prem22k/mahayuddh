@@ -4,7 +4,6 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { User, Session } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { Profile } from "@/types/database";
-import { syncUserProfileStats } from "@/lib/data/profiles";
 
 interface AuthContextType {
   user: User | null;
@@ -32,72 +31,72 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const supabase = useMemo(() => createClient(), []);
 
-  const fetchProfile = useCallback(async (userId: string, currentUser?: User | null) => {
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .single();
-
-      if (!error && data) {
-        setProfile(data as Profile);
-      } else {
-        // If profile row doesn't exist yet, auto-create it from auth user metadata
-        const u = currentUser;
-        const initialUsername =
-          u?.user_metadata?.username ||
-          u?.user_metadata?.name ||
-          u?.email?.split("@")[0] ||
-          "Squad Member";
-        const initialLeetcode =
-          u?.user_metadata?.leetcode_username || null;
-
-        const { data: newProfile, error: upsertErr } = await supabase
+  const fetchProfile = useCallback(
+    async (userId: string, currentUser?: User | null, currentSession?: Session | null) => {
+      try {
+        // 1. Try fast read from profiles table
+        const { data, error } = await supabase
           .from("profiles")
-          .upsert({
-            id: userId,
-            username: initialUsername,
-            leetcode_username: initialLeetcode,
-            contest_rating: 1500,
-            streak: 0,
-            total_easy: 0,
-            total_medium: 0,
-            total_hard: 0,
-          })
-          .select()
-          .single();
+          .select("*")
+          .eq("id", userId)
+          .maybeSingle();
 
-        if (!upsertErr && newProfile) {
-          setProfile(newProfile as Profile);
-          if (initialLeetcode) {
-            syncUserProfileStats(userId, initialLeetcode).then((synced) => {
-              if (synced) setProfile(synced);
-            });
+        if (!error && data) {
+          setProfile(data as Profile);
+          return;
+        }
+
+        // 2. If profile is missing (or query had issues), resolve/create safely via server API
+        const token =
+          currentSession?.access_token ||
+          (await supabase.auth.getSession()).data.session?.access_token;
+
+        if (token) {
+          const res = await fetch("/api/auth/profile", {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+          if (res.ok) {
+            const json = await res.json();
+            if (json.profile) {
+              setProfile(json.profile as Profile);
+              return;
+            }
           }
         }
+      } catch (err) {
+        console.error("Error fetching user profile:", err);
       }
-    } catch (err) {
-      console.error("Error fetching user profile:", err);
-    }
-  }, [supabase]);
+    },
+    [supabase]
+  );
 
   useEffect(() => {
     async function initAuth() {
       try {
-        const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise<{ data: { session: null } }>((resolve) =>
-          setTimeout(() => resolve({ data: { session: null } }), 2000)
-        );
         const {
           data: { session: initialSession },
-        } = await Promise.race([sessionPromise, timeoutPromise]);
-
-        setSession(initialSession);
-        setUser(initialSession?.user ?? null);
+        } = await supabase.auth.getSession();
 
         if (initialSession?.user) {
-          await fetchProfile(initialSession.user.id, initialSession.user);
+          // Verify with Supabase Auth that the session is still valid on server
+          const { data: userData, error: userError } = await supabase.auth.getUser();
+          if (userError || !userData?.user) {
+            console.warn("Local auth session expired or invalid. Clearing.");
+            await supabase.auth.signOut();
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+          } else {
+            setSession(initialSession);
+            setUser(userData.user);
+            await fetchProfile(userData.user.id, userData.user, initialSession);
+          }
+        } else {
+          setSession(null);
+          setUser(null);
+          setProfile(null);
         }
       } catch (err) {
         console.error("Auth init error:", err);
@@ -110,14 +109,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-      setSession(newSession);
-      setUser(newSession?.user ?? null);
-
-      if (newSession?.user) {
-        await fetchProfile(newSession.user.id, newSession.user);
-      } else {
+    } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      if (event === "SIGNED_OUT" || !newSession?.user) {
+        setSession(null);
+        setUser(null);
         setProfile(null);
+      } else {
+        setSession(newSession);
+        setUser(newSession.user);
+        await fetchProfile(newSession.user.id, newSession.user, newSession);
       }
       setLoading(false);
     });

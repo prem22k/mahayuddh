@@ -23,7 +23,7 @@ export default function LoginPage() {
   // If user is already logged in, redirect to home immediately
   useEffect(() => {
     if (!authLoading && user) {
-      window.location.href = "/";
+      window.location.replace("/");
     }
   }, [user, authLoading]);
 
@@ -47,7 +47,7 @@ export default function LoginPage() {
         }
 
         if (data.session) {
-          window.location.href = "/";
+          window.location.replace("/");
           return;
         }
       } else {
@@ -124,7 +124,7 @@ export default function LoginPage() {
           }
 
           if (authData.session) {
-            window.location.href = "/";
+            window.location.replace("/");
             return;
           } else {
             setSuccessMsg("Account created! Check your email to confirm your account.");

@@ -8,6 +8,14 @@ interface CookieToSet {
   options?: Partial<ResponseCookie>;
 }
 
+function createRedirect(url: URL, sourceResponse: NextResponse) {
+  const redirectResponse = NextResponse.redirect(url);
+  sourceResponse.cookies.getAll().forEach((cookie) => {
+    redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+  });
+  return redirectResponse;
+}
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -23,28 +31,31 @@ export async function updateSession(request: NextRequest) {
   }
 
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
-  const isAuthCallback = request.nextUrl.pathname.startsWith("/auth/callback");
-  const isPublicApi = request.nextUrl.pathname.startsWith("/api/sync");
+  const isAuthCallback = request.nextUrl.pathname.startsWith("/auth");
+  const isPublicApi =
+    request.nextUrl.pathname.startsWith("/api/sync") ||
+    request.nextUrl.pathname.startsWith("/api/auth");
 
   // Fast-path: Check if any Supabase auth cookies exist in request
   const allCookies = request.cookies.getAll();
   const hasAuthCookie = allCookies.some(
     (c) =>
-      c.name.includes("-auth-token") ||
-      (c.name.startsWith("sb-") && c.name.includes("token")) ||
-      c.name.includes("access_token")
+      c.name.startsWith("sb-") ||
+      c.name.includes("auth-token") ||
+      c.name.includes("access_token") ||
+      c.name.includes("supabase")
   );
 
   // If no auth cookie is present:
-  // - Public/login routes pass through with 0 network latency
-  // - Protected routes redirect to /login immediately without blocking network fetch
+  // - Public/login/auth routes pass through immediately
+  // - Protected routes redirect to /login
   if (!hasAuthCookie) {
     if (isLoginPage || isAuthCallback || isPublicApi) {
       return supabaseResponse;
     }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    return NextResponse.redirect(url);
+    return createRedirect(url, supabaseResponse);
   }
 
   try {
@@ -67,7 +78,6 @@ export async function updateSession(request: NextRequest) {
       },
     });
 
-    // 2.5-second timeout guard prevents external auth downtime from freezing the application
     const userPromise = supabase.auth.getUser();
     const timeoutPromise = new Promise<{ data: { user: null }; error: Error }>((resolve) =>
       setTimeout(() => resolve({ data: { user: null }, error: new Error("Auth request timed out") }), 2500)
@@ -80,21 +90,21 @@ export async function updateSession(request: NextRequest) {
     if (!user && !isLoginPage && !isAuthCallback && !isPublicApi) {
       const url = request.nextUrl.clone();
       url.pathname = "/login";
-      return NextResponse.redirect(url);
+      return createRedirect(url, supabaseResponse);
     }
 
     // If user is already authenticated and visits /login, redirect to /
     if (user && isLoginPage) {
       const url = request.nextUrl.clone();
       url.pathname = "/";
-      return NextResponse.redirect(url);
+      return createRedirect(url, supabaseResponse);
     }
   } catch (err) {
     console.warn("Supabase auth check in middleware encountered an error:", err);
     if (!isLoginPage && !isAuthCallback && !isPublicApi) {
       const url = request.nextUrl.clone();
       url.pathname = "/login";
-      return NextResponse.redirect(url);
+      return createRedirect(url, supabaseResponse);
     }
   }
 

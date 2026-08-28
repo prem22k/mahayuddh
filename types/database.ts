@@ -14,7 +14,7 @@ export type TriState = "solved" | "attempted" | "unsolved";
 export interface Profile {
   id: string;
   username: string;
-  leetcode_username: string;
+  leetcode_username: string | null;
   avatar_url: string | null;
   contest_rating: number;
   global_rank: number | null;
