@@ -6,7 +6,7 @@
 create table if not exists public.profiles (
   id uuid references auth.users on delete cascade primary key,
   username text unique not null,
-  leetcode_username text unique not null,
+  leetcode_username text unique,
   avatar_url text,
   contest_rating float default 1500,
   global_rank int,
@@ -124,7 +124,7 @@ create policy "Allow public read access for feed_events" on public.feed_events f
 
 -- Insert/Update policies
 create policy "Users can insert own profile" on public.profiles for insert with check (auth.uid() = id);
-create policy "Users can update own profile" on public.profiles for update using (auth.uid() = id);
+create policy "Users can update own profile" on public.profiles for update using (auth.uid() = id) with check (auth.uid() = id);
 create policy "Users can create custom lists" on public.custom_lists for insert with check (auth.uid() = created_by);
 create policy "Users can manage own suggestions" on public.suggestions for all using (auth.uid() = from_user or auth.uid() = to_user);
 create policy "Users can insert problem status" on public.user_problem_status for insert with check (auth.uid() = user_id);
