@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { ExternalLink, RefreshCw, Check, ArrowRight } from "lucide-react";
+import { ExternalLink, RefreshCw, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getSquadProfiles, syncUserProfileStats } from "@/lib/data/profiles";
 import { useAuth } from "@/components/providers/AuthProvider";
