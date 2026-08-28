@@ -19,26 +19,30 @@ export interface PushNotificationPayload {
   };
 }
 
-export interface SubscriptionKeys {
+// Accepts either a flat DB record (PushSubscriptionRecord) or a standard
+// PushSubscription JSON. Normalizes to the shape web-push expects.
+export interface PushSubscriptionInput {
   endpoint: string;
-  keys: {
-    p256dh: string;
-    auth: string;
-  };
+  p256dh?: string;
+  auth?: string;
+  keys?: { p256dh?: string; auth?: string };
+}
+
+function normalizeSubscription(sub: PushSubscriptionInput) {
+  const p256dh = sub.p256dh ?? sub.keys?.p256dh;
+  const auth = sub.auth ?? sub.keys?.auth;
+  if (!p256dh || !auth) {
+    throw new Error("Push subscription missing p256dh/auth keys");
+  }
+  return { endpoint: sub.endpoint, keys: { p256dh, auth } };
 }
 
 export async function sendPushNotification(
-  subscription: SubscriptionKeys,
+  subscription: PushSubscriptionInput,
   payload: PushNotificationPayload
 ) {
   try {
-    const pushSubscription = {
-      endpoint: subscription.endpoint,
-      keys: {
-        p256dh: subscription.keys.p256dh,
-        auth: subscription.keys.auth,
-      },
-    };
+    const pushSubscription = normalizeSubscription(subscription);
 
     const response = await webpush.sendNotification(
       pushSubscription,
