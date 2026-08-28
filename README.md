@@ -68,7 +68,7 @@ Mahayuddh takes inspiration from the **Apple Music Web Player** and elevates it 
   * **Contest Metrics:** Contest rating, global ranking, and top percentage.
   * **Daily Streak Calendar:** Continuous active streak days and active calendar history.
   * **Recent Submissions:** Recent 20 accepted submissions for automated verification.
-* Manual and automatic background synchronization via [`/api/sync/leetcode`](file:///home/premsaik/Desktop/Projects/mahayuddh/app/api/sync/leetcode/route.ts).
+* Manual and automatic background synchronization via [`/api/sync/leetcode`](app/api/sync/leetcode/route.ts).
 
 ### 2. 🏠 Dynamic Arena Dashboard (`/`)
 * **Active User Badge:** Shows logged-in user profile avatar, username, and active green online indicator.
@@ -81,7 +81,7 @@ Mahayuddh takes inspiration from the **Apple Music Web Player** and elevates it 
 ### 3. 🏆 Tracklist Squad Leaderboard (`/leaderboard`)
 * **Personal Standing Ribbon:** Top hero banner displaying the logged-in user's squad rank (`#1 in Squad`), contest rating, active streak, solved breakdown (`E / M / H`), and instant **"Sync Stats"** button.
 * **LeetCode Handle Connector:** In-app connection form for users who have not yet linked their handle.
-* **Multi-Metric Sorting Tabs:** Filter standings by *Contest Rating*, *Daily Streak*, *Hard Solved*, or *Speed Solvers*.
+* **Multi-Metric Sorting Tabs:** Filter standings by *Contest Rating*, *Daily Streak*, *Hard Solved*, or *Easy Solved*.
 * **Personalized Highlight:** Authenticated user row is highlighted with a crimson border and bold `"YOU"` badge.
 * **Peer Challenge Action:** One-tap button to challenge any squad mate.
 
@@ -97,11 +97,11 @@ Mahayuddh takes inspiration from the **Apple Music Web Player** and elevates it 
 ### 5. 📬 Approach-First Suggestion Box (`/suggestions`)
 * Challenge any squad mate to solve a specific LeetCode problem.
 * Attach a 3-line intuition note or hint without spoiling the solution.
-* **Auto-Verification:** The background sync monitors recent accepted submissions on LeetCode and automatically verifies completed challenges.
+* **Auto-Verification:** The background sync (`.github/workflows/sync.yml`, gated by `CRON_SECRET`) monitors recent accepted submissions on LeetCode and automatically verifies received challenges for the configured squad handle.
 
 ### 6. 🗃️ Squad Resource Vault (`/vault`)
 * Centralized hub for sharing algorithm code templates (Union-Find, Dijkstra, Monotonic Stack, Segment Tree).
-* Company interview debriefs and Online Assessment (OA) question logs.
+* Interview debriefs and cheat sheets across Template, Interview Log, Cheat Sheet, and Article categories.
 
 ### 7. 🔍 Global `⌘K` Search Modal
 * Instant problem search across all indexed roadmap questions by title, category, or problem number.
@@ -113,12 +113,12 @@ Mahayuddh takes inspiration from the **Apple Music Web Player** and elevates it 
 
 | Layer | Technology |
 |---|---|
-| **Framework** | Next.js 15.5+ (App Router, Server Actions, React 19) |
-| **Styling** | Tailwind CSS v4 + Glassmorphism Custom Properties + Lucide Icons |
-| **Database & Auth** | Supabase (PostgreSQL 16 + Row Level Security + Realtime) |
+| **Framework** | Next.js 15.2+ (App Router, React 19) |
+| **Styling** | Tailwind CSS v3.4 + Glassmorphism Custom Properties + Lucide Icons |
+| **Database & Auth** | Supabase (PostgreSQL 17 + Row Level Security) |
 | **Data Engine** | LeetCode Public GraphQL API |
 | **State Management** | React Context (`AuthProvider`, `SolvingProvider`) + LocalStorage Persistence |
-| **Deployment** | Vercel (Edge Middleware + Static Page Generation) |
+| **Deployment** | Vercel (Edge Middleware for auth session refresh) |
 
 ---
 
@@ -127,9 +127,9 @@ Mahayuddh takes inspiration from the **Apple Music Web Player** and elevates it 
 ```sql
 -- 1. Profiles & Synced LeetCode Stats
 create table public.profiles (
-  id uuid references auth.users primary key,
+  id uuid references auth.users on delete cascade primary key,
   username text unique not null,
-  leetcode_username text,
+  leetcode_username text unique not null,
   avatar_url text,
   contest_rating float default 1500,
   global_rank int,
@@ -137,6 +137,7 @@ create table public.profiles (
   total_easy int default 0,
   total_medium int default 0,
   total_hard int default 0,
+  last_synced_at timestamp with time zone default now(),
   created_at timestamp with time zone default now()
 );
 
@@ -183,9 +184,10 @@ create table public.suggestions (
   problem_title text not null,
   difficulty text check (difficulty in ('Easy', 'Medium', 'Hard')) not null,
   category text not null,
-  intuition_note text,
-  status text check (status in ('pending', 'solved', 'archived')) default 'pending',
-  created_at timestamp with time zone default now()
+  note text,
+  status text check (status in ('pending', 'completed', 'dismissed')) default 'pending',
+  created_at timestamp with time zone default now(),
+  completed_at timestamp with time zone
 );
 
 -- 6. Shared Resources (Vault)
@@ -193,9 +195,31 @@ create table public.shared_resources (
   id uuid primary key default gen_random_uuid(),
   author_id uuid references public.profiles(id) on delete cascade not null,
   title text not null,
-  category text not null,
+  category text check (category in ('Template', 'Interview Log', 'Cheat Sheet', 'Article')) not null,
   content text not null,
-  tags text[] default array[]::text[],
+  external_url text,
+  created_at timestamp with time zone default now()
+);
+
+-- 7. PWA Push Subscriptions (provisioned; UI not yet wired)
+create table public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  endpoint text unique not null,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamp with time zone default now()
+);
+
+-- 8. Live Squad Feed Events (provisioned; UI not yet wired)
+create table public.feed_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  event_type text check (event_type in ('solved', 'streak', 'contest', 'suggested', 'completed')) not null,
+  problem_title text,
+  problem_slug text,
+  difficulty text,
+  metadata jsonb default '{}'::jsonb,
   created_at timestamp with time zone default now()
 );
 ```
@@ -215,12 +239,16 @@ npm install
 Create a `.env.local` file with your Supabase credentials:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-or-anon-key
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-publishable-or-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key   # server-only; used by the cron sync endpoint
+CRON_SECRET=your-random-cron-secret-hex           # protects the background sync endpoint
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=your-vapid-public-key  # optional; for web push
+VAPID_PRIVATE_KEY=your-vapid-private-key          # optional; server-only
 ```
 
 ### 3. Initialize Supabase Database
-Run the SQL queries in [`supabase/schema.sql`](file:///home/premsaik/Desktop/Projects/mahayuddh/supabase/schema.sql) in the Supabase SQL Editor to configure tables, Row Level Security (RLS) policies, and seed curated roadmaps.
+Run the SQL queries in [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL Editor to configure tables, Row Level Security (RLS) policies, and seed curated roadmaps.
 
 ### 4. Run Development Server
 ```bash
