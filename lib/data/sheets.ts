@@ -55,6 +55,66 @@ export async function getListWithProblems(slug: string): Promise<{
   };
 }
 
+export async function createCustomList(
+  userId: string,
+  title: string,
+  description: string,
+  problemSlugs: string[]
+): Promise<{ success: boolean; slug?: string; error?: string }> {
+  const supabase = createClient();
+  const baseSlug = title
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+  const slug = `${baseSlug || "custom-list"}-${Math.random().toString(36).substring(2, 6)}`;
+
+  const { data: listData, error: listError } = await supabase
+    .from("custom_lists")
+    .insert({
+      slug,
+      title: title.trim(),
+      description: description.trim() || null,
+      is_curated: false,
+      created_by: userId,
+    })
+    .select()
+    .single();
+
+  if (listError || !listData) {
+    return { success: false, error: listError?.message || "Failed to create list" };
+  }
+
+  if (problemSlugs.length > 0) {
+    const { data: existingProblems } = await supabase
+      .from("list_problems")
+      .select("title, title_slug, difficulty, category")
+      .in("title_slug", problemSlugs);
+
+    if (existingProblems && existingProblems.length > 0) {
+      const uniqueProblemsMap = new Map<string, typeof existingProblems[0]>();
+      existingProblems.forEach((p) => {
+        if (!uniqueProblemsMap.has(p.title_slug)) {
+          uniqueProblemsMap.set(p.title_slug, p);
+        }
+      });
+
+      const problemsToInsert = Array.from(uniqueProblemsMap.values()).map((p, idx) => ({
+        list_id: listData.id,
+        title: p.title,
+        title_slug: p.title_slug,
+        difficulty: p.difficulty,
+        category: p.category,
+        order_index: idx + 1,
+      }));
+
+      await supabase.from("list_problems").insert(problemsToInsert);
+    }
+  }
+
+  return { success: true, slug };
+}
+
 export async function getSquadProblemStatuses(problemSlugs: string[]): Promise<UserProblemStatus[]> {
   if (problemSlugs.length === 0) return [];
   const supabase = createClient();
