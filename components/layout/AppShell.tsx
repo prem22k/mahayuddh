@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
@@ -13,6 +13,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  // Global Cmd/Ctrl+K toggles the search modal. Lives here (always mounted);
+  // SearchModal unmounts its listener when closed, so the shortcut can't open it.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsSearchOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // If on login page or auth callbacks, show clean full-page view
   if (pathname?.startsWith("/login") || pathname?.startsWith("/auth")) {

@@ -69,6 +69,12 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
     if (user) {
       try {
         await toggleProblemStatus(user.id, activeProblem.slug, true);
+        // Notify open sheet views so their solved status refreshes immediately.
+        window.dispatchEvent(
+          new CustomEvent("problem-status-changed", {
+            detail: { slug: activeProblem.slug, status: "solved" },
+          })
+        );
       } catch (err) {
         console.error("Error marking problem as solved in Supabase:", err);
       }

@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Bell, BellRing, RefreshCw, Menu, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { syncUserProfileStats } from "@/lib/data/profiles";
 
 interface HeaderProps {
   onMenuToggle?: () => void;
@@ -20,12 +21,8 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
   const handleSync = async () => {
     setIsSyncing(true);
     try {
-      if (profile?.leetcode_username) {
-        await fetch("/api/sync/leetcode", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: profile.leetcode_username }),
-        });
+      if (profile?.leetcode_username && user) {
+        await syncUserProfileStats(user.id, profile.leetcode_username);
       }
       await refreshProfile();
     } catch {

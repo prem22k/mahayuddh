@@ -3,6 +3,7 @@ import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { SolvingProvider } from "@/components/providers/SolvingProvider";
+import { PwaRegister } from "@/components/PwaRegister";
 
 export const metadata: Metadata = {
   title: "Mahayuddh | Developer Squad DSA Arena",
@@ -39,6 +40,7 @@ export default function RootLayout({
             <AppShell>{children}</AppShell>
           </SolvingProvider>
         </AuthProvider>
+        <PwaRegister />
       </body>
     </html>
   );
