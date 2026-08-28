@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 import { loginLeetCode, fetchSolvedSlugsFromSession } from "@/lib/leetcode";
 import { encryptSession, decryptSession } from "@/lib/leetcodeSession";
 
@@ -39,7 +40,6 @@ async function markSolved(
 
 export async function POST(request: Request) {
   const authHeader = request.headers.get("Authorization");
-  // The browser call is made by an authed Supabase user; we verify via the anon client.
   const anonUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -49,29 +49,64 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
   }
 
-  // Validate the calling user from the Supabase JWT.
-  const userClient = createClient(anonUrl, anonKey, { auth: { persistSession: false } });
-  const {
-    data: { user },
-  } = await userClient.auth.getUser(authHeader?.replace(/^Bearer\s+/i, "") ?? "");
+  // 1. Validate user via Bearer token or server session cookies
+  let user: { id: string; email?: string } | null = null;
+  const token = authHeader?.replace(/^Bearer\s+/i, "");
+  if (token) {
+    const userClient = createClient(anonUrl, anonKey, { auth: { persistSession: false } });
+    const { data } = await userClient.auth.getUser(token);
+    user = data?.user ?? null;
+  }
 
   if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    try {
+      const serverSupabase = await createServerClient();
+      const { data } = await serverSupabase.auth.getUser();
+      user = data?.user ?? null;
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized. Please log in first." }, { status: 401 });
   }
 
   const body = await request.json().catch(() => ({}));
-  const { username, password }: { username?: string; password?: string } = body;
+  const {
+    username,
+    password,
+    sessionCookie: inputCookie,
+  }: { username?: string; password?: string; sessionCookie?: string } = body;
 
   try {
     let sessionCookie: string | null = null;
     let encrypted: string | null = null;
 
-    if (password) {
+    if (inputCookie && typeof inputCookie === "string" && inputCookie.trim()) {
+      let clean = inputCookie.trim();
+      if (!clean.includes("=")) {
+        clean = `LEETCODE_SESSION=${clean}`;
+      }
+      sessionCookie = clean;
+      encrypted = encryptSession(sessionCookie);
+      await supabase
+        .from("profiles")
+        .update({
+          leetcode_session_encrypted: encrypted,
+          leetcode_session_synced_at: new Date().toISOString(),
+          ...(username ? { leetcode_username: username.trim() } : {}),
+        })
+        .eq("id", user.id);
+    } else if (password) {
       sessionCookie = await loginLeetCode(username ?? user.email ?? "", password);
       if (!sessionCookie) {
         return NextResponse.json(
-          { error: "LeetCode login failed. Check credentials, or reconnect later (2FA/captcha may be required)." },
-          { status: 401 }
+          {
+            error:
+              "LeetCode direct password login was blocked by Cloudflare/Captcha. Please paste your LEETCODE_SESSION cookie from browser DevTools, or connect your handle directly without a password.",
+          },
+          { status: 400 }
         );
       }
       encrypted = encryptSession(sessionCookie);
@@ -80,6 +115,7 @@ export async function POST(request: Request) {
         .update({
           leetcode_session_encrypted: encrypted,
           leetcode_session_synced_at: new Date().toISOString(),
+          ...(username ? { leetcode_username: username.trim() } : {}),
         })
         .eq("id", user.id);
     } else {
@@ -91,7 +127,7 @@ export async function POST(request: Request) {
         .maybeSingle();
       if (!profile?.leetcode_session_encrypted) {
         return NextResponse.json(
-          { error: "No stored LeetCode session. Provide username + password to connect." },
+          { error: "No stored LeetCode session. Provide username + password or paste your LEETCODE_SESSION cookie." },
           { status: 400 }
         );
       }
@@ -106,7 +142,10 @@ export async function POST(request: Request) {
 
     const slugs = await fetchSolvedSlugsFromSession(sessionCookie);
     if (slugs.length === 0) {
-      return NextResponse.json({ imported: 0, note: "No solved problems returned (session may be expired)." });
+      return NextResponse.json({
+        imported: 0,
+        note: "No solved problems returned (session cookie may be expired).",
+      });
     }
 
     const imported = await markSolved(supabase, user.id, slugs);
