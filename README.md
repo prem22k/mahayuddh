@@ -1,102 +1,111 @@
-# ⚔️ Mahayuddh (महायुद्ध)
+# ⚔️ Mahayuddh. (महायुद्ध)
 
 > **The Private DSA Arena for Developer Squads**  
-> Designed with the dark, tactile aesthetic of **Apple Music Web UI**, powered by **Next.js 15**, **Supabase**, **LeetCode GraphQL Engine**, and native **PWA Web Push Notifications**.
+> Designed with the dark, tactile aesthetic of **Apple Music Web UI**, powered by **Next.js 15 App Router**, **Supabase**, **LeetCode GraphQL Engine**, and interactive solving session controls.
 
 ---
 
-## 📸 Design Inspiration (Apple Music Web UI)
+## 📸 Layout & Design Philosophy
 
-The UI architecture translates the Apple Music Web layout directly into a high-performance developer workspace:
+Mahayuddh takes inspiration from the **Apple Music Web Player** and elevates it into a high-performance, dark-mode competitive programming arena:
 
 ```
 ┌─────────────────┬────────────────────────────────────────────────────────────────────────┐
-│   Mahayuddh    │ 🔍 Search problems, tags, squad...                [Squad] [All Sheets] │
+│  Mahayuddh.     │ 👤 Prem Sai (active)                              🔄 Sync  🔔 Alerts  │
 │                 ├────────────────────────────────────────────────────────────────────────┤
 │  🔍 Search ⌘K   │                                                                        │
-│  🏠 Arena       │  🔥 Top Picks for Squad (Hero Cards)                                   │
+│  🏠 Arena       │  🔥 Top Picks for Squad (Daily Highlights)                             │
 │  🏆 Leaderboard │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐  │
-│  📬 Suggestions │  │  Today POTD  │ │Streak Guardian│ │Upcoming Contest│ │ Top Suggestion │  │
+│  📬 Suggestions │  │  Today POTD  │ │Streak Guardian│ │Contest Arena │ │Suggestion Box│  │
+│  🗃️ Vault       │  │ #15 3Sum     │ │   14 Days    │ │ 1920 Rating  │ │  3 Challenges│  │
 │                 │  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘  │
-│  SHEETS/ROADMAP │                                                                        │
-│  📚 NeetCode150 │  🗂️ Browse DSA Topics (Category Bento Grid)                           │
-│  ⚡ Blind 75    │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐  │
-│  🎯 Striver SDE │  │  Arrays/Hash │ │  DP Patterns │ │ Graphs & BFS │ │ Binary Search│  │
-│                 │  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘  │
-│  SQUAD PLAYLISTS│                                                                        │
-│  🌲 Trees & BST │  📊 Squad Tracklist Leaderboard                                        │
-│  🧗 3AM Lore 🔥 │  #1  Prem Sai   🔥 14d   1920 Rating   [E:40 M:85 H:15]   [Suggest]    │
-│  ➕ New List    │  #2  Rahul K    🔥 8d    1810 Rating   [E:35 M:70 H:8]    [Suggest]    │
+│  ROADMAPS       │                                                                        │
+│  NeetCode 150   │  🗂️ Browse Topics (Dynamic Database Categories)                        │
+│  Blind 75       │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐  │
+│  Striver SDE    │  │ Arrays & Hash│ │ Two Pointers │ │  Dynamic Prog│ │ Trees & Tries│  │
+│                 │  │  30 Problems │ │  20 Problems │ │  45 Problems │ │  35 Problems │  │
+│  SQUAD LISTS    │  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘  │
+│  + Create List  │                                                                        │
 │                 │                                                                        │
 │  👤 Prem Sai 14d│                                                                        │
 ├─────────────────┴────────────────────────────────────────────────────────────────────────┤
-│  [⏮ ⏯ ⏭] 00:24:15 │ 🟢 [Medium] 3Sum - Two Pointers (LeetCode #15) │ [Notes] [Push 🔔]  │
+│             [⏮ ⏯ ⏭] 00:12:45 │ #15 3Sum • Medium (Two Pointers) │ [Notes] [Mark Solved]  │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🎨 UI Architecture & Aesthetics
+## 🎨 Design System & UI Architecture
 
-1. **Fixed Left Sidebar (Navigation & Lists):**
-   * **Brand & Search:** `⚔️ Mahayuddh` logo with `⌘K` global search button.
-   * **Core Arena Tabs:** Home / Arena, Leaderboard, Suggestion Box.
-   * **Curated Roadmaps (Library):** NeetCode 150, Blind 75, Striver SDE Sheet.
-   * **Squad Custom Playlists:** Group-created problem sets with emoji badges (`🌲 Trees & BST`, `🧗 3AM Lore 🔥`, `➕ New List`).
-   * **User Footer:** Profile avatar, LeetCode handle, and active streak flame badge.
+1. **Floating Sidebar Dock:**
+   * Inset navigation with `16px` corner radius and frosted liquid glass material (`backdrop-filter: blur(20px) saturate(180%)`).
+   * Minimalist typography wordmark: **`Mahayuddh.`** with glowing crimson accent dot.
+   * `⌘K` global search palette trigger with keyboard shortcuts.
+   * Navigation links for **Arena**, **Leaderboard**, **Suggestions**, and **Vault**.
+   * Curated roadmaps and user-created custom squad playlists.
+   * Profile card with user avatar (or initial fallback), handle, active streak, and sign-out hook.
 
-2. **Top Picks for Squad (Hero Cards):**
-   * Modeled after Apple Music’s *"Top Picks for You"*.
-   * Features dynamic hero tiles: **Problem of the Day (POTD)**, **Streak Guardian Countdown**, **Upcoming Contest Alert**, and **Incoming Friend Challenges**.
+2. **Compact Floating Bottom Player Dock (Apple Music Chrome Player):**
+   * Centered pill capsule dock (`max-width: 680px`, `56px` height, `border-radius: 9999px`).
+   * **Active Stopwatch Timer:** Live count-up stopwatch with pause, play, and reset controls.
+   * **LCD Problem Metadata:** Displays active problem `#number`, title, difficulty badge, category, and session status.
+   * **Problem-specific Scratchpad:** In-dock markdown notes drawer that auto-saves intuition, time/space complexity, and edge cases to local storage keyed by problem slug.
+   * **Direct LeetCode Action:** One-tap link to problem on LeetCode and **Mark Solved** action with confetti celebration.
+   * **Clean Idle State:** When no problem is selected, displays an idle prompt with quick search activation.
 
-3. **Category Bento Grid (DSA Topics):**
-   * Modeled after Apple Music’s *"Browse Categories"*.
-   * Vibrant, colorful gradient cards (*Crimson, Sunset, Purple, Emerald, Amber, Violet*) for topic mastery:
-     * *Arrays & Hashing*, *Two Pointers & Sliding Window*, *Dynamic Programming*, *Graphs & BFS/DFS*, *Trees & Tries*, *Binary Search & Monotonic Stack*.
-   * Displays topic completion progress (e.g. `24/30 Solved`).
-
-4. **Tracklist-Style Squad Leaderboard:**
-   * Modeled after Apple Music tracklist tables.
-   * Clean, hoverable rows displaying: Rank `#`, Avatar, Name, Streak Flame 🔥, Contest Rating Sparkline, Solved Breakdown (`Easy`/`Medium`/`Hard`), and Quick Suggest Action.
-
-5. **"Now Solving" Bottom Bar (Active Session Player):**
-   * Modeled after Apple Music’s bottom player bar.
-   * **Stopwatch / Timer:** Tracks active solve time with start/pause/reset.
-   * **Active Problem Display:** Difficulty badge, problem title, and LeetCode link.
-   * **Squad Live Presence:** Shows if friends are currently tackling the same problem.
-   * **Tools:** Intuition scratchpad drawer and instant solution check.
-
-*Complete token specification and component rules: [design.md](file:///home/premsaik/Desktop/Projects/mahayuddh/design.md)*
+3. **High-Contrast Dark Aesthetic:**
+   * OLED True Black background (`#000000`), dark glass elevations (`#1c1c1e`, `#2c2c2e`), and vibrant category gradients (*Crimson, Sunset, Royal, Purple, Emerald, Amber, Violet, Rose*).
+   * Clean typography-driven layouts without AI-slop emoji clutter.
 
 ---
 
 ## ⚡ Core Features
 
-### 1. 📊 LeetCode GraphQL Engine
-* Fetches Easy / Medium / Hard counts, acceptance rates, global rank, active streak calendar, contest ratings, and recent 20 accepted submissions directly from `https://leetcode.com/graphql`.
-* Caches responses with stale-while-revalidate for fast rendering and zero rate-limiting issues.
+### 1. 📊 LeetCode GraphQL Engine & Auto-Sync
+* Direct integration with `https://leetcode.com/graphql` querying live stats without third-party API dependencies.
+* Fetches:
+  * **Solved Problem Counts:** Easy, Medium, Hard, and Total solved.
+  * **Contest Metrics:** Contest rating, global ranking, and top percentage.
+  * **Daily Streak Calendar:** Continuous active streak days and active calendar history.
+  * **Recent Submissions:** Recent 20 accepted submissions for automated verification.
+* Manual and automatic background synchronization via [`/api/sync/leetcode`](file:///home/premsaik/Desktop/Projects/mahayuddh/app/api/sync/leetcode/route.ts).
 
-### 2. 📬 "Approach First" Suggestion Box
-* Challenge any friend to a specific LeetCode problem.
-* Attach a 3-line intuition note (e.g., *"Notice how you can reduce 2D DP to 1D with a rolling array"*).
-* **Auto-Verification:** The background sync monitors the friend's accepted submissions and automatically marks the challenge as completed.
+### 2. 🏠 Dynamic Arena Dashboard (`/`)
+* **Active User Badge:** Shows logged-in user profile avatar, username, and active green online indicator.
+* **Deterministic Problem of the Day (POTD):** Auto-selects a daily featured problem from the database with one-click "Start Solving" dock activation.
+* **Streak Guardian:** Aggregates cumulative squad streaks and highlights the leading member.
+* **Contest Standings Card:** Highlights peak squad contest rating.
+* **Suggestion Box Card:** Real-time count of pending peer challenges.
+* **Dynamic Topic Bento Grid:** Category cards extracted dynamically from indexed database problems with live problem counts and mathematical SVG vector patterns.
 
-### 3. 📚 Curated Sheets & Squad Playlists
-* Built-in roadmaps: **NeetCode 150**, **Blind 75**, **Striver SDE Sheet**.
-* Squad lists: Create custom lists (e.g., *"Meta 2026 High Frequency"*).
-* Real-time squad progress matrix showing who has solved which question.
+### 3. 🏆 Tracklist Squad Leaderboard (`/leaderboard`)
+* **Personal Standing Ribbon:** Top hero banner displaying the logged-in user's squad rank (`#1 in Squad`), contest rating, active streak, solved breakdown (`E / M / H`), and instant **"Sync Stats"** button.
+* **LeetCode Handle Connector:** In-app connection form for users who have not yet linked their handle.
+* **Multi-Metric Sorting Tabs:** Filter standings by *Contest Rating*, *Daily Streak*, *Hard Solved*, or *Speed Solvers*.
+* **Personalized Highlight:** Authenticated user row is highlighted with a crimson border and bold `"YOU"` badge.
+* **Peer Challenge Action:** One-tap button to challenge any squad mate.
 
-### 4. 🗃️ Squad Resource Vault
-* Pin algorithm templates (Monotonic Queue, Union-Find, Dijkstra).
-* Share company interview debriefs and OA question logs.
+### 4. 📚 Roadmaps & Squad Playlists (`/sheets/[slug]`)
+* **Standard Curated Roadmaps:** **NeetCode 150**, **Blind 75**, and **Striver SDE Sheet**.
+* **Squad Custom List Creator:** Interactive modal allowing squad members to create custom problem sheets with live problem search and multi-selection.
+* **Interactive Problem Table:**
+  * Category filter pills and instant search.
+  * One-click "Start Session" loading problems directly into the bottom player dock.
+  * Solved status toggles persisted to Supabase `user_problem_status`.
+  * Direct LeetCode external links.
 
-### 5. 📱 PWA & Web Push Notifications
-* Installable as a native standalone PWA on iOS (Safari 16.4+) and Android.
-* **Push Notifications:**
-  * 🔥 *Streak Guardian (9:30 PM):* Alert before midnight if daily streak is at risk.
-  * 📬 *New Suggestion:* Push alert when a friend challenges you.
-  * 😤 *Friend Nudges:* Nudge inactive friends with 1 tap.
-  * 🏆 *Contest Deltas:* Rating changes delivered post-contest.
+### 5. 📬 Approach-First Suggestion Box (`/suggestions`)
+* Challenge any squad mate to solve a specific LeetCode problem.
+* Attach a 3-line intuition note or hint without spoiling the solution.
+* **Auto-Verification:** The background sync monitors recent accepted submissions on LeetCode and automatically verifies completed challenges.
+
+### 6. 🗃️ Squad Resource Vault (`/vault`)
+* Centralized hub for sharing algorithm code templates (Union-Find, Dijkstra, Monotonic Stack, Segment Tree).
+* Company interview debriefs and Online Assessment (OA) question logs.
+
+### 7. 🔍 Global `⌘K` Search Modal
+* Instant problem search across all indexed roadmap questions by title, category, or problem number.
+* Launch active solving session directly from search results.
 
 ---
 
@@ -104,12 +113,12 @@ The UI architecture translates the Apple Music Web layout directly into a high-p
 
 | Layer | Technology |
 |---|---|
-| **Frontend** | Next.js 15 (App Router, Server Actions, React 19) |
-| **Styling** | Tailwind CSS v4 + Radix UI + Lucide Icons (Apple Music Tokens) |
+| **Framework** | Next.js 15.5+ (App Router, Server Actions, React 19) |
+| **Styling** | Tailwind CSS v4 + Glassmorphism Custom Properties + Lucide Icons |
 | **Database & Auth** | Supabase (PostgreSQL 16 + Row Level Security + Realtime) |
-| **PWA & Web Push** | Service Worker + Web Push API (`web-push` VAPID) |
-| **Data Source** | LeetCode Public GraphQL API |
-| **Hosting** | Vercel (Hobby Tier) |
+| **Data Engine** | LeetCode Public GraphQL API |
+| **State Management** | React Context (`AuthProvider`, `SolvingProvider`) + LocalStorage Persistence |
+| **Deployment** | Vercel (Edge Middleware + Static Page Generation) |
 
 ---
 
@@ -117,10 +126,10 @@ The UI architecture translates the Apple Music Web layout directly into a high-p
 
 ```sql
 -- 1. Profiles & Synced LeetCode Stats
-create table profiles (
+create table public.profiles (
   id uuid references auth.users primary key,
   username text unique not null,
-  leetcode_username text unique not null,
+  leetcode_username text,
   avatar_url text,
   contest_rating float default 1500,
   global_rank int,
@@ -128,49 +137,65 @@ create table profiles (
   total_easy int default 0,
   total_medium int default 0,
   total_hard int default 0,
-  last_synced_at timestamp with time zone
+  created_at timestamp with time zone default now()
 );
 
--- 2. Custom Squad Lists / Playlists
-create table custom_lists (
+-- 2. Custom Squad Lists & Roadmaps
+create table public.custom_lists (
   id uuid primary key default gen_random_uuid(),
+  slug text unique not null,
   title text not null,
   emoji text default '📁',
   description text,
   is_curated boolean default false,
-  created_by uuid references profiles(id)
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamp with time zone default now()
 );
 
-create table list_problems (
+-- 3. List Problems
+create table public.list_problems (
   id uuid primary key default gen_random_uuid(),
-  list_id uuid references custom_lists(id) on delete cascade,
+  list_id uuid references public.custom_lists(id) on delete cascade not null,
   title text not null,
   title_slug text not null,
-  difficulty text check (difficulty in ('Easy', 'Medium', 'Hard')),
-  category text
+  difficulty text check (difficulty in ('Easy', 'Medium', 'Hard')) not null,
+  category text not null,
+  order_index int default 0
 );
 
--- 3. Suggestions
-create table suggestions (
+-- 4. User Problem Status (Solve Matrix)
+create table public.user_problem_status (
   id uuid primary key default gen_random_uuid(),
-  from_user uuid references profiles(id),
-  to_user uuid references profiles(id),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  problem_slug text not null,
+  status text check (status in ('solved', 'attempted')) default 'solved',
+  notes text,
+  solved_at timestamp with time zone default now(),
+  unique (user_id, problem_slug)
+);
+
+-- 5. Suggestions (Peer Challenges)
+create table public.suggestions (
+  id uuid primary key default gen_random_uuid(),
+  from_user uuid references public.profiles(id) on delete cascade not null,
+  to_user uuid references public.profiles(id) on delete cascade not null,
   problem_slug text not null,
   problem_title text not null,
-  difficulty text check (difficulty in ('Easy', 'Medium', 'Hard')),
-  note text,
-  status text default 'pending' check (status in ('pending', 'completed', 'dismissed')),
-  created_at timestamp with time zone default now(),
-  completed_at timestamp with time zone
+  difficulty text check (difficulty in ('Easy', 'Medium', 'Hard')) not null,
+  category text not null,
+  intuition_note text,
+  status text check (status in ('pending', 'solved', 'archived')) default 'pending',
+  created_at timestamp with time zone default now()
 );
 
--- 4. Push Subscriptions
-create table push_subscriptions (
+-- 6. Shared Resources (Vault)
+create table public.shared_resources (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid references profiles(id) on delete cascade,
-  endpoint text unique not null,
-  p256dh text not null,
-  auth text not null,
+  author_id uuid references public.profiles(id) on delete cascade not null,
+  title text not null,
+  category text not null,
+  content text not null,
+  tags text[] default array[]::text[],
   created_at timestamp with time zone default now()
 );
 ```
@@ -179,31 +204,31 @@ create table push_subscriptions (
 
 ## 🚀 Getting Started
 
-### 1. Clone & Install
+### 1. Clone & Install Dependencies
 ```bash
-git clone https://github.com/your-username/mahayuddh.git
+git clone https://github.com/prem22k/mahayuddh.git
 cd mahayuddh
 npm install
 ```
 
 ### 2. Configure Environment (`.env.local`)
+Create a `.env.local` file with your Supabase credentials:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-
-NEXT_PUBLIC_VAPID_PUBLIC_KEY=your-vapid-public-key
-VAPID_PRIVATE_KEY=your-vapid-private-key
-VAPID_SUBJECT=mailto:admin@mahayuddh.app
 ```
 
-### 3. Run Development Server
+### 3. Initialize Supabase Database
+Run the SQL queries in [`supabase/schema.sql`](file:///home/premsaik/Desktop/Projects/mahayuddh/supabase/schema.sql) in the Supabase SQL Editor to configure tables, Row Level Security (RLS) policies, and seed curated roadmaps.
+
+### 4. Run Development Server
 ```bash
 npm run dev
 ```
-Visit [http://localhost:3000](http://localhost:3000) to enter the Arena.
+Open [http://localhost:3000](http://localhost:3000) to enter the Arena.
 
 ---
 
 ## 📄 License
-MIT License. Built for developer squads aiming for top-tier software engineering roles.
+MIT License. Built for competitive programming developer squads.
