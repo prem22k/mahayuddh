@@ -3,26 +3,38 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Search, X, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getAllProblems } from "@/lib/data/sheets";
+import { ListProblem } from "@/types/database";
+import { useSolving } from "@/components/providers/SolvingProvider";
 
 interface SearchModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const SAMPLE_PROBLEMS = [
-  { id: "1", title: "Two Sum", slug: "two-sum", difficulty: "Easy", category: "Arrays & Hashing" },
-  { id: "15", title: "3Sum", slug: "3sum", difficulty: "Medium", category: "Two Pointers" },
-  { id: "42", title: "Trapping Rain Water", slug: "trapping-rain-water", difficulty: "Hard", category: "Monotonic Stack" },
-  { id: "70", title: "Climbing Stairs", slug: "climbing-stairs", difficulty: "Easy", category: "Dynamic Programming" },
-  { id: "128", title: "Longest Consecutive Sequence", slug: "longest-consecutive-sequence", difficulty: "Medium", category: "Arrays & Hashing" },
-  { id: "200", title: "Number of Islands", slug: "number-of-islands", difficulty: "Medium", category: "Graphs" },
-  { id: "300", title: "Longest Increasing Subsequence", slug: "longest-increasing-subsequence", difficulty: "Medium", category: "Dynamic Programming" },
-  { id: "76", title: "Minimum Window Substring", slug: "minimum-window-substring", difficulty: "Hard", category: "Sliding Window" },
-];
-
 export function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const [query, setQuery] = useState("");
+  const [problems, setProblems] = useState<ListProblem[]>([]);
+  const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { startSolving } = useSolving();
+
+  useEffect(() => {
+    async function loadAll() {
+      if (isOpen && problems.length === 0) {
+        setLoading(true);
+        try {
+          const data = await getAllProblems();
+          setProblems(data);
+        } catch (e) {
+          console.error("Error loading search index:", e);
+        } finally {
+          setLoading(false);
+        }
+      }
+    }
+    loadAll();
+  }, [isOpen, problems.length]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -48,15 +60,16 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
 
   if (!isOpen) return null;
 
-  const filtered = SAMPLE_PROBLEMS.filter(
+  const filtered = problems.filter(
     (p) =>
       p.title.toLowerCase().includes(query.toLowerCase()) ||
       p.category.toLowerCase().includes(query.toLowerCase()) ||
-      p.id.includes(query)
+      p.title_slug.toLowerCase().includes(query.toLowerCase()) ||
+      p.order_index.toString().includes(query)
   );
 
   const getDifficultyBadge = (diff: string) => {
-    switch (diff.toLowerCase()) {
+    switch (diff?.toLowerCase()) {
       case "easy":
         return "text-[#30d158] bg-[#30d158]/10 border-[#30d158]/25";
       case "medium":
@@ -66,6 +79,17 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
       default:
         return "text-white/40";
     }
+  };
+
+  const handleSelectProblem = (p: ListProblem) => {
+    startSolving({
+      id: p.order_index,
+      title: p.title,
+      slug: p.title_slug,
+      difficulty: p.difficulty,
+      category: p.category,
+    });
+    onClose();
   };
 
   return (
@@ -91,7 +115,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
           />
           <button
             onClick={onClose}
-            className="p-1 text-white/40 hover:text-white rounded-lg transition-colors"
+            className="p-1 text-white/40 hover:text-white rounded-lg transition-colors cursor-pointer"
             aria-label="Close search"
           >
             <X className="w-4 h-4" />
@@ -100,47 +124,57 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
 
         {/* Results List */}
         <div className="max-h-[60vh] overflow-y-auto p-2 divide-y divide-white/[0.04]">
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className="p-8 text-center text-white/40 text-xs flex items-center justify-center gap-2">
+              <div className="w-4 h-4 animate-spin rounded-full border-2 border-white/20 border-t-[#fa586a]" />
+              <span>Indexing database problems...</span>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="p-8 text-center text-white/40 text-xs">
-              No matching problems found. Try searching by problem title, category, or number.
+              {query ? "No matching problems found." : "No problems available in database."}
             </div>
           ) : (
-            filtered.map((problem) => (
+            filtered.slice(0, 40).map((problem) => (
               <div
                 key={problem.id}
                 className="flex items-center justify-between p-3 rounded-2xl hover:bg-white/[0.04] transition-colors group cursor-pointer"
-                onClick={() => {
-                  window.open(`https://leetcode.com/problems/${problem.slug}/`, "_blank");
-                  onClose();
-                }}
+                onClick={() => handleSelectProblem(problem)}
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center font-mono text-xs text-white/40 font-bold group-hover:border-[#fa586a]/40 group-hover:text-white transition-colors">
-                    #{problem.id}
+                <div className="flex items-center gap-3 truncate">
+                  <div className="w-8 h-8 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center font-mono text-xs text-white/40 font-bold group-hover:border-[#fa586a]/40 group-hover:text-white transition-colors shrink-0">
+                    #{problem.order_index}
                   </div>
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-white group-hover:text-[#fa586a] transition-colors">
+                  <div className="flex flex-col truncate">
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="text-xs font-semibold text-white group-hover:text-[#fa586a] transition-colors truncate">
                         {problem.title}
                       </span>
                       <span
                         className={cn(
-                          "px-2 py-0.5 rounded-full text-[10px] font-semibold border",
+                          "px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0",
                           getDifficultyBadge(problem.difficulty)
                         )}
                       >
                         {problem.difficulty}
                       </span>
                     </div>
-                    <span className="text-[11px] text-white/35 mt-0.5">
+                    <span className="text-[11px] text-white/35 mt-0.5 truncate">
                       {problem.category}
                     </span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 text-white/35 group-hover:text-white transition-colors">
-                  <span className="text-[10px] hidden sm:inline">Solve on LeetCode</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
+                <div className="flex items-center gap-2 text-white/35 group-hover:text-white transition-colors shrink-0 pl-2">
+                  <span className="text-[10px] hidden sm:inline">Start Solving</span>
+                  <a
+                    href={`https://leetcode.com/problems/${problem.title_slug}/`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="p-1 rounded-lg hover:bg-white/[0.08] transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
                 </div>
               </div>
             ))
@@ -150,18 +184,14 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
         {/* Modal Footer */}
         <div className="p-3 bg-black/40 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-white/30">
           <div className="flex items-center gap-2">
-            <span>Quick Select:</span>
+            <span>Press</span>
             <kbd className="px-1.5 py-0.5 bg-white/[0.04] rounded border border-white/[0.06] font-mono text-[10px]">
-              ↑↓
+              Esc
             </kbd>
-            <span>navigate</span>
-            <kbd className="px-1.5 py-0.5 bg-white/[0.04] rounded border border-white/[0.06] font-mono text-[10px]">
-              ↵
-            </kbd>
-            <span>open</span>
+            <span>to exit</span>
           </div>
           <div className="text-[#fa586a] font-semibold text-[11px] tracking-wide">
-            Mahayuddh Index
+            {problems.length} Problems Indexed
           </div>
         </div>
       </div>

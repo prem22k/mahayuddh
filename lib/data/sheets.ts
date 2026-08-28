@@ -12,6 +12,17 @@ export async function getAllLists(): Promise<CustomList[]> {
   return data as CustomList[];
 }
 
+export async function getAllProblems(): Promise<ListProblem[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("list_problems")
+    .select("*")
+    .order("order_index", { ascending: true });
+
+  if (error || !data) return [];
+  return data as ListProblem[];
+}
+
 export async function getListWithProblems(slug: string): Promise<{
   list: CustomList | null;
   problems: ListProblem[];

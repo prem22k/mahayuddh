@@ -63,7 +63,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* ── Floating Bottom Bar (Now Solving) ───────────── */}
-      <NowSolvingBar />
+      <NowSolvingBar onSearchOpen={() => setIsSearchOpen(true)} />
 
       {/* ── Global Cmd+K Search Modal ───────────────────── */}
       <SearchModal

@@ -1,26 +1,39 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import React, { useState, useEffect, Suspense } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   ExternalLink,
   Search,
+  Play,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getListWithProblems, getSquadProblemStatuses, toggleProblemStatus } from "@/lib/data/sheets";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { useSolving } from "@/components/providers/SolvingProvider";
 import { CustomList, ListProblem, UserProblemStatus } from "@/types/database";
 
-export default function SheetPage() {
+function SheetContent() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const slug = (params?.slug as string) || "neetcode-150";
+  const initialCat = searchParams.get("category");
 
   const [list, setList] = useState<CustomList | null>(null);
   const [problems, setProblems] = useState<ListProblem[]>([]);
   const [statuses, setStatuses] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [selectedCategory, setSelectedCategory] = useState(initialCat || "All");
   const [searchQuery, setSearchQuery] = useState("");
+
+  const { user } = useAuth();
+  const { activeProblem, startSolving } = useSolving();
+
+  useEffect(() => {
+    if (initialCat) {
+      setSelectedCategory(initialCat);
+    }
+  }, [initialCat]);
 
   useEffect(() => {
     async function loadSheetData() {
@@ -48,8 +61,6 @@ export default function SheetPage() {
     loadSheetData();
   }, [slug]);
 
-  const { user } = useAuth();
-
   const handleToggle = async (problemSlug: string) => {
     if (!user) return;
     const nextVal = !statuses[problemSlug];
@@ -57,13 +68,29 @@ export default function SheetPage() {
     await toggleProblemStatus(user.id, problemSlug, nextVal);
   };
 
+  const handleStartSolving = (p: ListProblem) => {
+    startSolving({
+      id: p.order_index,
+      title: p.title,
+      slug: p.title_slug,
+      difficulty: p.difficulty,
+      category: p.category,
+    });
+  };
+
   const categories = ["All", ...Array.from(new Set(problems.map((p) => p.category)))];
 
   const filteredProblems = problems.filter((problem) => {
-    const matchesCat = selectedCategory === "All" || problem.category === selectedCategory;
+    const matchesCat =
+      selectedCategory === "All" ||
+      problem.category.toLowerCase().includes(selectedCategory.toLowerCase()) ||
+      selectedCategory.toLowerCase().includes(problem.category.toLowerCase());
+
     const matchesSearch =
       problem.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      problem.title_slug.toLowerCase().includes(searchQuery.toLowerCase());
+      problem.title_slug.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      problem.order_index.toString().includes(searchQuery);
+
     return matchesCat && matchesSearch;
   });
 
@@ -147,7 +174,7 @@ export default function SheetPage() {
           <div className="col-span-6 md:col-span-5">Problem</div>
           <div className="col-span-3 hidden md:block">Category</div>
           <div className="col-span-3 md:col-span-2 text-center">Status</div>
-          <div className="col-span-2 md:col-span-1 text-right">LeetCode</div>
+          <div className="col-span-2 md:col-span-1 text-right">Actions</div>
         </div>
 
         <div className="divide-y divide-white/[0.04]">
@@ -158,17 +185,30 @@ export default function SheetPage() {
           ) : (
             filteredProblems.map((problem, idx) => {
               const isSolved = !!statuses[problem.title_slug];
+              const isCurrentActive = activeProblem?.slug === problem.title_slug;
+
               return (
                 <div
                   key={problem.id}
-                  className="grid grid-cols-12 gap-3 px-6 py-3 items-center hover:bg-white/[0.03] transition-colors group text-xs"
+                  className={cn(
+                    "grid grid-cols-12 gap-3 px-6 py-3 items-center hover:bg-white/[0.03] transition-colors group text-xs cursor-pointer",
+                    isCurrentActive && "bg-white/[0.04]"
+                  )}
+                  onClick={() => handleStartSolving(problem)}
                 >
-                  <div className="col-span-1 text-center font-mono text-[11px] text-white/30 font-semibold">
-                    {idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
+                  <div className="col-span-1 text-center font-mono text-[11px] text-white/30 font-semibold flex items-center justify-center">
+                    {isCurrentActive ? (
+                      <span className="w-2 h-2 rounded-full bg-[#fa586a] animate-pulse" />
+                    ) : (
+                      idx + 1 < 10 ? `0${idx + 1}` : idx + 1
+                    )}
                   </div>
 
                   <div className="col-span-6 md:col-span-5 flex items-center gap-2.5 truncate">
-                    <span className="font-semibold text-white truncate group-hover:text-[#fa586a] transition-colors">
+                    <span className={cn(
+                      "font-semibold truncate transition-colors",
+                      isCurrentActive ? "text-[#fa586a]" : "text-white group-hover:text-[#fa586a]"
+                    )}>
                       {problem.title}
                     </span>
                     <span
@@ -185,7 +225,7 @@ export default function SheetPage() {
                     {problem.category}
                   </div>
 
-                  <div className="col-span-3 md:col-span-2 flex justify-center">
+                  <div className="col-span-3 md:col-span-2 flex justify-center" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => handleToggle(problem.title_slug)}
                       className={cn(
@@ -199,7 +239,18 @@ export default function SheetPage() {
                     </button>
                   </div>
 
-                  <div className="col-span-2 md:col-span-1 flex justify-end">
+                  <div className="col-span-2 md:col-span-1 flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => handleStartSolving(problem)}
+                      title="Set as Active in Player Bar"
+                      className={cn(
+                        "p-1.5 rounded-lg transition-colors cursor-pointer",
+                        isCurrentActive ? "text-[#fa586a] bg-[#fa586a]/15" : "text-white/30 hover:text-white hover:bg-white/[0.06]"
+                      )}
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                    </button>
+
                     <a
                       href={`https://leetcode.com/problems/${problem.title_slug}/`}
                       target="_blank"
@@ -217,5 +268,18 @@ export default function SheetPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SheetPage() {
+  return (
+    <Suspense fallback={
+      <div className="h-[60vh] flex flex-col items-center justify-center gap-3 text-white/40">
+        <div className="w-7 h-7 animate-spin rounded-full border-2 border-white/10 border-t-[#fa586a]" />
+        <span className="text-xs font-medium tracking-wide">Loading roadmap...</span>
+      </div>
+    }>
+      <SheetContent />
+    </Suspense>
   );
 }

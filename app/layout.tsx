@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 import { AuthProvider } from "@/components/providers/AuthProvider";
+import { SolvingProvider } from "@/components/providers/SolvingProvider";
 
 export const metadata: Metadata = {
   title: "Mahayuddh | Developer Squad DSA Arena",
@@ -34,7 +35,9 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className="bg-surface-base text-txt-primary antialiased selection:bg-apple-accent selection:text-white">
         <AuthProvider>
-          <AppShell>{children}</AppShell>
+          <SolvingProvider>
+            <AppShell>{children}</AppShell>
+          </SolvingProvider>
         </AuthProvider>
       </body>
     </html>

@@ -7,35 +7,45 @@ import {
   RotateCcw,
   ExternalLink,
   X,
+  Sparkles,
 } from "lucide-react";
 import { cn, formatTime } from "@/lib/utils";
+import { useSolving } from "@/components/providers/SolvingProvider";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { toggleProblemStatus } from "@/lib/data/sheets";
 
-interface ActiveProblem {
-  id: string;
-  title: string;
-  slug: string;
-  difficulty: "Easy" | "Medium" | "Hard";
-  category: string;
+interface NowSolvingBarProps {
+  onSearchOpen?: () => void;
 }
 
-export function NowSolvingBar() {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [seconds, setSeconds] = useState(1455);
+export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
+  const { user } = useAuth();
+  const {
+    activeProblem,
+    isPlaying,
+    setIsPlaying,
+    seconds,
+    setSeconds,
+  } = useSolving();
+
   const [isScratchpadOpen, setIsScratchpadOpen] = useState(false);
   const [scratchpadNote, setScratchpadNote] = useState("");
-  const [activeProblem] = useState<ActiveProblem>({
-    id: "15",
-    title: "3Sum",
-    slug: "3sum",
-    difficulty: "Medium",
-    category: "Two Pointers",
-  });
   const [isCompleted, setIsCompleted] = useState(false);
+
+  // Load scratchpad note whenever activeProblem changes
+  useEffect(() => {
+    if (activeProblem?.slug) {
+      const savedNote = localStorage.getItem(`mahayuddh_notes_${activeProblem.slug}`) || "";
+      setScratchpadNote(savedNote);
+    } else {
+      setScratchpadNote("");
+    }
+  }, [activeProblem?.slug]);
 
   // Stopwatch interval
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
-    if (isPlaying) {
+    if (isPlaying && activeProblem) {
       interval = setInterval(() => {
         setSeconds((prev) => prev + 1);
       }, 1000);
@@ -43,23 +53,45 @@ export function NowSolvingBar() {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isPlaying]);
+  }, [isPlaying, activeProblem, setSeconds]);
+
+  const handleSaveNote = (text: string) => {
+    setScratchpadNote(text);
+    if (activeProblem?.slug) {
+      localStorage.setItem(`mahayuddh_notes_${activeProblem.slug}`, text);
+    }
+  };
 
   const handleComplete = async () => {
+    if (!activeProblem) return;
     setIsCompleted(true);
     setIsPlaying(false);
-    const confetti = (await import("canvas-confetti")).default;
-    confetti({
-      particleCount: 60,
-      spread: 70,
-      origin: { y: 0.9 },
-      colors: ["#fa586a", "#30d158", "#ffd60a", "#0a84ff"],
-    });
+
+    if (user) {
+      try {
+        await toggleProblemStatus(user.id, activeProblem.slug, true);
+      } catch (err) {
+        console.error("Error marking problem as solved in Supabase:", err);
+      }
+    }
+
+    try {
+      const confetti = (await import("canvas-confetti")).default;
+      confetti({
+        particleCount: 60,
+        spread: 70,
+        origin: { y: 0.9 },
+        colors: ["#fa586a", "#30d158", "#ffd60a", "#0a84ff"],
+      });
+    } catch (e) {
+      // ignore
+    }
+
     setTimeout(() => setIsCompleted(false), 4000);
   };
 
   const getDifficultyBadge = (diff: string) => {
-    switch (diff.toLowerCase()) {
+    switch (diff?.toLowerCase()) {
       case "easy":
         return "text-[#30d158] bg-[#30d158]/10 border-[#30d158]/25";
       case "medium":
@@ -74,11 +106,11 @@ export function NowSolvingBar() {
   return (
     <>
       {/* ── Scratchpad Popover ─────────────────────────── */}
-      {isScratchpadOpen && (
+      {isScratchpadOpen && activeProblem && (
         <div className="fixed bottom-[calc(var(--bottom-bar-height)+var(--bottom-bar-margin)+8px)] right-6 w-96 max-w-[calc(100vw-3rem)] bg-[#1c1c1e]/95 backdrop-blur-2xl border border-white/[0.1] rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] z-[150] p-4">
           <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
             <span className="text-xs font-semibold text-white pl-1">
-              Intuition & Scratchpad
+              Notes • {activeProblem.title}
             </span>
             <button
               onClick={() => setIsScratchpadOpen(false)}
@@ -90,18 +122,18 @@ export function NowSolvingBar() {
           <div className="mt-3">
             <textarea
               value={scratchpadNote}
-              onChange={(e) => setScratchpadNote(e.target.value)}
-              placeholder="Write your 3-line approach / intuition before coding..."
+              onChange={(e) => handleSaveNote(e.target.value)}
+              placeholder="Write your intuition, time/space complexity, or edge cases..."
               rows={4}
               className="w-full bg-white/[0.04] border border-white/[0.06] rounded-xl p-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 resize-none font-mono"
             />
             <div className="mt-2 flex justify-between items-center text-[10px] text-white/30 pl-1">
-              <span>Saved locally to active solve session</span>
+              <span>Saved locally for this problem</span>
               <button
                 onClick={() => setIsScratchpadOpen(false)}
-                className="px-3 py-1 bg-[#fa586a] text-white rounded-full font-medium text-xs hover:opacity-90 transition-opacity"
+                className="px-3 py-1 bg-[#fa586a] text-white rounded-full font-medium text-xs hover:opacity-90 transition-opacity cursor-pointer"
               >
-                Save
+                Done
               </button>
             </div>
           </div>
@@ -114,7 +146,8 @@ export function NowSolvingBar() {
         <div className="flex items-center gap-2 pl-2">
           <button
             onClick={() => setSeconds(0)}
-            className="p-2 rounded-full text-white/35 hover:text-white hover:bg-white/[0.06] transition-colors"
+            disabled={!activeProblem}
+            className="p-2 rounded-full text-white/35 hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             title="Reset Timer"
             aria-label="Reset Timer"
           >
@@ -122,7 +155,13 @@ export function NowSolvingBar() {
           </button>
 
           <button
-            onClick={() => setIsPlaying(!isPlaying)}
+            onClick={() => {
+              if (!activeProblem) {
+                if (onSearchOpen) onSearchOpen();
+                return;
+              }
+              setIsPlaying(!isPlaying);
+            }}
             className="w-9 h-9 rounded-full bg-white hover:bg-white/90 text-black flex items-center justify-center shadow-subtle transition-transform active:scale-95 cursor-pointer"
             aria-label={isPlaying ? "Pause Timer" : "Start Timer"}
           >
@@ -138,80 +177,101 @@ export function NowSolvingBar() {
               {formatTime(seconds)}
             </span>
             <span className="text-[9px] text-white/35 uppercase tracking-wider font-semibold">
-              {isPlaying ? "Solving" : "Paused"}
+              {activeProblem ? (isPlaying ? "Solving" : "Paused") : "Idle"}
             </span>
           </div>
         </div>
 
         {/* Center: Problem Metadata (LCD Track Info) */}
         <div className="flex items-center justify-center gap-3 flex-1 max-w-xl mx-auto truncate px-4">
-          <div className="w-9 h-9 rounded-xl bg-white/[0.05] border border-white/[0.06] flex items-center justify-center shrink-0 font-mono text-[11px] font-bold text-white/80">
-            #{activeProblem.id}
-          </div>
+          {activeProblem ? (
+            <>
+              <div className="w-9 h-9 rounded-xl bg-white/[0.05] border border-white/[0.06] flex items-center justify-center shrink-0 font-mono text-[11px] font-bold text-white/80">
+                #{activeProblem.id}
+              </div>
 
-          <div className="flex flex-col truncate">
-            <div className="flex items-center gap-2 truncate">
-              <span className="text-[13px] font-semibold text-white truncate">
-                {activeProblem.title}
-              </span>
-              <span
-                className={cn(
-                  "px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0",
-                  getDifficultyBadge(activeProblem.difficulty)
-                )}
-              >
-                {activeProblem.difficulty}
-              </span>
-              <span className="text-[11px] text-white/25 hidden lg:inline">
-                • {activeProblem.category}
-              </span>
+              <div className="flex flex-col truncate">
+                <div className="flex items-center gap-2 truncate">
+                  <span className="text-[13px] font-semibold text-white truncate">
+                    {activeProblem.title}
+                  </span>
+                  <span
+                    className={cn(
+                      "px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0",
+                      getDifficultyBadge(activeProblem.difficulty)
+                    )}
+                  >
+                    {activeProblem.difficulty}
+                  </span>
+                  {activeProblem.category && (
+                    <span className="text-[11px] text-white/25 hidden lg:inline">
+                      • {activeProblem.category}
+                    </span>
+                  )}
+                </div>
+                <div className="text-[10px] text-white/35 truncate mt-0.5">
+                  {isPlaying ? "Session in progress" : "Session paused • Click play to continue"}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-2 text-white/35 text-xs">
+              <span>No problem active • Select a problem from any roadmap or search</span>
             </div>
-            <div className="text-[10px] text-white/35 truncate mt-0.5">
-              Rahul & Arjun are also active
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Right: Quick Actions */}
         <div className="flex items-center gap-2 pr-2">
-          {/* Scratchpad */}
-          <button
-            onClick={() => setIsScratchpadOpen(!isScratchpadOpen)}
-            className={cn(
-              "px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors hidden sm:flex items-center cursor-pointer",
-              isScratchpadOpen
-                ? "bg-white/[0.1] border-white/[0.14] text-white"
-                : "bg-white/[0.03] border-white/[0.06] text-white/40 hover:text-white hover:bg-white/[0.06]"
-            )}
-          >
-            Notes
-          </button>
+          {activeProblem ? (
+            <>
+              {/* Scratchpad */}
+              <button
+                onClick={() => setIsScratchpadOpen(!isScratchpadOpen)}
+                className={cn(
+                  "px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors hidden sm:flex items-center cursor-pointer",
+                  isScratchpadOpen
+                    ? "bg-white/[0.1] border-white/[0.14] text-white"
+                    : "bg-white/[0.03] border-white/[0.06] text-white/40 hover:text-white hover:bg-white/[0.06]"
+                )}
+              >
+                Notes
+              </button>
 
-          {/* LeetCode Link */}
-          <a
-            href={`https://leetcode.com/problems/${activeProblem.slug}/`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-2 rounded-full bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] text-white/40 hover:text-white transition-colors"
-            title="Open on LeetCode"
-            aria-label="Open on LeetCode"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
+              {/* LeetCode Link */}
+              <a
+                href={`https://leetcode.com/problems/${activeProblem.slug}/`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-full bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] text-white/40 hover:text-white transition-colors"
+                title="Open on LeetCode"
+                aria-label="Open on LeetCode"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
 
-          {/* Mark Solved */}
-          <button
-            onClick={handleComplete}
-            disabled={isCompleted}
-            className={cn(
-              "px-3.5 py-1.5 rounded-full font-semibold text-xs transition-all cursor-pointer",
-              isCompleted
-                ? "bg-[#30d158] text-black"
-                : "bg-[#fa586a] hover:bg-[#fa586a]/90 text-white shadow-glow"
-            )}
-          >
-            {isCompleted ? "Solved" : "Mark Solved"}
-          </button>
+              {/* Mark Solved */}
+              <button
+                onClick={handleComplete}
+                disabled={isCompleted}
+                className={cn(
+                  "px-3.5 py-1.5 rounded-full font-semibold text-xs transition-all cursor-pointer",
+                  isCompleted
+                    ? "bg-[#30d158] text-black"
+                    : "bg-[#fa586a] hover:bg-[#fa586a]/90 text-white shadow-glow"
+                )}
+              >
+                {isCompleted ? "Solved" : "Mark Solved"}
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={onSearchOpen}
+              className="px-3.5 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/50 hover:text-white text-xs font-semibold transition-colors cursor-pointer"
+            >
+              Find Problem
+            </button>
+          )}
         </div>
       </div>
     </>
