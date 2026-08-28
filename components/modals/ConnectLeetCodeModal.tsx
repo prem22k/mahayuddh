@@ -11,7 +11,7 @@ interface ConnectLeetCodeModalProps {
 }
 
 export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLeetCodeModalProps) {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -32,7 +32,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${(await user.getIdToken?.()) ?? ""}`,
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
         },
         body: JSON.stringify({ username, password }),
       });

@@ -17,7 +17,6 @@ import { getPendingSuggestionCount } from "@/lib/data/suggestions";
 import { getCatalogTopicsSummary } from "@/lib/data/problems";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { ConnectLeetCodeModal } from "@/components/modals/ConnectLeetCodeModal";
 import { Profile, CustomList, ListProblem, TriState } from "@/types/database";
 
 const GRADIENTS = [
@@ -41,7 +40,7 @@ const PATTERNS = [
 ];
 
 export default function ArenaPage() {
-  const { profile, user, refreshProfile } = useAuth();
+  const { profile, user } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [lists, setLists] = useState<CustomList[]>([]);
   const [problems, setProblems] = useState<ListProblem[]>([]);

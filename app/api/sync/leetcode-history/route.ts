@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { loginLeetCode, fetchSolvedSlugsFromSession } from "@/lib/leetcode";
 import { encryptSession } from "@/lib/leetcodeSession";
 
 // Marks a batch of solved slugs via the existing SECURITY DEFINER RPC, preserving
 // manual "attempted" flags. Chunked to stay within RPC array limits.
 async function markSolved(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   slugs: string[]
 ): Promise<number> {
@@ -81,13 +81,11 @@ export async function POST(request: Request) {
         .select("leetcode_session_encrypted")
         .eq("id", user.id)
         .single();
-      if (!profile?.leetcode_session_encrypted) {
-        return NextResponse.json(
-          { error: "No stored LeetCode session. Provide username + password to connect." },
-          { status: 400 }
-        );
-      }
-      encrypted = profile.leetcode_session_encrypted;
+      encrypted = profile?.leetcode_session_encrypted ?? null;
+    }
+
+    if (!encrypted) {
+      return NextResponse.json({ error: "No session available" }, { status: 400 });
     }
 
     const { decryptSession } = await import("@/lib/leetcodeSession");
