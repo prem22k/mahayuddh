@@ -5,15 +5,19 @@ import {
   Copy,
   Check,
   Plus,
+  BookOpen,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getSharedResources, createSharedResource } from "@/lib/data/vault";
 import { SharedResource, ResourceCategory } from "@/types/database";
 import { useAuth } from "@/components/providers/AuthProvider";
 
+type TabFilter = "All" | ResourceCategory;
+
 export default function VaultPage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<ResourceCategory>("Template");
+  const [activeTab, setActiveTab] = useState<TabFilter>("All");
   const [resources, setResources] = useState<SharedResource[]>([]);
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -29,7 +33,8 @@ export default function VaultPage() {
     async function loadResources() {
       setLoading(true);
       try {
-        const data = await getSharedResources(activeTab);
+        const categoryParam = activeTab === "All" ? undefined : (activeTab as ResourceCategory);
+        const data = await getSharedResources(categoryParam);
         setResources(data);
       } catch (err) {
         console.error("Error loading resources:", err);
@@ -48,14 +53,14 @@ export default function VaultPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !content) return;
+    if (!title.trim() || !content.trim()) return;
 
     setSubmitting(true);
     try {
       const created = await createSharedResource({
-        title,
+        title: title.trim(),
         category,
-        content,
+        content: content.trim(),
         authorId: user?.id,
       });
 
@@ -84,57 +89,38 @@ export default function VaultPage() {
             Knowledge Vault
           </h1>
           <p className="text-xs text-white/40 mt-1">
-            Reusable algorithm templates and real-world company interview debriefs.
+            Reusable algorithm templates, company interview debriefs, and cheat sheets.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 self-start md:self-auto">
+        <div className="flex items-center gap-3 self-start md:self-auto flex-wrap">
           {/* Add Resource Button */}
           <button
             onClick={() => setIsModalOpen(true)}
-            className="px-3.5 py-1.5 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white font-semibold text-xs flex items-center gap-1.5 shadow-glow cursor-pointer"
+            className="px-4 py-2 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white font-semibold text-xs flex items-center gap-1.5 shadow-glow cursor-pointer transition-all"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add to Vault</span>
           </button>
-
-          {/* Tab Pills (Clean Apple Music Text Pills) */}
-          <div className="flex items-center p-1 bg-white/[0.04] rounded-full border border-white/[0.06]">
-            <button
-              onClick={() => setActiveTab("Template")}
-              className={cn(
-                "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
-                activeTab === "Template"
-                  ? "bg-white/[0.12] text-white shadow-sm"
-                  : "text-white/40 hover:text-white/80"
-              )}
-            >
-              Templates
-            </button>
-            <button
-              onClick={() => setActiveTab("Interview Log")}
-              className={cn(
-                "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
-                activeTab === "Interview Log"
-                  ? "bg-white/[0.12] text-white shadow-sm"
-                  : "text-white/40 hover:text-white/80"
-              )}
-            >
-              Interview Logs
-            </button>
-            <button
-              onClick={() => setActiveTab("Cheat Sheet")}
-              className={cn(
-                "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
-                activeTab === "Cheat Sheet"
-                  ? "bg-white/[0.12] text-white shadow-sm"
-                  : "text-white/40 hover:text-white/80"
-              )}
-            >
-              Cheat Sheets
-            </button>
-          </div>
         </div>
+      </div>
+
+      {/* Tab Filter Pills */}
+      <div className="flex items-center p-1 bg-white/[0.04] rounded-full border border-white/[0.06] w-fit flex-wrap gap-1">
+        {(["All", "Template", "Interview Log", "Cheat Sheet", "Article"] as TabFilter[]).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={cn(
+              "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
+              activeTab === tab
+                ? "bg-white/[0.12] text-white shadow-sm"
+                : "text-white/40 hover:text-white/80"
+            )}
+          >
+            {tab === "All" ? "All Resources" : tab === "Template" ? "Code Templates" : tab}
+          </button>
+        ))}
       </div>
 
       {/* ── Content ── */}
@@ -149,58 +135,75 @@ export default function VaultPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          {resources.map((item) => (
-            <div
-              key={item.id}
-              className="bg-[#1c1c1e]/60 border border-white/[0.06] rounded-2xl overflow-hidden shadow-subtle backdrop-blur-xl"
-            >
-              <div className="p-5 border-b border-white/[0.06] flex items-center justify-between bg-white/[0.02]">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded-md bg-white/[0.06] text-white/70 border border-white/[0.08] text-[10px] font-bold uppercase tracking-wider">
-                      {item.category}
-                    </span>
-                    <h3 className="text-sm font-bold text-white">{item.title}</h3>
+          {resources.map((item) => {
+            const authorName = item.author_profile?.username || "Squad Member";
+            const authorAvatar = item.author_profile?.avatar_url;
+
+            return (
+              <div
+                key={item.id}
+                className="bg-[#1c1c1e]/60 border border-white/[0.06] rounded-2xl overflow-hidden shadow-subtle backdrop-blur-xl transition-all hover:border-white/[0.1]"
+              >
+                <div className="p-5 border-b border-white/[0.06] flex items-center justify-between bg-white/[0.02] flex-wrap gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full bg-white/[0.06] text-white/80 border border-white/[0.08] text-[10px] font-bold uppercase tracking-wider">
+                        {item.category}
+                      </span>
+                      <h3 className="text-sm md:text-base font-bold text-white">{item.title}</h3>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5 text-[11px] text-white/40">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-4 h-4 rounded-full bg-[#fa586a]/20 flex items-center justify-center text-[9px] font-bold text-white overflow-hidden">
+                          {authorAvatar ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={authorAvatar} alt={authorName} className="w-full h-full object-cover" />
+                          ) : (
+                            <User className="w-2.5 h-2.5" />
+                          )}
+                        </div>
+                        <span className="font-semibold text-white/60">@{authorName}</span>
+                      </div>
+                      <span>•</span>
+                      <span>Added on {new Date(item.created_at).toLocaleDateString()}</span>
+                    </div>
                   </div>
-                  <span className="text-[11px] text-white/30 mt-1 block">
-                    Added on {new Date(item.created_at).toLocaleDateString()}
-                  </span>
+
+                  <button
+                    onClick={() => handleCopy(item.id, item.content)}
+                    className="px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-white/70 hover:text-white transition-all flex items-center gap-1.5 text-xs cursor-pointer shadow-sm"
+                    title="Copy content to clipboard"
+                  >
+                    {copiedId === item.id ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-[#30d158]" />
+                        <span className="text-[#30d158] text-[11px] font-semibold">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span className="text-[11px] font-semibold">Copy</span>
+                      </>
+                    )}
+                  </button>
                 </div>
 
-                <button
-                  onClick={() => handleCopy(item.id, item.content)}
-                  className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-white/50 hover:text-white transition-all flex items-center gap-1.5 text-xs cursor-pointer"
-                  title="Copy content"
-                >
-                  {copiedId === item.id ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-[#30d158]" />
-                      <span className="text-[#30d158] text-[11px] font-medium">Copied</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span className="text-[11px] font-medium">Copy</span>
-                    </>
-                  )}
-                </button>
+                <div className="p-5 bg-black/40 overflow-x-auto font-mono text-xs text-white/85 leading-relaxed whitespace-pre-wrap">
+                  {item.content}
+                </div>
               </div>
-
-              <div className="p-5 bg-black/40 overflow-x-auto font-mono text-xs text-white/80 leading-relaxed whitespace-pre-wrap">
-                {item.content}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {/* ── Add Modal ── */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 select-none">
           <div className="fixed inset-0 bg-black/80 backdrop-blur-md" onClick={() => setIsModalOpen(false)} />
           <div className="relative w-full max-w-lg bg-[#1c1c1e] border border-white/[0.1] rounded-3xl shadow-modal p-6 z-10 animate-in fade-in zoom-in-95">
             <h2 className="text-xl font-bold text-white mb-1">Add to Knowledge Vault</h2>
-            <p className="text-xs text-white/40 mb-5">Share an algorithm template or interview debrief.</p>
+            <p className="text-xs text-white/40 mb-5">Share an algorithm template or interview debrief with your squad.</p>
 
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
@@ -220,11 +223,12 @@ export default function VaultPage() {
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value as ResourceCategory)}
-                  className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-[#fa586a]/60"
+                  className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-[#fa586a]/60 cursor-pointer"
                 >
                   <option value="Template" className="bg-[#1c1c1e] text-white">Code Template</option>
                   <option value="Interview Log" className="bg-[#1c1c1e] text-white">Interview Log</option>
                   <option value="Cheat Sheet" className="bg-[#1c1c1e] text-white">Cheat Sheet</option>
+                  <option value="Article" className="bg-[#1c1c1e] text-white">Article / Deep Dive</option>
                 </select>
               </div>
 
@@ -234,7 +238,7 @@ export default function VaultPage() {
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   placeholder="Write your template explanation, complexity, and code snippet..."
-                  rows={6}
+                  rows={7}
                   className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl p-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 font-mono resize-none"
                   required
                 />
@@ -244,14 +248,14 @@ export default function VaultPage() {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-full bg-white/[0.04] text-white/50 hover:text-white text-xs font-semibold transition-colors"
+                  className="px-4 py-2 rounded-full bg-white/[0.04] text-white/50 hover:text-white text-xs font-semibold transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-2 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white text-xs font-semibold shadow-glow transition-all disabled:opacity-50"
+                  className="px-4 py-2 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white text-xs font-semibold shadow-glow transition-all disabled:opacity-50 cursor-pointer"
                 >
                   {submitting ? "Saving..." : "Save to Vault"}
                 </button>

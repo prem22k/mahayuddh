@@ -37,7 +37,10 @@ export async function createSharedResource(params: {
       author_id: params.authorId || null,
       external_url: params.externalUrl || null,
     })
-    .select()
+    .select(`
+      *,
+      author_profile:author_id (id, username, leetcode_username, avatar_url)
+    `)
     .maybeSingle();
 
   if (error || !data) return null;
