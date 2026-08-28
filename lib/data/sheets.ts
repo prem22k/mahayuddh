@@ -299,6 +299,37 @@ export async function toggleProblemStatus(userId: string, problemSlug: string, i
   return setProblemStatus(userId, problemSlug, isSolved ? "solved" : "unsolved");
 }
 
+export async function batchSetProblemStatuses(
+  userId: string,
+  slugs: string[],
+  next: TriState
+): Promise<boolean> {
+  const supabase = createClient();
+  if (slugs.length === 0) return true;
+
+  if (next === "unsolved") {
+    const { error } = await supabase
+      .from("user_problem_status")
+      .delete()
+      .eq("user_id", userId)
+      .in("problem_slug", slugs);
+    return !error;
+  }
+
+  const rows = slugs.map((slug) => ({
+    user_id: userId,
+    problem_slug: slug,
+    status: next,
+    solved_at: new Date().toISOString(),
+  }));
+
+  const { error } = await supabase
+    .from("user_problem_status")
+    .upsert(rows, { onConflict: "user_id,problem_slug" });
+
+  return !error;
+}
+
 // Joins a curated sheet's problems with the catalog + the user's status map.
 export async function getSheetWithCatalog(
   slug: string,
