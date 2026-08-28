@@ -1,12 +1,22 @@
 import { NextResponse } from "next/server";
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 import { loginLeetCode, fetchSolvedSlugsFromSession } from "@/lib/leetcode";
-import { encryptSession } from "@/lib/leetcodeSession";
+import { encryptSession, decryptSession } from "@/lib/leetcodeSession";
+
+function getServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
+  if (!url || !serviceKey) return null;
+  return createClient(url, serviceKey, { auth: { persistSession: false } });
+}
+
+type ServiceClient = NonNullable<ReturnType<typeof getServiceClient>>;
 
 // Marks a batch of solved slugs via the existing SECURITY DEFINER RPC, preserving
 // manual "attempted" flags. Chunked to stay within RPC array limits.
 async function markSolved(
-  supabase: SupabaseClient,
+  supabase: ServiceClient,
   userId: string,
   slugs: string[]
 ): Promise<number> {
@@ -33,9 +43,9 @@ export async function POST(request: Request) {
   const anonUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabase = getServiceClient();
 
-  if (!anonUrl || !anonKey || !serviceKey) {
+  if (!anonUrl || !anonKey || !supabase) {
     return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
   }
 
@@ -51,8 +61,6 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({}));
   const { username, password }: { username?: string; password?: string } = body;
-
-  const supabase = createClient(anonUrl, serviceKey, { auth: { persistSession: false } });
 
   try {
     let sessionCookie: string | null = null;
@@ -80,15 +88,20 @@ export async function POST(request: Request) {
         .from("profiles")
         .select("leetcode_session_encrypted")
         .eq("id", user.id)
-        .single();
-      encrypted = profile?.leetcode_session_encrypted ?? null;
+        .maybeSingle();
+      if (!profile?.leetcode_session_encrypted) {
+        return NextResponse.json(
+          { error: "No stored LeetCode session. Provide username + password to connect." },
+          { status: 400 }
+        );
+      }
+      encrypted = profile.leetcode_session_encrypted;
     }
 
     if (!encrypted) {
-      return NextResponse.json({ error: "No session available" }, { status: 400 });
+      return NextResponse.json({ error: "Session encryption failed" }, { status: 500 });
     }
 
-    const { decryptSession } = await import("@/lib/leetcodeSession");
     sessionCookie = decryptSession(encrypted);
 
     const slugs = await fetchSolvedSlugsFromSession(sessionCookie);

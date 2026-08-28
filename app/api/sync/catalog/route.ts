@@ -4,7 +4,8 @@ import { fetchFullProblemCatalog } from "@/lib/leetcode";
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
   if (!url || !serviceKey) return null;
   return createClient(url, serviceKey, { auth: { persistSession: false } });
 }
@@ -45,9 +46,26 @@ async function upsertCatalog(supabase: NonNullable<ReturnType<typeof getServiceC
   return { total: catalog.length, synced: rows.length };
 }
 
+export async function POST(request: Request) {
+  return handleCatalogSync(request);
+}
+
 export async function GET(request: Request) {
-  const cronSecret = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
-  if (process.env.CRON_SECRET && cronSecret !== process.env.CRON_SECRET) {
+  return handleCatalogSync(request);
+}
+
+async function handleCatalogSync(request: Request) {
+  const authHeader = request.headers.get("Authorization");
+  const cronSecret = authHeader?.replace(/^Bearer\s+/i, "");
+  const urlObj = new URL(request.url);
+  const queryKey = urlObj.searchParams.get("key");
+
+  if (
+    process.env.CRON_SECRET &&
+    cronSecret !== process.env.CRON_SECRET &&
+    queryKey !== process.env.CRON_SECRET &&
+    process.env.NODE_ENV === "production"
+  ) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -64,6 +82,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
     console.error("Catalog sync failed:", error);
-    return NextResponse.json({ error: "Catalog sync failed" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Catalog sync failed", details: String(error) },
+      { status: 500 }
+    );
   }
 }

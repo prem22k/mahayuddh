@@ -3,6 +3,8 @@
  * Fetches profile stats, contest ranking, recent submissions, and calendar streaks.
  */
 
+import type { Difficulty } from "@/types/database";
+
 export interface LeetCodeUserProfile {
   username: string;
   realName?: string;
@@ -200,9 +202,10 @@ export interface CatalogProblem {
 }
 
 const CATALOG_QUERY = `
-  query problemsetQuestionList($limit: Int!, $skip: Int!, $filters: QuestionListFilterInput) {
-    problemsetQuestionList(limit: $limit, skip: $skip, filters: $filters) {
-      questions: data {
+  query problemsetQuestionListV2($limit: Int, $skip: Int) {
+    problemsetQuestionListV2(limit: $limit, skip: $skip) {
+      totalLength
+      questions {
         title
         titleSlug
         difficulty
@@ -216,6 +219,13 @@ const CATALOG_QUERY = `
     }
   }
 `;
+
+function normalizeDifficulty(diff: string): Difficulty {
+  const d = (diff || "").toUpperCase();
+  if (d === "HARD") return "Hard";
+  if (d === "MEDIUM") return "Medium";
+  return "Easy";
+}
 
 export async function fetchProblemCatalogPage(
   skip: number,
@@ -231,7 +241,7 @@ export async function fetchProblemCatalogPage(
       },
       body: JSON.stringify({
         query: CATALOG_QUERY,
-        variables: { limit, skip, filters: {} },
+        variables: { limit, skip },
       }),
     });
 
@@ -241,7 +251,23 @@ export async function fetchProblemCatalogPage(
     }
 
     const json = await res.json();
-    return json?.data?.problemsetQuestionList?.questions ?? [];
+    const rawQuestions: Array<{
+      title: string;
+      titleSlug: string;
+      difficulty: string;
+      questionFrontendId: string;
+      paidOnly?: boolean;
+      topicTags?: { name: string; slug: string }[];
+    }> = json?.data?.problemsetQuestionListV2?.questions ?? [];
+
+    return rawQuestions.map((q) => ({
+      title: q.title,
+      titleSlug: q.titleSlug,
+      difficulty: normalizeDifficulty(q.difficulty),
+      questionFrontendId: q.questionFrontendId,
+      paidOnly: !!q.paidOnly,
+      topicTags: q.topicTags ?? [],
+    }));
   } catch (error) {
     console.error("Error fetching LeetCode catalog page:", error);
     return [];
@@ -264,6 +290,8 @@ export async function fetchFullProblemCatalog(opts?: {
     opts?.onProgress?.(out.length);
     if (batch.length < pageSize) break;
     skip += pageSize;
+    // Small pause between pages to be polite to LeetCode API
+    await new Promise((r) => setTimeout(r, 40));
   }
 
   return out;

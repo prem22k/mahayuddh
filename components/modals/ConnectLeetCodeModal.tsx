@@ -32,7 +32,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session?.access_token ?? ""}`,
+          Authorization: session?.access_token ? `Bearer ${session.access_token}` : "",
         },
         body: JSON.stringify({ username, password }),
       });

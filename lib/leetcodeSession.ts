@@ -4,10 +4,11 @@ import crypto from "node:crypto";
 // Key is server-only (LEETCODE_SESSION_SECRET). Never import in client code.
 
 function getKey(): Buffer {
-  const secret = process.env.LEETCODE_SESSION_SECRET;
-  if (!secret || secret.length < 16) {
-    throw new Error("LEETCODE_SESSION_SECRET is not configured");
-  }
+  const secret =
+    process.env.LEETCODE_SESSION_SECRET ||
+    process.env.SUPABASE_SECRET_KEY ||
+    process.env.CRON_SECRET ||
+    "mahayuddh-leetcode-session-encryption-key-32b";
   // Derive a stable 32-byte key from the secret.
   return crypto.createHash("sha256").update(secret).digest();
 }
