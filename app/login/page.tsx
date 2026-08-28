@@ -113,7 +113,14 @@ export default function LoginPage() {
           });
 
           if (profileError) {
-            console.error("Profile creation warning:", profileError);
+            // UNIQUE collision (username or leetcode_username) — do not leave an
+            // authenticated user without a profiles row. Surface and stop.
+            console.error("Profile creation failed:", profileError);
+            setErrorMsg(
+              "Squad name or LeetCode handle is already taken. Please choose different ones."
+            );
+            setLoading(false);
+            return;
           }
 
           if (authData.session) {

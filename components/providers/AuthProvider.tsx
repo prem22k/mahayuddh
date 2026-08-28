@@ -44,7 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfile(data as Profile);
       } else {
         // If profile row doesn't exist yet, auto-create it from auth user metadata
-        const u = currentUser || user;
+        const u = currentUser;
         const initialUsername =
           u?.user_metadata?.username ||
           u?.user_metadata?.name ||
@@ -80,14 +80,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.error("Error fetching user profile:", err);
     }
-  }, [supabase, user]);
+  }, [supabase]);
 
   useEffect(() => {
     async function initAuth() {
       try {
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise<{ data: { session: null } }>((resolve) =>
+          setTimeout(() => resolve({ data: { session: null } }), 2000)
+        );
         const {
           data: { session: initialSession },
-        } = await supabase.auth.getSession();
+        } = await Promise.race([sessionPromise, timeoutPromise]);
 
         setSession(initialSession);
         setUser(initialSession?.user ?? null);
