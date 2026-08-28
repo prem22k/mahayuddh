@@ -25,6 +25,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
   const pathname = usePathname();
   const { profile, user, signOut } = useAuth();
   const [lists, setLists] = useState<CustomList[]>([]);
+  const [loadingLists, setLoadingLists] = useState(true);
 
   useEffect(() => {
     async function loadLists() {
@@ -33,6 +34,8 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
         setLists(data);
       } catch (err) {
         console.error("Error loading lists in sidebar:", err);
+      } finally {
+        setLoadingLists(false);
       }
     }
     loadLists();
@@ -50,7 +53,11 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
 
   const displayName =
     profile?.username || user?.email?.split("@")[0] || "Squad Member";
-  const displayHandle = profile?.leetcode_username || "anonymous";
+  const displayHandle =
+    profile?.leetcode_username ||
+    (profile?.username || user?.email?.split("@")[0] || "user")
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, "");
   const displayStreak = profile?.streak || 0;
 
   return (
@@ -115,9 +122,13 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
         <div>
           <div className="nav-section-label">Roadmaps</div>
           <nav className="space-y-0.5">
-            {curatedRoadmaps.length === 0 ? (
+            {loadingLists ? (
               <div className="px-3 py-1.5 text-[11px] text-white/25">
                 Loading roadmaps...
+              </div>
+            ) : curatedRoadmaps.length === 0 ? (
+              <div className="px-3 py-1.5 text-[11px] text-white/25">
+                No roadmaps loaded
               </div>
             ) : (
               curatedRoadmaps.map((item) => {
@@ -168,7 +179,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
       <div className="p-3 border-t border-white/[0.06]">
         <div className="flex items-center justify-between p-2 rounded-xl bg-white/[0.03] border border-white/[0.05]">
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#fa586a] to-[#ff8a9c] flex items-center justify-center font-bold text-[10px] text-white shrink-0">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#fa586a] to-[#ff8a9c] flex items-center justify-center font-bold text-[10px] text-white shrink-0 overflow-hidden">
               {profile?.avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -201,7 +212,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
               onClick={() => signOut()}
               title="Sign Out"
               aria-label="Sign Out"
-              className="p-1.5 rounded-lg text-white/30 hover:text-white hover:bg-white/[0.06] transition-colors"
+              className="p-1.5 rounded-lg text-white/30 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
             </button>
