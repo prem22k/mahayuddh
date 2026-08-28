@@ -36,8 +36,9 @@
     /* ── Layout Dimensions ──────────────────────────────── */
     --sidebar-width: 252px;
     --sidebar-margin: 10px;
-    --bottom-bar-height: 68px;
-    --bottom-bar-margin: 12px;
+    --bottom-bar-height: 56px;
+    --bottom-bar-margin: 16px;
+    --bottom-bar-max-width: 680px;
   }
 
   * {
@@ -107,24 +108,38 @@
 }
 
 /* ═══════════════════════════════════════════════════════════
-   FLOATING BOTTOM BAR — Apple Music "chrome-player" pill
-   border-radius: 999px → full pill capsule
-   max-width matches content area, not full viewport
+   FLOATING BOTTOM BAR DOCK CONTAINER & PILL
+   Centered compact pill dock inspired by Apple Music's chrome-player
    ═══════════════════════════════════════════════════════════ */
 
-.floating-bottom-bar {
+.floating-bottom-dock-container {
   position: fixed;
   bottom: var(--bottom-bar-margin);
-  left: calc(
-    var(--sidebar-width) + var(--sidebar-margin) + var(--bottom-bar-margin)
-  );
-  right: var(--bottom-bar-margin);
-  height: var(--bottom-bar-height);
-  border-radius: 999px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
   z-index: 100;
+  padding: 0 16px;
+}
+
+@media (min-width: 768px) {
+  .floating-bottom-dock-container {
+    left: calc(var(--sidebar-width) + var(--sidebar-margin) * 2);
+    padding: 0 24px;
+  }
+}
+
+.floating-bottom-bar {
+  pointer-events: auto;
+  width: 100%;
+  max-width: var(--bottom-bar-max-width);
+  height: var(--bottom-bar-height);
+  border-radius: 9999px;
   display: flex;
   align-items: center;
-  padding: 0 8px;
+  padding: 0 10px;
 
   /* Glass material */
   background: var(--glass-bg);
@@ -133,8 +148,8 @@
     blur(var(--glass-blur));
   border: 0.5px solid var(--glass-border);
   box-shadow:
-    0 10px 40px var(--glass-shadow),
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.05);
+    0 12px 40px var(--glass-shadow),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.08);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -267,11 +282,6 @@
 @media (max-width: 768px) {
   .floating-sidebar {
     display: none;
-  }
-
-  .floating-bottom-bar {
-    left: var(--bottom-bar-margin);
-    border-radius: 20px;
   }
 
   .main-content-area {

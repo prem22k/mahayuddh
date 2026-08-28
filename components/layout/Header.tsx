@@ -22,7 +22,7 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
       try {
         const data = await getSquadProfiles();
         setSquadCount(data.length);
-      } catch (e) {
+      } catch {
         // ignore
       }
     }

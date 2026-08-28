@@ -76,7 +76,7 @@ export function SolvingProvider({ children }: { children: React.ReactNode }) {
     if (activeProblem && seconds > 0 && seconds % 5 === 0) {
       try {
         localStorage.setItem("mahayuddh_timer_seconds", seconds.toString());
-      } catch (e) {
+      } catch {
         // ignore
       }
     }
