@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Bell, BellRing, RefreshCw, Menu, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { getSquadProfiles } from "@/lib/data/profiles";
 
 interface HeaderProps {
   onMenuToggle?: () => void;
@@ -12,22 +11,11 @@ interface HeaderProps {
 }
 
 export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
-  const { profile, refreshProfile } = useAuth();
-  const [squadCount, setSquadCount] = useState<number | null>(null);
+  const { profile, user, refreshProfile } = useAuth();
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  useEffect(() => {
-    async function loadSquadSize() {
-      try {
-        const data = await getSquadProfiles();
-        setSquadCount(data.length);
-      } catch {
-        // ignore
-      }
-    }
-    loadSquadSize();
-  }, []);
+  const displayName = profile?.username || user?.email?.split("@")[0] || "Squad Member";
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -40,8 +28,8 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
         });
       }
       await refreshProfile();
-    } catch (e) {
-      console.warn("Sync error:", e);
+    } catch {
+      // ignore
     } finally {
       setTimeout(() => setIsSyncing(false), 800);
     }
@@ -58,7 +46,7 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
 
   return (
     <header className="sticky top-0 z-20 px-4 md:px-8 py-3 flex items-center justify-between bg-black/60 backdrop-blur-xl border-b border-white/[0.04] select-none">
-      {/* Left: Mobile controls + Real Squad Member Count */}
+      {/* Left: Mobile controls + Currently Active User */}
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuToggle}
@@ -76,14 +64,26 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
           <Search className="w-5 h-5" />
         </button>
 
-        {squadCount !== null && (
-          <div className="hidden sm:flex items-center gap-2 text-white/40 text-xs">
-            <span className="w-2 h-2 rounded-full bg-[#30d158]" />
-            <span className="font-medium text-white/70">
-              {squadCount} {squadCount === 1 ? "squad member" : "squad members"}
-            </span>
+        {/* Currently Active User Display */}
+        <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.03] border border-white/[0.06]">
+          <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#fa586a] to-[#ff8a9c] flex items-center justify-center font-bold text-[9px] text-white shrink-0 overflow-hidden">
+            {profile?.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={profile.avatar_url}
+                alt={displayName}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              displayName.charAt(0).toUpperCase()
+            )}
           </div>
-        )}
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#30d158]" />
+            <span className="font-semibold text-white/90 truncate max-w-[130px]">{displayName}</span>
+            <span className="text-white/35 text-[11px]">active</span>
+          </div>
+        </div>
       </div>
 
       {/* Right: Controls */}

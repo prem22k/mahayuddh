@@ -15,6 +15,7 @@ import { getSquadProfiles } from "@/lib/data/profiles";
 import { getAllLists, getAllProblems } from "@/lib/data/sheets";
 import { getSuggestions } from "@/lib/data/suggestions";
 import { useSolving } from "@/components/providers/SolvingProvider";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { Profile, CustomList, ListProblem } from "@/types/database";
 
 interface TopicCategory {
@@ -37,12 +38,15 @@ const CATEGORIES: TopicCategory[] = [
 ];
 
 export default function ArenaPage() {
+  const { profile, user } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [lists, setLists] = useState<CustomList[]>([]);
   const [problems, setProblems] = useState<ListProblem[]>([]);
   const [suggestionsCount, setSuggestionsCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const { startSolving } = useSolving();
+
+  const currentDisplayName = profile?.username || user?.email?.split("@")[0] || "Squad Member";
 
   useEffect(() => {
     async function loadArenaData() {
@@ -108,23 +112,25 @@ export default function ArenaPage() {
           </h1>
         </div>
 
-        {/* Squad Status Pill */}
-        <div className="flex items-center gap-3 self-start md:self-auto">
-          {profiles.length > 0 ? (
-            <div className="flex -space-x-2 overflow-hidden">
-              {profiles.slice(0, 4).map((p) => (
-                <div
-                  key={p.id}
-                  className="inline-block h-7 w-7 rounded-full ring-2 ring-black bg-white/[0.08] text-white text-[11px] font-bold flex items-center justify-center border border-white/10"
-                >
-                  {p.username.charAt(0).toUpperCase()}
-                </div>
-              ))}
-            </div>
-          ) : null}
-          <span className="text-xs text-white/40 font-medium tracking-wide">
-            {profiles.length} {profiles.length === 1 ? "squad member" : "squad members"} active
-          </span>
+        {/* Currently Active User Status Pill */}
+        <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08] self-start md:self-auto shadow-sm">
+          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#fa586a] to-[#ff8a9c] flex items-center justify-center font-bold text-[10px] text-white shrink-0 overflow-hidden">
+            {profile?.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={profile.avatar_url}
+                alt={currentDisplayName}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              currentDisplayName.charAt(0).toUpperCase()
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#30d158] animate-pulse" />
+            <span className="font-semibold text-white truncate max-w-[140px]">{currentDisplayName}</span>
+            <span className="text-white/40 text-[11px]">active</span>
+          </div>
         </div>
       </div>
 
