@@ -32,3 +32,7 @@ scripts/
 # TypeScript cache
 *.tsbuildinfo
 next-env.d.ts
+
+# Reference source files (not ours)
+sourcecode.*
+sorucecode.*
