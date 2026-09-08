@@ -50,20 +50,23 @@ export default function LoginPage() {
           return;
         }
       } else {
-        // Sign Up
-        if (!username.trim() || !leetcodeUsername.trim()) {
+        // Sign Up — hoist field values so edits mid-flight can't swap handles.
+        const squadName = username.trim();
+        const lcHandle = leetcodeUsername.trim();
+        const emailAddr = email.trim();
+        if (!squadName || !lcHandle) {
           setErrorMsg("Please provide both Squad username and LeetCode handle.");
           setLoading(false);
           return;
         }
 
         const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: email.trim(),
+          email: emailAddr,
           password,
           options: {
             data: {
-              username: username.trim(),
-              leetcode_username: leetcodeUsername.trim(),
+              username: squadName,
+              leetcode_username: lcHandle,
             },
           },
         });
@@ -82,16 +85,27 @@ export default function LoginPage() {
           // handle check when instant-handle-feedback matters.
           if (authData.session) {
             try {
-              await fetch("/api/auth/profile", {
+              const profileRes = await fetch("/api/auth/profile", {
                 headers: { Authorization: `Bearer ${authData.session.access_token}` },
               });
-              await fetch("/api/sync/leetcode", {
+              if (!profileRes.ok) {
+                setErrorMsg("Account created but profile setup failed. Please sign in to retry.");
+                setLoading(false);
+                return;
+              }
+              const syncRes = await fetch("/api/sync/leetcode", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ username: leetcodeUsername.trim() }),
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${authData.session.access_token}`,
+                },
+                body: JSON.stringify({ username: lcHandle }),
               });
+              if (!syncRes.ok) {
+                console.warn("Post-signup LeetCode sync failed; background sync will retry.");
+              }
             } catch (syncErr) {
-              console.warn("Post-signup sync failed:", syncErr);
+              console.warn("Post-signup sync failed; background sync will retry:", syncErr);
             }
             window.location.replace("/");
             return;
@@ -99,6 +113,9 @@ export default function LoginPage() {
             setSuccessMsg("Account created! Check your email to confirm your account. Your squad profile and LeetCode stats sync on first sign-in.");
             setLoading(false);
           }
+        } else {
+          setErrorMsg("Signup did not return a user. Please try signing in.");
+          setLoading(false);
         }
       }
     } catch (err: unknown) {
