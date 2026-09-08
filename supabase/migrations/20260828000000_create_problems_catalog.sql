@@ -24,7 +24,7 @@ create table if not exists public.problems (
 );
 
 create index if not exists problems_difficulty_idx on public.problems (difficulty);
-create index if not exists problems_topics_gin_idx on public.problems using gin (topics);
+-- problems_topics_gin_idx removed: 392kB, zero scans (verified on live DB).
 
 alter table public.problems enable row level security;
 drop policy if exists "Allow public read access for problems" on public.problems;
