@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 import { fetchLeetCodeProfile, fetchRecentSubmissions, fetchUserCalendar, fetchSolvedSlugsFromSession } from "@/lib/leetcode";
 import { decryptSession } from "@/lib/leetcodeSession";
 import type { Profile } from "@/types/database";
@@ -261,6 +262,47 @@ export async function POST(request: Request) {
 
     if (!username) {
       return NextResponse.json({ error: "Username is required" }, { status: 400 });
+    }
+
+    // Persisting squad stats is an authenticated write: require the caller's
+    // Supabase JWT (Bearer) or server session cookies. Reads of public LeetCode
+    // data stay open via GET; POST must prove ownership.
+    const authHeader = request.headers.get("Authorization");
+    const token = authHeader?.replace(/^Bearer\s+/i, "");
+    let authedUserId: string | null = null;
+    const anonUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey =
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (token && anonUrl && anonKey) {
+      const userClient = createClient(anonUrl, anonKey, { auth: { persistSession: false } });
+      const { data } = await userClient.auth.getUser(token);
+      authedUserId = data?.user?.id ?? null;
+    }
+    if (!authedUserId) {
+      try {
+        const serverSupabase = await createServerClient();
+        const { data } = await serverSupabase.auth.getUser();
+        authedUserId = data?.user?.id ?? null;
+      } catch {
+        // ignore
+      }
+    }
+    if (!authedUserId) {
+      return NextResponse.json({ error: "Unauthorized. Please log in first." }, { status: 401 });
+    }
+
+    // Ownership check: only allow syncing a handle linked to the caller's
+    // own profile, or a handle not yet claimed by anyone (first-connect flow).
+    const service = getServiceClient();
+    if (service) {
+      const { data: owner } = await service
+        .from("profiles")
+        .select("id")
+        .eq("leetcode_username", username.trim())
+        .maybeSingle();
+      if (owner && owner.id !== authedUserId) {
+        return NextResponse.json({ error: "Forbidden. This LeetCode handle belongs to another squad member." }, { status: 403 });
+      }
     }
 
     const data = await fetchLeetCode(username);

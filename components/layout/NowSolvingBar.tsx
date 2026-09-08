@@ -18,7 +18,7 @@ interface NowSolvingBarProps {
 }
 
 export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
-  const { user, profile } = useAuth();
+  const { user, profile, session } = useAuth();
   const {
     activeProblem,
     isPlaying,
@@ -103,7 +103,10 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
       try {
         const res = await fetch("/api/sync/leetcode", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+          },
           body: JSON.stringify({ username: profile.leetcode_username }),
         });
         if (!res.ok) return;
@@ -121,7 +124,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
     }, 20000);
 
     return () => clearInterval(interval);
-  }, [isPlaying, activeProblem?.slug, profile?.leetcode_username, handleComplete]);
+  }, [isPlaying, activeProblem?.slug, profile?.leetcode_username, handleComplete, session?.access_token]);
 
   const getDifficultyBadge = (diff: string) => {
     switch (diff?.toLowerCase()) {

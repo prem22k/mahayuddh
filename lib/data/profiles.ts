@@ -34,9 +34,13 @@ export async function syncUserProfileStats(
   const supabase = createClient();
 
   try {
+    const { data: { session } } = await supabase.auth.getSession();
     const res = await fetch("/api/sync/leetcode", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
       body: JSON.stringify({ username: leetcodeUsername.trim() }),
     });
 

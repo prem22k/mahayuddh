@@ -5,7 +5,7 @@ import { useAuth } from "./AuthProvider";
 import confetti from "canvas-confetti";
 
 export function LeetCodeAutoSync() {
-  const { profile, refreshProfile } = useAuth();
+  const { profile, refreshProfile, session } = useAuth();
   const lastSyncRef = useRef<number>(0);
   const knownSolvedSlugsRef = useRef<Set<string>>(new Set());
 
@@ -21,7 +21,10 @@ export function LeetCodeAutoSync() {
     try {
       const res = await fetch("/api/sync/leetcode", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
         body: JSON.stringify({ username: handle }),
       });
 
@@ -60,7 +63,7 @@ export function LeetCodeAutoSync() {
     } catch {
       // Background sync silent fail
     }
-  }, [profile?.leetcode_username, refreshProfile]);
+  }, [profile?.leetcode_username, refreshProfile, session?.access_token]);
 
   useEffect(() => {
     if (!profile?.leetcode_username) return;
