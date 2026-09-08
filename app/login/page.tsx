@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { fetchLeetCodeProfile, fetchUserCalendar } from "@/lib/leetcode";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { cn } from "@/lib/utils";
 
@@ -76,58 +75,28 @@ export default function LoginPage() {
         }
 
         if (authData.user) {
-          let contestRating = 1500;
-          let streak = 0;
-          let easy = 0;
-          let medium = 0;
-          let hard = 0;
-
-          try {
-            const [lcProfile, lcCalendar] = await Promise.all([
-              fetchLeetCodeProfile(leetcodeUsername.trim()),
-              fetchUserCalendar(leetcodeUsername.trim()),
-            ]);
-
-            if (lcProfile) {
-              contestRating = lcProfile.contestRating || 1500;
-              easy = lcProfile.totalEasy || 0;
-              medium = lcProfile.totalMedium || 0;
-              hard = lcProfile.totalHard || 0;
-            }
-            if (lcCalendar) {
-              streak = lcCalendar.streak || 0;
-            }
-          } catch (fetchErr) {
-            console.warn("Could not pre-fetch LeetCode stats:", fetchErr);
-          }
-
-          const { error: profileError } = await supabase.from("profiles").upsert({
-            id: authData.user.id,
-            username: username.trim(),
-            leetcode_username: leetcodeUsername.trim(),
-            contest_rating: contestRating,
-            streak: streak,
-            total_easy: easy,
-            total_medium: medium,
-            total_hard: hard,
-          });
-
-          if (profileError) {
-            // UNIQUE collision (username or leetcode_username) — do not leave an
-            // authenticated user without a profiles row. Surface and stop.
-            console.error("Profile creation failed:", profileError);
-            setErrorMsg(
-              "Squad name or LeetCode handle is already taken. Please choose different ones."
-            );
-            setLoading(false);
-            return;
-          }
-
+          // Profile row is created server-side via /api/auth/profile (service role),
+          // so this browser flow never touches LeetCode GraphQL (CORS-blocked)
+          // or writes to profiles with the anon key (RLS 401).
+          // ponytail: no pre-signup LeetCode handle validation; add server-side
+          // handle check when instant-handle-feedback matters.
           if (authData.session) {
+            try {
+              await fetch("/api/auth/profile", {
+                headers: { Authorization: `Bearer ${authData.session.access_token}` },
+              });
+              await fetch("/api/sync/leetcode", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username: leetcodeUsername.trim() }),
+              });
+            } catch (syncErr) {
+              console.warn("Post-signup sync failed:", syncErr);
+            }
             window.location.replace("/");
             return;
           } else {
-            setSuccessMsg("Account created! Check your email to confirm your account.");
+            setSuccessMsg("Account created! Check your email to confirm your account. Your squad profile and LeetCode stats sync on first sign-in.");
             setLoading(false);
           }
         }
