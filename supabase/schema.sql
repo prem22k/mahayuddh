@@ -8,12 +8,15 @@ create table if not exists public.profiles (
   username text unique not null,
   leetcode_username text unique,
   avatar_url text,
-  contest_rating float default 1500,
+  contest_rating float default null,
   global_rank int,
   streak int default 0,
   total_easy int default 0,
   total_medium int default 0,
   total_hard int default 0,
+  contest_attended int default 0,
+  contest_global_rank int,
+  contest_top_percentage float,
   last_synced_at timestamp with time zone default now(),
   leetcode_session_encrypted text,
   leetcode_session_synced_at timestamp with time zone,
@@ -113,28 +116,55 @@ alter table public.shared_resources enable row level security;
 alter table public.push_subscriptions enable row level security;
 alter table public.feed_events enable row level security;
 
--- Read policies: Squad members can view profiles, lists, resources, feed, and status
+-- Final policy state (mirrors migrations through 20260916000003).
+-- Public reads everywhere; writes are own-row (or list-owner) only, with
+-- WITH CHECKs so rows can't be reassigned on update. auth.uid() wrapped in
+-- subselects (initplan). Stats/session columns are server-written only.
 create policy "Allow public read access for profiles" on public.profiles for select using (true);
-create policy "Allow public read access for lists" on public.custom_lists for select using (true);
-create policy "Allow public read access for list_problems" on public.list_problems for select using (true);
-create policy "Allow public read access for user_problem_status" on public.user_problem_status for select using (true);
-create policy "Allow public read access for suggestions" on public.suggestions for select using (true);
-create policy "Allow public read access for resources" on public.shared_resources for select using (true);
-create policy "Allow public read access for feed_events" on public.feed_events for select using (true);
+create policy "Users can insert own profile" on public.profiles for insert with check ((select auth.uid()) = id);
+create policy "Users can update own display name" on public.profiles for update using ((select auth.uid()) = id) with check ((select auth.uid()) = id);
 
--- Insert/Update policies
-create policy "Users can insert own profile" on public.profiles for insert with check (auth.uid() = id);
-create policy "Users can update own profile" on public.profiles for update using (auth.uid() = id) with check (auth.uid() = id);
-create policy "Users can create custom lists" on public.custom_lists for insert with check (auth.uid() = created_by);
-create policy "Users can manage own suggestions" on public.suggestions for all using (auth.uid() = from_user or auth.uid() = to_user);
-create policy "Users can insert problem status" on public.user_problem_status for insert with check (auth.uid() = user_id);
-create policy "Users can read own problem status" on public.user_problem_status for select using (auth.uid() = user_id);
-create policy "Users can manage own problem status" on public.user_problem_status for update using (auth.uid() = user_id);
-create policy "Users can delete own problem status" on public.user_problem_status for delete using (auth.uid() = user_id);
-create policy "Users can manage shared resources" on public.shared_resources for all using (auth.uid() = author_id);
-create policy "Users can manage push subscriptions" on public.push_subscriptions for all using (auth.uid() = user_id);
-create policy "Users can create own feed events" on public.feed_events for insert with check (auth.uid() = user_id);
-create policy "Users can manage own feed events" on public.feed_events for all using (auth.uid() = user_id);
+create policy "Allow public read access for lists" on public.custom_lists for select using (true);
+create policy "Users can create custom lists" on public.custom_lists for insert with check ((select auth.uid()) = created_by);
+create policy "Users can update own custom lists" on public.custom_lists for update using ((select auth.uid()) = created_by) with check ((select auth.uid()) = created_by);
+create policy "Users can delete own custom lists" on public.custom_lists for delete using ((select auth.uid()) = created_by);
+
+create policy "list_problems_public_read" on public.list_problems for select using (true);
+create policy "list_problems_owner_insert" on public.list_problems for insert with check (
+  exists (select 1 from public.custom_lists where custom_lists.id = list_id and custom_lists.created_by = (select auth.uid())));
+create policy "list_problems_owner_update" on public.list_problems for update
+  using (exists (select 1 from public.custom_lists where custom_lists.id = list_id and custom_lists.created_by = (select auth.uid())))
+  with check (exists (select 1 from public.custom_lists where custom_lists.id = list_id and custom_lists.created_by = (select auth.uid())));
+create policy "list_problems_owner_delete" on public.list_problems for delete
+  using (exists (select 1 from public.custom_lists where custom_lists.id = list_id and custom_lists.created_by = (select auth.uid())));
+
+create policy "Allow public read access for user_problem_status" on public.user_problem_status for select using (true);
+create policy "Users can insert problem status" on public.user_problem_status for insert with check ((select auth.uid()) = user_id);
+create policy "Users can manage own problem status" on public.user_problem_status for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "Users can delete own problem status" on public.user_problem_status for delete using ((select auth.uid()) = user_id);
+
+create policy "Allow public read access for suggestions" on public.suggestions for select using (true);
+create policy "Users can insert suggestions" on public.suggestions for insert with check ((select auth.uid()) = from_user);
+create policy "Users can manage own suggestions" on public.suggestions for update
+  using (((select auth.uid()) = from_user) or ((select auth.uid()) = to_user))
+  with check (((select auth.uid()) = from_user) or ((select auth.uid()) = to_user));
+
+create policy "Allow public read access for resources" on public.shared_resources for select using (true);
+create policy "Users can insert shared resources" on public.shared_resources for insert with check ((select auth.uid()) = author_id);
+create policy "Users can update own shared resources" on public.shared_resources for update using ((select auth.uid()) = author_id);
+create policy "Users can delete own shared resources" on public.shared_resources for delete using ((select auth.uid()) = author_id);
+
+create policy "Users can manage push subscriptions" on public.push_subscriptions for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+
+create policy "Allow public read access for feed_events" on public.feed_events for select using (true);
+create policy "Users can create own feed events" on public.feed_events for insert with check ((select auth.uid()) = user_id);
+create policy "Users can manage own feed events" on public.feed_events for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+
+-- Column-level trust boundary: clients write display columns only, never read
+-- the encrypted session. Service role bypasses RLS for server sync routes.
+revoke update on public.profiles from anon, authenticated;
+grant update (username, avatar_url) on public.profiles to authenticated;
+revoke select (leetcode_session_encrypted) on public.profiles from anon, authenticated;
 
 -- ============================================================
 -- SEED INITIAL CURATED ROADMAPS
@@ -303,7 +333,48 @@ create table if not exists public.catalog_sync_state (
 );
 insert into public.catalog_sync_state (id, total_count) values (1, 0) on conflict (id) do nothing;
 
--- Auto-mark solved from LeetCode without downgrading a manual "attempted" flag.
+-- DB guard rails (mirrors migrations 20260916000001..03).
+alter table public.profiles add constraint profiles_stats_nonnegative
+  check (coalesce(contest_rating, 0) >= 0 and coalesce(streak, 0) >= 0
+    and coalesce(total_easy, 0) >= 0 and coalesce(total_medium, 0) >= 0
+    and coalesce(total_hard, 0) >= 0 and coalesce(contest_attended, 0) >= 0);
+alter table public.profiles add constraint profiles_rank_nonnegative
+  check (coalesce(global_rank, 0) >= 0 and coalesce(contest_global_rank, 0) >= 0
+    and coalesce(contest_top_percentage, 0) >= 0 and coalesce(contest_top_percentage, 0) <= 100);
+alter table public.profiles add constraint profiles_username_len
+  check (char_length(username) between 1 and 50);
+alter table public.profiles add constraint profiles_handle_len
+  check (leetcode_username is null or char_length(leetcode_username) between 1 and 50);
+alter table public.user_problem_status add constraint user_problem_status_slug_format
+  check (problem_slug ~ '^[a-z0-9-]{1,80}$');
+alter table public.user_problem_status add constraint user_problem_status_notes_cap
+  check (notes is null or octet_length(notes) <= 5000);
+alter table public.suggestions add constraint suggestions_slug_format
+  check (problem_slug ~ '^[a-z0-9-]{1,80}$');
+alter table public.suggestions add constraint suggestions_note_cap
+  check (note is null or octet_length(note) <= 2000);
+alter table public.list_problems add constraint list_problems_slug_format
+  check (title_slug ~ '^[a-z0-9-]{1,80}$');
+alter table public.custom_lists add constraint custom_lists_slug_format
+  check (slug ~ '^[a-z0-9-]{1,80}$');
+
+create or replace function public.normalize_leetcode_username()
+returns trigger language plpgsql as $$
+begin
+  if new.leetcode_username is not null then
+    new.leetcode_username := lower(trim(new.leetcode_username));
+  end if;
+  return new;
+end $$;
+drop trigger if exists normalize_leetcode_username on public.profiles;
+create trigger normalize_leetcode_username
+  before insert or update of leetcode_username on public.profiles
+  for each row execute function public.normalize_leetcode_username();
+create unique index profiles_leetcode_username_lower_unique
+  on public.profiles (lower(leetcode_username));
+
+-- Auto-mark solved from LeetCode: promotes attempted rows only, never retouches
+-- already-solved rows. Sets the GUC the preserve-attempted trigger checks.
 create or replace function public.mark_solved_from_leetcode(p_user_id uuid, p_slugs text[])
 returns int
 language plpgsql
@@ -313,14 +384,67 @@ as $$
 declare
   affected int := 0;
 begin
+  perform set_config('app.allow_attempted_promotion', 'on', true);
   with ins as (
     insert into public.user_problem_status (user_id, problem_slug, status, solved_at)
     select p_user_id, unnest(p_slugs), 'solved', now()
     on conflict (user_id, problem_slug) do update
       set status = 'solved', solved_at = now()
-      where public.user_problem_status.status <> 'attempted'
+      where public.user_problem_status.status = 'attempted'
     returning 1
   )
   select count(*) into affected from ins;
   return affected;
 end $$;
+revoke all on function public.mark_solved_from_leetcode(uuid, text[]) from anon, authenticated;
+
+-- Self-attested imports preserve manual attempted flags; only the RPC promotes.
+create or replace function public.preserve_attempted_on_manual_import()
+returns trigger language plpgsql as $$
+begin
+  if tg_op = 'UPDATE'
+    and old.status = 'attempted'
+    and new.status = 'solved'
+    and current_setting('app.allow_attempted_promotion', true) is distinct from 'on' then
+    new.status := old.status;
+    new.solved_at := old.solved_at;
+  end if;
+  return new;
+end $$;
+drop trigger if exists preserve_attempted_on_manual_import on public.user_problem_status;
+create trigger preserve_attempted_on_manual_import
+  before update on public.user_problem_status
+  for each row execute function public.preserve_attempted_on_manual_import();
+
+-- Suggestion parties/problem immutable on update.
+create or replace function public.lock_suggestion_parties()
+returns trigger language plpgsql as $$
+begin
+  if new.from_user is distinct from old.from_user
+    or new.to_user is distinct from old.to_user
+    or new.problem_slug is distinct from old.problem_slug then
+    raise exception 'suggestion parties and problem are immutable';
+  end if;
+  return new;
+end $$;
+drop trigger if exists lock_suggestion_parties on public.suggestions;
+create trigger lock_suggestion_parties
+  before update on public.suggestions
+  for each row execute function public.lock_suggestion_parties();
+
+create unique index if not exists suggestions_pending_unique
+  on public.suggestions (to_user, problem_slug) where status = 'pending';
+create unique index if not exists list_problems_list_slug_unique
+  on public.list_problems (list_id, title_slug);
+
+-- Per-user sync throttle (service role only, no client access).
+create table if not exists public.sync_rate_limits (
+  user_id uuid primary key references public.profiles(id) on delete cascade,
+  last_sync_at timestamp with time zone not null default now()
+);
+alter table public.sync_rate_limits enable row level security;
+drop policy if exists "No client access to sync rate limits" on public.sync_rate_limits;
+create policy "No client access to sync rate limits"
+  on public.sync_rate_limits for all using (false) with check (false);
+create index if not exists sync_rate_limits_last_sync_idx
+  on public.sync_rate_limits (last_sync_at);

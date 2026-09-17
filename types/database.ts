@@ -16,12 +16,15 @@ export interface Profile {
   username: string;
   leetcode_username: string | null;
   avatar_url: string | null;
-  contest_rating: number;
+  contest_rating: number | null;
   global_rank: number | null;
   streak: number;
   total_easy: number;
   total_medium: number;
   total_hard: number;
+  contest_attended: number;
+  contest_global_rank: number | null;
+  contest_top_percentage: number | null;
   last_synced_at: string | null;
   leetcode_session_encrypted: string | null;
   leetcode_session_synced_at: string | null;
