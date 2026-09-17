@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { getCatalogBySlugs } from "@/lib/data/problems";
+import { slugifyTitle } from "@/lib/slug";
 import { CustomList, ListProblem, UserProblemStatus, TriState, Problem } from "@/types/database";
 import { CURATED_SHEETS } from "@/lib/data/curatedSheetsData";
 
@@ -134,11 +135,8 @@ export async function createCustomList(
   problemSlugs: string[]
 ): Promise<{ success: boolean; slug?: string; error?: string }> {
   const supabase = createClient();
-  const baseSlug = title
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+  // Cap the base at 75 chars: the 4-char suffix must fit the 80-char slug check.
+  const baseSlug = slugifyTitle(title, 75);
   const slug = `${baseSlug || "custom-list"}-${Math.random().toString(36).substring(2, 6)}`;
 
   const { data: listData, error: listError } = await supabase
@@ -270,29 +268,35 @@ export function toStatusMap(
 }
 
 // Tri-state setter: "solved" | "attempted" | "unsolved" (deletes the row).
-export async function setProblemStatus(userId: string, slug: string, next: TriState) {
+// Returns false when the write fails so optimistic UI can roll back.
+export async function setProblemStatus(
+  userId: string,
+  slug: string,
+  next: TriState
+): Promise<boolean> {
   const supabase = createClient();
 
-  if (next === "unsolved") {
-    await supabase
-      .from("user_problem_status")
-      .delete()
-      .eq("user_id", userId)
-      .eq("problem_slug", slug);
-    return;
+  try {
+    const { error } =
+      next === "unsolved"
+        ? await supabase
+            .from("user_problem_status")
+            .delete()
+            .eq("user_id", userId)
+            .eq("problem_slug", slug)
+        : await supabase.from("user_problem_status").upsert(
+            {
+              user_id: userId,
+              problem_slug: slug,
+              status: next,
+              solved_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id,problem_slug" }
+          );
+    return !error;
+  } catch {
+    return false;
   }
-
-  await supabase
-    .from("user_problem_status")
-    .upsert(
-      {
-        user_id: userId,
-        problem_slug: slug,
-        status: next,
-        solved_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,problem_slug" }
-    );
 }
 
 export async function toggleProblemStatus(userId: string, problemSlug: string, isSolved: boolean) {

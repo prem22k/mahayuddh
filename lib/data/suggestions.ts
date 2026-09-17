@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { normalizeSlug } from "@/lib/slug";
 import { Suggestion, Difficulty } from "@/types/database";
 
 export async function getSuggestions(): Promise<Suggestion[]> {
@@ -27,6 +28,10 @@ export async function getPendingSuggestionCount(): Promise<number> {
   return count ?? 0;
 }
 
+export type CreateSuggestionResult =
+  | { ok: true; suggestion: Suggestion }
+  | { ok: false; reason: "duplicate" | "invalid" | "error" };
+
 export async function createSuggestion(params: {
   fromUser: string;
   toUser: string;
@@ -34,17 +39,28 @@ export async function createSuggestion(params: {
   problemTitle: string;
   difficulty: Difficulty;
   note?: string;
-}): Promise<Suggestion | null> {
+}): Promise<CreateSuggestionResult> {
   const supabase = createClient();
+  const slug = normalizeSlug(params.problemSlug);
+  const title = params.problemTitle.trim();
+  const note = params.note?.trim() || null;
+  // Mirror DB guards client-side so junk never round-trips: slug format,
+  // title presence, note cap (suggestions_note_cap = 2000 bytes).
+  if (!title || !slug || (note && note.length > 2000)) {
+    return { ok: false, reason: "invalid" };
+  }
+  if (params.fromUser === params.toUser) {
+    return { ok: false, reason: "invalid" };
+  }
   const { data, error } = await supabase
     .from("suggestions")
     .insert({
       from_user: params.fromUser,
       to_user: params.toUser,
-      problem_slug: params.problemSlug,
-      problem_title: params.problemTitle,
+      problem_slug: slug,
+      problem_title: title,
       difficulty: params.difficulty,
-      note: params.note || null,
+      note,
       status: "pending",
     })
     .select(`
@@ -54,12 +70,44 @@ export async function createSuggestion(params: {
     `)
     .maybeSingle();
 
-  if (error || !data) return null;
-  return data as Suggestion;
+  if (error) {
+    // Partial unique index suggestions_pending_unique → friendly duplicate UX.
+    if (error.code === "23505") return { ok: false, reason: "duplicate" };
+    return { ok: false, reason: "error" };
+  }
+  if (!data) return { ok: false, reason: "error" };
+  return { ok: true, suggestion: data as Suggestion };
 }
 
-export async function markSuggestionCompleted(suggestionId: string): Promise<boolean> {
+// Manual completion is assignee-only and requires LeetCode proof: the problem
+// must be solved in the caller's own status map (written only via the verified
+// RPC/session paths), never on a bare button press.
+export async function markSuggestionCompleted(
+  suggestionId: string,
+  callerUserId: string
+): Promise<{ ok: boolean; reason?: "not_assignee" | "not_solved" }> {
   const supabase = createClient();
+  const { data: suggestion } = await supabase
+    .from("suggestions")
+    .select("id, to_user, problem_slug, status")
+    .eq("id", suggestionId)
+    .maybeSingle();
+
+  if (!suggestion || suggestion.to_user !== callerUserId) {
+    return { ok: false, reason: "not_assignee" };
+  }
+  if (suggestion.status === "completed") return { ok: true };
+
+  const { data: solved } = await supabase
+    .from("user_problem_status")
+    .select("problem_slug")
+    .eq("user_id", callerUserId)
+    .eq("problem_slug", suggestion.problem_slug)
+    .eq("status", "solved")
+    .maybeSingle();
+
+  if (!solved) return { ok: false, reason: "not_solved" };
+
   const { error } = await supabase
     .from("suggestions")
     .update({
@@ -68,5 +116,5 @@ export async function markSuggestionCompleted(suggestionId: string): Promise<boo
     })
     .eq("id", suggestionId);
 
-  return !error;
+  return error ? { ok: false, reason: "not_assignee" } : { ok: true };
 }

@@ -26,7 +26,18 @@ export interface TierInfo {
   minRating: number;
 }
 
-export function getTierInfo(rating: number = 1500): TierInfo {
+export function getTierInfo(rating: number | null = null): TierInfo {
+  if (rating == null) {
+    return {
+      tier: "UNRANKED",
+      title: "Unrated Prospect",
+      badgeColor: "#8e8e93",
+      bgGradient: "from-[#8e8e93]/20 via-[#636366]/10 to-transparent",
+      borderColor: "border-[#8e8e93]/40",
+      glowColor: "shadow-[0_0_30px_rgba(142,142,147,0.35)]",
+      minRating: 0,
+    };
+  }
   if (rating >= 2200) {
     return {
       tier: "GRANDMASTER",
@@ -83,7 +94,8 @@ export function getTierInfo(rating: number = 1500): TierInfo {
 }
 
 export function calculatePowerLevel(profile: Profile): number {
-  const rating = profile.contest_rating || 1500;
+  // Unranked members score from solves only — no free 1500 baseline.
+  const rating = profile.contest_rating ?? 0;
   const hard = profile.total_hard || 0;
   const medium = profile.total_medium || 0;
   const easy = profile.total_easy || 0;
@@ -197,7 +209,7 @@ export function generateDossierShareText(profile: Profile, powerLevel: number, t
   return `⚔️ MAHAYUDDH WARRIOR DOSSIER: @${profile.username}
 🏅 Tier: ${tier.title} (${tier.tier})
 🔥 Power Level: ${powerLevel.toLocaleString()}
-⚡ Rating: ${Math.round(profile.contest_rating || 1500)} | Streak: ${profile.streak} Days
+⚡ Rating: ${profile.contest_rating == null ? "Unranked" : Math.round(profile.contest_rating)} | Streak: ${profile.streak} Days
 🧩 Solved: ${total} (🟩 ${profile.total_easy} | 🟨 ${profile.total_medium} | 🟥 ${profile.total_hard})
 🚀 Track & Battle: https://mahayuddh.app`;
 }

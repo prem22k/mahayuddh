@@ -1,51 +1,52 @@
 import { createClient } from "@/lib/supabase/client";
+import { normalizeSlugList } from "@/lib/slug";
 import { Problem, TriState } from "@/types/database";
 
-export async function getAllCatalogProblems(): Promise<Problem[]> {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("problems")
-    .select("*")
-    .order("question_id", { ascending: true });
-
-  if (error || !data) return [];
-  return data as Problem[];
-}
+// PostgREST caps .in() lists and default selects at ~1000 rows; chunk / paginate
+// explicitly so the ~3.4k-row catalog never silently truncates.
+const CATALOG_PAGE_SIZE = 1000;
+const MAX_CATALOG_ROWS = 5000;
+const MAX_SLUGS_PER_LOOKUP = 1000;
+const IN_CHUNK = 200;
 
 export async function getCatalogBySlugs(slugs: string[]): Promise<Problem[]> {
-  if (slugs.length === 0) return [];
+  const unique = normalizeSlugList(slugs, MAX_SLUGS_PER_LOOKUP);
+  if (unique.length === 0) return [];
   const supabase = createClient();
-  const { data, error } = await supabase
-    .from("problems")
-    .select("*")
-    .in("title_slug", slugs);
-
-  if (error || !data) return [];
-  return data as Problem[];
+  const rows: Problem[] = [];
+  for (let i = 0; i < unique.length; i += IN_CHUNK) {
+    const slice = unique.slice(i, i + IN_CHUNK);
+    const { data, error } = await supabase.from("problems").select("*").in("title_slug", slice);
+    if (error || !data) continue;
+    rows.push(...(data as Problem[]));
+  }
+  return rows;
 }
 
-export async function getProblemsByTopic(topic: string): Promise<Problem[]> {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("problems")
-    .select("*")
-    .contains("topics", [topic])
-    .order("question_id", { ascending: true });
-
-  if (error || !data) return [];
-  return data as Problem[];
+// Escape LIKE wildcards so a query like "100%_done" matches literally instead
+// of acting as a wildcard scan. Backslash first to avoid double-escaping.
+function escapeLike(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
 export async function searchCatalogProblems(query: string, limit = 50): Promise<Problem[]> {
-  if (!query.trim()) return [];
+  const safeLimit = Math.min(Math.max(Math.trunc(limit) || 50, 1), 100);
+  const raw = query.trim().slice(0, 100);
+  if (!raw) return [];
+  // Strip PostgREST `or=` structural chars ( , ( ) " ' ; . ) that would break
+  // the filter parser or smuggle extra predicates; collapse whitespace.
+  const clean = escapeLike(raw.replace(/[,().;"']/g, " ").replace(/\s+/g, " ").trim());
+  if (!clean) return [];
   const supabase = createClient();
-  const clean = query.trim().toLowerCase();
 
-  const { data, error } = await supabase
-    .from("problems")
-    .select("*")
-    .or(`title.ilike.%${clean}%,title_slug.ilike.%${clean}%,question_id.eq.${clean}`)
-    .limit(limit);
+  const filters = [`title.ilike.*${clean}*`, `title_slug.ilike.*${clean}*`];
+  // Numeric-only branch: "15" also matches question #15. Non-numeric input
+  // must never reach question_id.eq (int column → PG error / 400).
+  if (/^\d{1,7}$/.test(raw.trim())) {
+    filters.push(`question_id.eq.${raw.trim()}`);
+  }
+
+  const { data, error } = await supabase.from("problems").select("*").or(filters.join(",")).limit(safeLimit);
 
   if (error || !data) return [];
   return data as Problem[];
@@ -61,13 +62,23 @@ export interface CatalogTopicSummary {
 import { CURATED_SHEETS } from "@/lib/data/curatedSheetsData";
 
 // Fetches slug + topics so the client can aggregate both catalog counts and
-// per-topic correctness against a user status map.
+// per-topic correctness against a user status map. Paginated: the catalog is
+// ~3.4k rows, well past PostgREST's default 1000-row select cap.
 export async function getCatalogSlugTopics(): Promise<{ title_slug: string; topics: string[] }[]> {
   const supabase = createClient();
-  const { data, error } = await supabase.from("problems").select("title_slug, topics");
+  const rows: { title_slug: string; topics: string[] }[] = [];
+  for (let from = 0; from < MAX_CATALOG_ROWS; from += CATALOG_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("problems")
+      .select("title_slug, topics")
+      .range(from, from + CATALOG_PAGE_SIZE - 1);
+    if (error || !data || data.length === 0) break;
+    rows.push(...(data as { title_slug: string; topics: string[] }[]));
+    if (data.length < CATALOG_PAGE_SIZE) break;
+  }
 
-  if (!error && data && data.length > 0) {
-    return data as { title_slug: string; topics: string[] }[];
+  if (rows.length > 0) {
+    return rows;
   }
 
   // Fallback: derive topics from curated sheets if catalog sync hasn't run yet

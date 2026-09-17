@@ -1,14 +1,24 @@
 import { createClient } from "@/lib/supabase/client";
 import { Profile } from "@/types/database";
 
-export async function getSquadProfiles(): Promise<Profile[]> {
+export const PUBLIC_PROFILE_COLUMNS =
+  "id,username,leetcode_username,avatar_url,contest_rating,global_rank,streak,total_easy,total_medium,total_hard,contest_attended,contest_global_rank,contest_top_percentage,last_synced_at,created_at";
+
+export async function getSquadProfiles(opts?: {
+  limit?: number;
+  offset?: number;
+}): Promise<Profile[]> {
   const supabase = createClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("profiles")
-    .select("*")
-    .order("contest_rating", { ascending: false });
+    .select(PUBLIC_PROFILE_COLUMNS, { count: "exact" })
+    .order("contest_rating", { ascending: false, nullsFirst: false });
+  if (opts?.limit != null) query = query.range(opts.offset ?? 0, (opts.offset ?? 0) + opts.limit - 1);
+
+  const { data, error } = await query;
 
   if (error || !data || data.length === 0) {
+    if (error) console.error("getSquadProfiles error:", error.message);
     return [];
   }
 
@@ -19,7 +29,7 @@ export async function getProfileByLeetcodeUsername(leetcodeUsername: string): Pr
   const supabase = createClient();
   const { data, error } = await supabase
     .from("profiles")
-    .select("*")
+    .select(PUBLIC_PROFILE_COLUMNS)
     .eq("leetcode_username", leetcodeUsername)
     .maybeSingle();
 
@@ -45,6 +55,7 @@ export async function syncUserProfileStats(
     });
 
     if (!res.ok) {
+      if (res.status === 429) throw res;
       console.warn("Failed to fetch LeetCode stats from sync endpoint");
       return null;
     }
@@ -52,25 +63,11 @@ export async function syncUserProfileStats(
     const { stats } = await res.json();
 
     if (stats) {
-      const updateData: Partial<Profile> = {
-        leetcode_username: leetcodeUsername.trim(),
-        total_easy: stats.totalEasy ?? 0,
-        total_medium: stats.totalMedium ?? 0,
-        total_hard: stats.totalHard ?? 0,
-        contest_rating: stats.contestRating ?? 1500,
-        global_rank: stats.ranking ?? null, // Official LeetCode Profile Global Rank (e.g. 2328998)
-        streak: stats.streak ?? 0,
-      };
-
-      if (stats.avatar) {
-        updateData.avatar_url = stats.avatar;
-      }
-
+      // Server already persisted stats (single writer, incl. last_synced_at).
       const { data, error } = await supabase
         .from("profiles")
-        .update(updateData)
+        .select(PUBLIC_PROFILE_COLUMNS)
         .eq("id", userId)
-        .select()
         .maybeSingle();
 
       if (!error && data) {
@@ -78,6 +75,9 @@ export async function syncUserProfileStats(
       }
     }
   } catch (err) {
+    // A thrown Response (429 cooldown) must propagate so callers can surface
+    // Retry-After; every other failure degrades to null.
+    if (err instanceof Response) throw err;
     console.error("Error syncing profile stats:", err);
   }
 
