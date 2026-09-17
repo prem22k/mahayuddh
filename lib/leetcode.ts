@@ -4,6 +4,7 @@
  */
 
 import type { Difficulty } from "@/types/database";
+import { isValidSlug } from "@/lib/slug";
 
 export interface LeetCodeUserProfile {
   username: string;
@@ -15,7 +16,7 @@ export interface LeetCodeUserProfile {
   totalHard: number;
   totalSolved: number;
   acceptanceRate: number;
-  contestRating?: number; // Official LeetCode Contest Rating
+  contestRating?: number | null; // Official LeetCode Contest Rating; null = never competed
   contestGlobalRank?: number; // Official LeetCode Contest Global Ranking
   contestTotalParticipants?: number; // Official Contest Total Participants
   contestTopPercentage?: number; // Official Contest Top Percentage
@@ -34,6 +35,28 @@ export interface UserCalendarStats {
 }
 
 const LEETCODE_GRAPHQL_ENDPOINT = "https://leetcode.com/graphql";
+
+// Hung upstream fetch must never block squad cron loop.
+function leetcodeInit(body: unknown, opts?: { revalidate?: number; timeoutMs?: number; noStore?: boolean }): RequestInit {
+  const init: RequestInit & { next?: { revalidate: number } } = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Referer: "https://leetcode.com",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(opts?.timeoutMs ?? 12000),
+  };
+  if (opts?.noStore) init.cache = "no-store";
+  else if (opts?.revalidate != null) init.next = { revalidate: opts.revalidate };
+  return init;
+}
+
+const num = (v: unknown, fallback = 0): number =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : fallback;
+const finiteOrUndef = (v: unknown): number | undefined =>
+  typeof v === "number" && Number.isFinite(v) ? v : undefined;
 
 export async function fetchLeetCodeProfile(username: string): Promise<LeetCodeUserProfile | null> {
   const query = `
@@ -67,18 +90,13 @@ export async function fetchLeetCodeProfile(username: string): Promise<LeetCodeUs
   `;
 
   try {
-    const res = await fetch(LEETCODE_GRAPHQL_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Referer: "https://leetcode.com",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-      body: JSON.stringify({ query, variables: { username } }),
-      next: { revalidate: 300 }, // Cache for 5 minutes
-    });
+    const res = await fetch(
+      LEETCODE_GRAPHQL_ENDPOINT,
+      leetcodeInit({ query, variables: { username } }, { revalidate: 300 })
+    );
 
-    if (!res.ok) return null;
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`LeetCode profile HTTP ${res.status}`);
 
     const data = await res.json();
     const user = data?.data?.matchedUser;
@@ -87,37 +105,52 @@ export async function fetchLeetCodeProfile(username: string): Promise<LeetCodeUs
     if (!user) return null;
 
     const acStats = user.submitStats?.acSubmissionNum || [];
-    const totalEasy = acStats.find((s: { difficulty: string }) => s.difficulty === "Easy")?.count || 0;
-    const totalMedium = acStats.find((s: { difficulty: string }) => s.difficulty === "Medium")?.count || 0;
-    const totalHard = acStats.find((s: { difficulty: string }) => s.difficulty === "Hard")?.count || 0;
-    const totalSolved = acStats.find((s: { difficulty: string }) => s.difficulty === "All")?.count || 0;
+    const findCount = (diff: string) =>
+      num(acStats.find((s: { difficulty: string }) => s.difficulty === diff)?.count);
+    const totalEasy = findCount("Easy");
+    const totalMedium = findCount("Medium");
+    const totalHard = findCount("Hard");
+    const totalSolved = findCount("All");
 
-    const allSubmits = user.submitStats?.totalSubmissionNum?.find((s: { difficulty: string }) => s.difficulty === "All")?.count || 1;
-    const acceptanceRate = Math.round((totalSolved / allSubmits) * 100);
+    const allSubmits = findCount("All") || 0;
+    const rawRate = allSubmits > 0 ? (totalSolved / allSubmits) * 100 : 0;
+    const acceptanceRate = Number.isFinite(rawRate)
+      ? Math.min(100, Math.max(0, Math.round(rawRate)))
+      : 0;
+
+    const rating = finiteOrUndef(contest?.rating);
+    const contestAttended = num(contest?.attendedContestsCount);
+    const contestRating = contestAttended > 0 ? (rating != null ? Math.round(rating) : null) : null;
 
     return {
       username: user.username,
       realName: user.profile?.realName,
       avatar: user.profile?.userAvatar,
-      ranking: user.profile?.ranking, // Exact LeetCode Profile Global Rank (e.g. 2328998)
+      ranking: finiteOrUndef(user.profile?.ranking), // Exact LeetCode Profile Global Rank (e.g. 2328998)
       totalEasy,
       totalMedium,
       totalHard,
       totalSolved,
       acceptanceRate,
-      contestRating: contest?.rating ? Math.round(contest.rating) : 1500,
-      contestGlobalRank: contest?.globalRanking,
-      contestTotalParticipants: contest?.totalParticipants,
-      contestTopPercentage: contest?.topPercentage,
-      contestAttended: contest?.attendedContestsCount,
+      contestRating,
+      contestGlobalRank: contestAttended > 0 ? finiteOrUndef(contest?.globalRanking) : undefined,
+      contestTotalParticipants: contestAttended > 0 ? finiteOrUndef(contest?.totalParticipants) : undefined,
+      contestTopPercentage:
+        contestAttended > 0
+          ? (() => {
+              const p = finiteOrUndef(contest?.topPercentage);
+              return p != null ? Math.min(100, Math.max(0, p)) : undefined;
+            })()
+          : undefined,
+      contestAttended,
     };
   } catch (error) {
     console.error("Error fetching LeetCode profile:", error);
-    return null;
+    throw error;
   }
 }
 
-export async function fetchRecentSubmissions(username: string): Promise<RecentSubmission[]> {
+export async function fetchRecentSubmissions(username: string): Promise<RecentSubmission[] | null> {
   const query = `
     query getRecentSubmissions($username: String!) {
       recentAcSubmissionList(username: $username, limit: 100) {
@@ -129,28 +162,22 @@ export async function fetchRecentSubmissions(username: string): Promise<RecentSu
   `;
 
   try {
-    const res = await fetch(LEETCODE_GRAPHQL_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Referer: "https://leetcode.com",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-      body: JSON.stringify({ query, variables: { username } }),
-      next: { revalidate: 30 }, // Cache for 30 seconds
-    });
+    const res = await fetch(
+      LEETCODE_GRAPHQL_ENDPOINT,
+      leetcodeInit({ query, variables: { username } }, { revalidate: 30 })
+    );
 
-    if (!res.ok) return [];
+    if (!res.ok) throw new Error(`LeetCode recents HTTP ${res.status}`);
 
     const data = await res.json();
-    return data?.data?.recentAcSubmissionList || [];
+    return data?.data?.recentAcSubmissionList ?? null;
   } catch (error) {
     console.error("Error fetching recent submissions:", error);
-    return [];
+    return null;
   }
 }
 
-export async function fetchUserCalendar(username: string): Promise<UserCalendarStats> {
+export async function fetchUserCalendar(username: string): Promise<UserCalendarStats | null> {
   const query = `
     query userProfileCalendar($username: String!) {
       matchedUser(username: $username) {
@@ -163,28 +190,23 @@ export async function fetchUserCalendar(username: string): Promise<UserCalendarS
   `;
 
   try {
-    const res = await fetch(LEETCODE_GRAPHQL_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Referer: "https://leetcode.com",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-      body: JSON.stringify({ query, variables: { username } }),
-      next: { revalidate: 600 },
-    });
+    const res = await fetch(
+      LEETCODE_GRAPHQL_ENDPOINT,
+      leetcodeInit({ query, variables: { username } }, { revalidate: 600 })
+    );
 
-    if (!res.ok) return { streak: 0, totalActiveDays: 0 };
+    if (!res.ok) throw new Error(`LeetCode calendar HTTP ${res.status}`);
 
     const data = await res.json();
     const cal = data?.data?.matchedUser?.userCalendar;
+    if (!cal) return null;
     return {
-      streak: cal?.streak || 0,
-      totalActiveDays: cal?.totalActiveDays || 0,
+      streak: num(cal.streak),
+      totalActiveDays: num(cal.totalActiveDays),
     };
   } catch (error) {
     console.error("Error fetching user calendar:", error);
-    return { streak: 0, totalActiveDays: 0 };
+    return null;
   }
 }
 
@@ -225,35 +247,25 @@ const CATALOG_QUERY = `
   }
 `;
 
-function normalizeDifficulty(diff: string): Difficulty {
+function normalizeDifficulty(diff: string): Difficulty | null {
   const d = (diff || "").toUpperCase();
   if (d === "HARD") return "Hard";
   if (d === "MEDIUM") return "Medium";
-  return "Easy";
+  if (d === "EASY") return "Easy";
+  return null;
 }
 
 export async function fetchProblemCatalogPage(
   skip: number,
   limit = 100
-): Promise<CatalogProblem[]> {
+): Promise<CatalogProblem[] | null> {
   try {
-    const res = await fetch(LEETCODE_GRAPHQL_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Referer: "https://leetcode.com",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-      body: JSON.stringify({
-        query: CATALOG_QUERY,
-        variables: { limit, skip },
-      }),
-    });
+    const res = await fetch(
+      LEETCODE_GRAPHQL_ENDPOINT,
+      leetcodeInit({ query: CATALOG_QUERY, variables: { limit, skip } }, { noStore: true })
+    );
 
-    if (!res.ok) {
-      console.error(`LeetCode catalog HTTP ${res.status}`);
-      return [];
-    }
+    if (!res.ok) throw new Error(`LeetCode catalog HTTP ${res.status}`);
 
     const json = await res.json();
     const rawQuestions: Array<{
@@ -265,17 +277,23 @@ export async function fetchProblemCatalogPage(
       topicTags?: { name: string; slug: string }[];
     }> = json?.data?.problemsetQuestionListV2?.questions ?? [];
 
-    return rawQuestions.map((q) => ({
-      title: q.title,
-      titleSlug: q.titleSlug,
-      difficulty: normalizeDifficulty(q.difficulty),
-      questionFrontendId: q.questionFrontendId,
-      paidOnly: !!q.paidOnly,
-      topicTags: q.topicTags ?? [],
-    }));
+    const out: CatalogProblem[] = [];
+    for (const q of rawQuestions) {
+      const difficulty = normalizeDifficulty(q.difficulty);
+      if (!difficulty || typeof q.titleSlug !== "string" || !q.titleSlug) continue;
+      out.push({
+        title: q.title,
+        titleSlug: q.titleSlug,
+        difficulty,
+        questionFrontendId: q.questionFrontendId,
+        paidOnly: !!q.paidOnly,
+        topicTags: q.topicTags ?? [],
+      });
+    }
+    return out;
   } catch (error) {
     console.error("Error fetching LeetCode catalog page:", error);
-    return [];
+    return null;
   }
 }
 
@@ -283,23 +301,24 @@ export async function fetchFullProblemCatalog(opts?: {
   pageSize?: number;
   maxPages?: number;
   onProgress?: (count: number) => void;
-}): Promise<CatalogProblem[]> {
+}): Promise<{ problems: CatalogProblem[]; complete: boolean }> {
   const pageSize = opts?.pageSize ?? 100;
   const maxPages = opts?.maxPages ?? 60;
   const out: CatalogProblem[] = [];
 
   for (let skip = 0, page = 0; page < maxPages; page++) {
     const batch = await fetchProblemCatalogPage(skip, pageSize);
-    if (batch.length === 0) break;
+    if (batch === null) return { problems: out, complete: false };
+    if (batch.length === 0) return { problems: out, complete: true };
     out.push(...batch);
     opts?.onProgress?.(out.length);
-    if (batch.length < pageSize) break;
+    if (batch.length < pageSize) return { problems: out, complete: true };
     skip += pageSize;
     // Small pause between pages to be polite to LeetCode API
     await new Promise((r) => setTimeout(r, 40));
   }
 
-  return out;
+  return { problems: out, complete: true };
 }
 
 // ============================================================
@@ -329,6 +348,8 @@ export async function loginLeetCode(username: string, password: string): Promise
     // 1. Fetch the login page to grab csrfToken + initial cookies.
     const pageRes = await fetch(`${LEETCODE_BASE}/accounts/login/`, {
       headers: { "User-Agent": LEETCODE_UA },
+      cache: "no-store",
+      signal: AbortSignal.timeout(12000),
     });
     const pageHtml = await pageRes.text();
     const csrfMatch = pageHtml.match(/name="csrfmiddlewaretoken"[^>]*value="([^"]+)"/);
@@ -353,6 +374,8 @@ export async function loginLeetCode(username: string, password: string): Promise
       },
       body,
       redirect: "manual",
+      cache: "no-store",
+      signal: AbortSignal.timeout(15000),
     });
 
     const sessionCookie = extractCookie(loginRes.headers.getSetCookie?.(), "LEETCODE_SESSION");
@@ -365,7 +388,9 @@ export async function loginLeetCode(username: string, password: string): Promise
 }
 
 // Returns the title slugs of every problem the session user has Accepted.
-export async function fetchSolvedSlugsFromSession(sessionCookie: string): Promise<string[]> {
+// Returns null when the session is expired/invalid or the fetch fails, so
+// callers can distinguish "nothing solved" from "could not verify".
+export async function fetchSolvedSlugsFromSession(sessionCookie: string): Promise<string[] | null> {
   try {
     const res = await fetch(`${LEETCODE_BASE}/api/problems/algorithms/`, {
       headers: {
@@ -373,22 +398,24 @@ export async function fetchSolvedSlugsFromSession(sessionCookie: string): Promis
         Referer: `${LEETCODE_BASE}/problemset/all/`,
         Cookie: sessionCookie,
       },
+      cache: "no-store",
+      signal: AbortSignal.timeout(20000),
     });
     if (!res.ok) {
       console.error(`LeetCode problems API HTTP ${res.status}`);
-      return [];
+      return null;
     }
     const json = await res.json();
     const statStatusPairs = json?.stat_status_pairs ?? [];
     const solved: string[] = [];
     for (const pair of statStatusPairs) {
-      if (pair?.status === "ac") {
-        solved.push(pair.stat?.question__title_slug);
+      if (pair?.status === "ac" && isValidSlug(pair.stat?.question__title_slug)) {
+        solved.push(pair.stat.question__title_slug);
       }
     }
-    return solved.filter(Boolean);
+    return solved;
   } catch (error) {
     console.error("LeetCode solved fetch error:", error);
-    return [];
+    return null;
   }
 }

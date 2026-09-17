@@ -1,55 +1,71 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import {
+  getServiceClient,
+  extractBearerToken,
+  resolveUser,
+} from "@/lib/supabase/service";
 import type { Profile } from "@/types/database";
 
-function getServiceClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
-  if (!url || !serviceKey) return null;
-  return createClient(url, serviceKey, { auth: { persistSession: false } });
+const PUBLIC_PROFILE_SELECT =
+  "id,username,leetcode_username,avatar_url,contest_rating,global_rank,streak,total_easy,total_medium,total_hard,contest_attended,contest_global_rank,contest_top_percentage,last_synced_at,created_at";
+
+async function getAuthedUserId(request: Request) {
+  const token = extractBearerToken(request);
+  if (!token) return { error: "Missing authorization token" as const };
+  const user = await resolveUser(token);
+  if (!user) return { error: "Unauthorized" as const };
+  return { user };
 }
 
+// Reads never mutate: GET only returns the caller's profile (404 when missing).
 export async function GET(request: Request) {
-  const authHeader = request.headers.get("Authorization");
-  const anonUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const supabase = getServiceClient();
-
-  if (!anonUrl || !anonKey || !supabase) {
+  if (!supabase) {
     return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
   }
-
-  const token = authHeader?.replace(/^Bearer\s+/i, "");
-  if (!token) {
-    return NextResponse.json({ error: "Missing authorization token" }, { status: 401 });
+  const authed = await getAuthedUserId(request);
+  if ("error" in authed) {
+    return NextResponse.json({ error: authed.error }, { status: 401 });
   }
+  const { user } = authed;
 
-  // Validate the user from the Supabase JWT
-  const userClient = createClient(anonUrl, anonKey, { auth: { persistSession: false } });
-  const {
-    data: { user },
-    error: authError,
-  } = await userClient.auth.getUser(token);
+  const { data: existingProfile } = await supabase
+    .from("profiles")
+    .select(PUBLIC_PROFILE_SELECT)
+    .eq("id", user.id)
+    .maybeSingle();
 
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (existingProfile) {
+    return NextResponse.json({ profile: existingProfile as Profile });
   }
+  return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+}
+
+// Profile creation lives here (POST), never in GET, so prefetch/cache can't
+// create rows. Handle stays null until the owner claims it via authenticated
+// POST /api/sync/leetcode — signup metadata is client-controlled and untrusted.
+export async function POST(request: Request) {
+  const supabase = getServiceClient();
+  if (!supabase) {
+    return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+  }
+  const authed = await getAuthedUserId(request);
+  if ("error" in authed) {
+    return NextResponse.json({ error: authed.error }, { status: 401 });
+  }
+  const { user } = authed;
 
   try {
-    // 1. Check if profile already exists
-    const { data: existingProfile, error: fetchErr } = await supabase
+    const { data: existingProfile } = await supabase
       .from("profiles")
-      .select("*")
+      .select(PUBLIC_PROFILE_SELECT)
       .eq("id", user.id)
       .maybeSingle();
 
-    if (!fetchErr && existingProfile) {
+    if (existingProfile) {
       return NextResponse.json({ profile: existingProfile as Profile });
     }
 
-    // 2. Profile missing: auto-create safely using service role
     let baseUsername =
       user.user_metadata?.username ||
       user.user_metadata?.name ||
@@ -59,7 +75,6 @@ export async function GET(request: Request) {
     baseUsername = baseUsername.trim().slice(0, 30);
     if (!baseUsername) baseUsername = "Squad_Member";
 
-    const leetcodeUsername = user.user_metadata?.leetcode_username || null;
     const avatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
 
     // Try insert; if collision on username, append random digits
@@ -74,9 +89,9 @@ export async function GET(request: Request) {
           {
             id: user.id,
             username: candidateUsername,
-            leetcode_username: leetcodeUsername,
+            leetcode_username: null,
             avatar_url: avatarUrl,
-            contest_rating: 1500,
+            contest_rating: null,
             streak: 0,
             total_easy: 0,
             total_medium: 0,
@@ -84,7 +99,7 @@ export async function GET(request: Request) {
           },
           { onConflict: "id" }
         )
-        .select()
+        .select(PUBLIC_PROFILE_SELECT)
         .maybeSingle();
 
       if (!insertErr && inserted) {
@@ -97,9 +112,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Failed to create profile" }, { status: 500 });
     }
 
-    return NextResponse.json({ profile: createdProfile });
+    return NextResponse.json({ profile: createdProfile }, { status: 201 });
   } catch (err) {
-    console.error("Profile resolution error:", err);
+    console.error("Profile creation error:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

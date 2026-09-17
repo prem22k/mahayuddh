@@ -1,19 +1,11 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getServiceClient, isAuthorizedCron, type ServiceClient } from "@/lib/supabase/service";
 import { fetchFullProblemCatalog } from "@/lib/leetcode";
 
-function getServiceClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
-  if (!url || !serviceKey) return null;
-  return createClient(url, serviceKey, { auth: { persistSession: false } });
-}
-
-async function upsertCatalog(supabase: NonNullable<ReturnType<typeof getServiceClient>>) {
-  const catalog = await fetchFullProblemCatalog();
+async function upsertCatalog(supabase: ServiceClient) {
+  const { problems: catalog, complete } = await fetchFullProblemCatalog();
   if (catalog.length === 0) {
-    return { total: 0, synced: 0 };
+    return { total: 0, synced: 0, complete };
   }
 
   const rows = catalog.map((p) => ({
@@ -22,7 +14,7 @@ async function upsertCatalog(supabase: NonNullable<ReturnType<typeof getServiceC
     difficulty: p.difficulty,
     question_id: p.questionFrontendId,
     paid_only: !!p.paidOnly,
-    topics: p.topicTags.map((t) => t.name),
+    topics: p.topicTags.map((t: { name: string }) => t.name),
     updated_at: new Date().toISOString(),
   }));
 
@@ -39,33 +31,28 @@ async function upsertCatalog(supabase: NonNullable<ReturnType<typeof getServiceC
     }
   }
 
-  await supabase
-    .from("catalog_sync_state")
-    .upsert({ id: 1, last_synced_at: new Date().toISOString(), total_count: catalog.length });
+  // Partial pulls never masquerade as complete: sync_state only advances
+  // on a full walk, so the UI can't mistake a throttled page for "empty catalog".
+  if (complete) {
+    await supabase
+      .from("catalog_sync_state")
+      .upsert({ id: 1, last_synced_at: new Date().toISOString(), total_count: catalog.length });
+  }
 
-  return { total: catalog.length, synced: rows.length };
+  return { total: catalog.length, synced: rows.length, complete };
 }
 
 export async function POST(request: Request) {
   return handleCatalogSync(request);
 }
 
-export async function GET(request: Request) {
-  return handleCatalogSync(request);
+// Reads must never mutate the shared problem catalog (cron uses POST).
+export async function GET() {
+  return NextResponse.json({ error: "Method not allowed. Use POST." }, { status: 405 });
 }
 
 async function handleCatalogSync(request: Request) {
-  const authHeader = request.headers.get("Authorization");
-  const cronSecret = authHeader?.replace(/^Bearer\s+/i, "");
-  const urlObj = new URL(request.url);
-  const queryKey = urlObj.searchParams.get("key");
-
-  if (
-    process.env.CRON_SECRET &&
-    cronSecret !== process.env.CRON_SECRET &&
-    queryKey !== process.env.CRON_SECRET &&
-    process.env.NODE_ENV === "production"
-  ) {
+  if (!isAuthorizedCron(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -82,9 +69,6 @@ async function handleCatalogSync(request: Request) {
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
     console.error("Catalog sync failed:", error);
-    return NextResponse.json(
-      { error: "Catalog sync failed", details: String(error) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Catalog sync failed" }, { status: 500 });
   }
 }

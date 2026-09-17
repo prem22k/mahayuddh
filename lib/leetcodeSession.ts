@@ -5,10 +5,12 @@ import crypto from "node:crypto";
 
 function getKey(): Buffer {
   const secret =
-    process.env.LEETCODE_SESSION_SECRET ||
-    process.env.SUPABASE_SECRET_KEY ||
-    process.env.CRON_SECRET ||
-    "mahayuddh-leetcode-session-encryption-key-32b";
+    process.env.LEETCODE_SESSION_SECRET || process.env.SUPABASE_SECRET_KEY;
+  if (!secret) {
+    throw new Error(
+      "LEETCODE_SESSION_SECRET (or SUPABASE_SECRET_KEY) is not configured"
+    );
+  }
   // Derive a stable 32-byte key from the secret.
   return crypto.createHash("sha256").update(secret).digest();
 }

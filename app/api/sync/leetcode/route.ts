@@ -1,32 +1,94 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import {
+  getServiceClient,
+  extractBearerToken,
+  resolveUser,
+  isAuthorizedCron,
+  type ServiceClient,
+} from "@/lib/supabase/service";
 import { fetchLeetCodeProfile, fetchRecentSubmissions, fetchUserCalendar, fetchSolvedSlugsFromSession } from "@/lib/leetcode";
 import { decryptSession } from "@/lib/leetcodeSession";
 import type { Profile } from "@/types/database";
-
-// Service-role client for server-triggered persistence (bypasses RLS, never ships to browser).
-function getServiceClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
-  if (!url || !serviceKey) return null;
-  return createClient(url, serviceKey, { auth: { persistSession: false } });
-}
 
 async function fetchLeetCode(username: string): Promise<{
   profile: NonNullable<Awaited<ReturnType<typeof fetchLeetCodeProfile>>>;
   recentSubmissions: Awaited<ReturnType<typeof fetchRecentSubmissions>>;
   calendar: Awaited<ReturnType<typeof fetchUserCalendar>>;
 } | null> {
-  const [profile, recentSubmissions, calendar] = await Promise.all([
-    fetchLeetCodeProfile(username),
-    fetchRecentSubmissions(username),
-    fetchUserCalendar(username),
-  ]);
+  try {
+    const [profile, recentSubmissions, calendar] = await Promise.all([
+      fetchLeetCodeProfile(username),
+      fetchRecentSubmissions(username),
+      fetchUserCalendar(username),
+    ]);
 
-  if (!profile) return null;
-  return { profile, recentSubmissions, calendar };
+    if (!profile) return null;
+    return { profile, recentSubmissions, calendar };
+  } catch {
+    return null;
+  }
+}
+
+// Cron lookups match the trigger-normalized (lowered) handle exactly — same
+// as verify/infer — so mixed-case handles can't persist-miss while verifying.
+async function persistStatsByHandle(
+  supabase: ServiceClient,
+  leetcodeUsername: string,
+  stats: {
+    totalEasy: number;
+    totalMedium: number;
+    totalHard: number;
+    contestRating?: number | null;
+    contestGlobalRank?: number | null;
+    contestTotalParticipants?: number | null;
+    contestTopPercentage?: number | null;
+    contestAttended?: number | null;
+    ranking?: number | null;
+    streak: number;
+    avatar?: string | null;
+  },
+  prev: { total_easy: number; total_medium: number; total_hard: number; streak: number } | null
+): Promise<boolean> {
+  const attended = stats.contestAttended ?? 0;
+  const updateData: Partial<Profile> = {
+    // LeetCode totals are cumulative: never regress on a partial upstream
+    // failure (already filtered upstream, belt + suspenders here).
+    total_easy: Math.max(prev?.total_easy ?? 0, stats.totalEasy ?? 0),
+    total_medium: Math.max(prev?.total_medium ?? 0, stats.totalMedium ?? 0),
+    total_hard: Math.max(prev?.total_hard ?? 0, stats.totalHard ?? 0),
+    // Never-competed users stay null so they can't masquerade as true 1500s.
+    contest_rating: attended > 0 ? (stats.contestRating ?? null) : null,
+    global_rank: stats.ranking ?? null, // Official LeetCode Profile Global Rank (e.g. 2328998)
+    contest_attended: attended,
+    contest_global_rank: attended > 0 ? (stats.contestGlobalRank ?? null) : null,
+    contest_top_percentage: attended > 0 ? (stats.contestTopPercentage ?? null) : null,
+    streak: Math.max(prev?.streak ?? 0, stats.streak ?? 0),
+    last_synced_at: new Date().toISOString(),
+  };
+  if (stats.avatar) updateData.avatar_url = stats.avatar;
+
+  const handle = leetcodeUsername.trim().toLowerCase();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, total_easy, total_medium, total_hard, streak")
+    .eq("leetcode_username", handle)
+    .maybeSingle();
+
+  if (!profile) {
+    console.warn(`Sync: no squad profile for LeetCode handle ${leetcodeUsername}`);
+    return false;
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .update(updateData)
+    .eq("id", profile.id);
+
+  if (error) {
+    console.error("Sync persistence error:", error);
+    return false;
+  }
+  return true;
 }
 
 // Persist fetched LeetCode stats to the matching squad profile (by leetcode_username).
@@ -36,7 +98,7 @@ async function persistStats(
     totalEasy: number;
     totalMedium: number;
     totalHard: number;
-    contestRating: number;
+    contestRating?: number | null;
     contestGlobalRank?: number | null;
     contestTotalParticipants?: number | null;
     contestTopPercentage?: number | null;
@@ -44,40 +106,47 @@ async function persistStats(
     ranking?: number | null;
     streak: number;
     avatar?: string | null;
-  }
+  },
+  opts?: { userId?: string }
 ): Promise<boolean> {
   const supabase = getServiceClient();
   if (!supabase) {
     console.warn("Sync: SUPABASE_SERVICE_ROLE_KEY not configured; skipping persistence");
     return false;
   }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, leetcode_username")
-    .eq("leetcode_username", leetcodeUsername)
-    .maybeSingle();
-
-  if (!profile) {
-    console.warn(`Sync: no squad profile for LeetCode handle ${leetcodeUsername}`);
-    return false;
+  if (!opts?.userId) {
+    return persistStatsByHandle(supabase, leetcodeUsername, stats, null);
   }
 
+  const attended = stats.contestAttended ?? 0;
+  const { data: prev } = await supabase
+    .from("profiles")
+    .select("total_easy, total_medium, total_hard, streak")
+    .eq("id", opts.userId)
+    .maybeSingle();
+
   const updateData: Partial<Profile> = {
-    total_easy: stats.totalEasy ?? 0,
-    total_medium: stats.totalMedium ?? 0,
-    total_hard: stats.totalHard ?? 0,
-    contest_rating: stats.contestRating ?? 1500,
+    total_easy: Math.max(prev?.total_easy ?? 0, stats.totalEasy ?? 0),
+    total_medium: Math.max(prev?.total_medium ?? 0, stats.totalMedium ?? 0),
+    total_hard: Math.max(prev?.total_hard ?? 0, stats.totalHard ?? 0),
+    // Never-competed users stay null so they can't masquerade as true 1500s.
+    contest_rating: attended > 0 ? (stats.contestRating ?? null) : null,
     global_rank: stats.ranking ?? null, // Official LeetCode Profile Global Rank (e.g. 2328998)
-    streak: stats.streak ?? 0,
+    contest_attended: attended,
+    contest_global_rank: attended > 0 ? (stats.contestGlobalRank ?? null) : null,
+    contest_top_percentage: attended > 0 ? (stats.contestTopPercentage ?? null) : null,
+    streak: Math.max(prev?.streak ?? 0, stats.streak ?? 0),
     last_synced_at: new Date().toISOString(),
   };
   if (stats.avatar) updateData.avatar_url = stats.avatar;
 
+  // Authenticated self-sync: write by user id (also claims handle on first connect).
+  // Single server-side writer; clients never update stats directly.
+  updateData.leetcode_username = leetcodeUsername.trim().toLowerCase();
   const { error } = await supabase
     .from("profiles")
     .update(updateData)
-    .eq("id", profile.id);
+    .eq("id", opts.userId);
 
   if (error) {
     console.error("Sync persistence error:", error);
@@ -98,7 +167,7 @@ async function verifySuggestions(
   const { data: profile } = await supabase
     .from("profiles")
     .select("id")
-    .eq("leetcode_username", leetcodeUsername)
+    .eq("leetcode_username", leetcodeUsername.trim().toLowerCase())
     .maybeSingle();
   if (!profile) return 0;
 
@@ -138,7 +207,7 @@ async function inferSolvedFromLeetcode(
   const { data: profile } = await supabase
     .from("profiles")
     .select("id")
-    .eq("leetcode_username", leetcodeUsername)
+    .eq("leetcode_username", leetcodeUsername.trim().toLowerCase())
     .maybeSingle();
   if (!profile) return 0;
 
@@ -146,7 +215,7 @@ async function inferSolvedFromLeetcode(
     new Set(recentSubmissions.map((s) => s.titleSlug.toLowerCase()))
   );
 
-  const { error } = await supabase.rpc("mark_solved_from_leetcode", {
+  const { data, error } = await supabase.rpc("mark_solved_from_leetcode", {
     p_user_id: profile.id,
     p_slugs: slugs,
   });
@@ -155,7 +224,8 @@ async function inferSolvedFromLeetcode(
     console.error("Infer solved error:", error);
     return 0;
   }
-  return slugs.length;
+  // RPC returns rows actually inserted/promoted — not the input size.
+  return typeof data === "number" ? data : 0;
 }
 
 // Incremental pull: if the profile has a stored (encrypted) LeetCode session, re-fetch the
@@ -167,24 +237,25 @@ async function importSessionSolved(leetcodeUsername: string): Promise<number> {
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, leetcode_session_encrypted")
-    .eq("leetcode_username", leetcodeUsername)
+    .eq("leetcode_username", leetcodeUsername.trim().toLowerCase())
     .maybeSingle();
   if (!profile?.leetcode_session_encrypted) return 0;
 
   try {
     const sessionCookie = decryptSession(profile.leetcode_session_encrypted);
     const slugs = await fetchSolvedSlugsFromSession(sessionCookie);
-    if (slugs.length === 0) return 0;
+    if (!slugs || slugs.length === 0) return 0;
 
     const CHUNK = 500;
     let marked = 0;
     for (let i = 0; i < slugs.length; i += CHUNK) {
       const slice = slugs.slice(i, i + CHUNK);
-      const { error } = await supabase.rpc("mark_solved_from_leetcode", {
+      const { data, error } = await supabase.rpc("mark_solved_from_leetcode", {
         p_user_id: profile.id,
         p_slugs: slice,
       });
-      if (!error) marked += slice.length;
+      if (error) continue;
+      marked += typeof data === "number" ? data : 0;
     }
     return marked;
   } catch (error) {
@@ -197,44 +268,75 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const username = searchParams.get("username");
 
-  if (!username) {
-    return NextResponse.json({ error: "Username parameter is required" }, { status: 400 });
-  }
-
   try {
-    const data = await fetchLeetCode(username);
-    if (!data) {
-      return NextResponse.json({ error: "LeetCode user not found" }, { status: 404 });
+    // Cron-triggered squad sync: no username param = sync every claimed handle.
+    if (!isAuthorizedCron(request)) {
+      if (!username) {
+        return NextResponse.json({ error: "Username parameter is required" }, { status: 400 });
+      }
+      const data = await fetchLeetCode(username);
+      if (!data) {
+        return NextResponse.json({ error: "LeetCode user not found" }, { status: 404 });
+      }
+      return NextResponse.json({
+        success: true,
+        persisted: false,
+        data: {
+          profile: data.profile,
+          calendar: data.calendar,
+          recentSubmissions: data.recentSubmissions,
+        },
+      });
     }
 
-    // Cron-triggered background sync: persist stats when authorized with CRON_SECRET.
-    const cronSecret = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
-    let persisted = false;
+    const service = getServiceClient();
+    const handles = username
+      ? [username.trim()]
+      : service
+        ? ((await service.from("profiles").select("leetcode_username").not("leetcode_username", "is", null)).data || [])
+            .map((r) => r.leetcode_username as string | null)
+            .filter((h): h is string => !!h)
+        : [];
+    // Politeness delay between LeetCode hits so squad scale doesn't throttle.
+    const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    let persisted = 0;
     let verified = 0;
     let inferred = 0;
     let sessionImported = 0;
-    const profile = data.profile;
-    if (profile && process.env.CRON_SECRET && cronSecret === process.env.CRON_SECRET) {
-      persisted = await persistStats(username.trim(), {
-        totalEasy: profile.totalEasy ?? 0,
-        totalMedium: profile.totalMedium ?? 0,
-        totalHard: profile.totalHard ?? 0,
-        contestRating: profile.contestRating ?? 1500,
-        contestGlobalRank: profile.contestGlobalRank ?? null,
-        ranking: profile.ranking ?? null,
-        streak: data.calendar.streak ?? 0,
-        avatar: profile.avatar ?? null,
-      });
+    const failed: string[] = [];
+    for (const handle of handles) {
+      try {
+        const data = await fetchLeetCode(handle);
+        if (!data || !data.calendar || !data.recentSubmissions) {
+          failed.push(handle);
+          continue;
+        }
+        const ok = await persistStats(handle, {
+          totalEasy: data.profile.totalEasy ?? 0,
+          totalMedium: data.profile.totalMedium ?? 0,
+          totalHard: data.profile.totalHard ?? 0,
+          contestRating: data.profile.contestRating ?? null,
+          contestGlobalRank: data.profile.contestGlobalRank ?? null,
+          contestTopPercentage: data.profile.contestTopPercentage ?? null,
+          contestAttended: data.profile.contestAttended ?? 0,
+          ranking: data.profile.ranking ?? null,
+          streak: data.calendar.streak ?? 0,
+          avatar: data.profile.avatar ?? null,
+        });
+        if (ok) persisted += 1;
+        else failed.push(handle);
 
-      // Auto-verify suggestions: mark received challenges solved when the recent
-      // accepted submissions include their problem slug.
-      if (data.recentSubmissions.length > 0) {
-        verified = await verifySuggestions(username.trim(), data.recentSubmissions);
-        inferred = await inferSolvedFromLeetcode(username.trim(), data.recentSubmissions);
+        if (data.recentSubmissions.length > 0) {
+          verified += await verifySuggestions(handle, data.recentSubmissions);
+          inferred += await inferSolvedFromLeetcode(handle, data.recentSubmissions);
+        }
+        sessionImported += await importSessionSolved(handle);
+      } catch (err) {
+        console.error(`Squad sync failed for ${handle}:`, err);
+        failed.push(handle);
       }
-
-      // Incremental full-history pull from the stored LeetCode session (if connected).
-      sessionImported = await importSessionSolved(username.trim());
+      await delay(1500);
     }
 
     return NextResponse.json({
@@ -243,11 +345,8 @@ export async function GET(request: Request) {
       verifiedSuggestions: verified,
       inferredSolved: inferred,
       sessionImported,
-      data: {
-        profile: data.profile,
-        calendar: data.calendar,
-        recentSubmissions: data.recentSubmissions,
-      },
+      synced: handles.length,
+      failed,
     });
   } catch (error) {
     console.error("Sync error:", error);
@@ -258,87 +357,89 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { username, pendingSuggestions = [] } = body;
+    const { username } = body;
 
-    if (!username) {
+    if (!username || typeof username !== "string") {
       return NextResponse.json({ error: "Username is required" }, { status: 400 });
     }
 
     // Persisting squad stats is an authenticated write: require the caller's
     // Supabase JWT (Bearer) or server session cookies. Reads of public LeetCode
     // data stay open via GET; POST must prove ownership.
-    const authHeader = request.headers.get("Authorization");
-    const token = authHeader?.replace(/^Bearer\s+/i, "");
-    let authedUserId: string | null = null;
-    const anonUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const anonKey =
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (token && anonUrl && anonKey) {
-      const userClient = createClient(anonUrl, anonKey, { auth: { persistSession: false } });
-      const { data } = await userClient.auth.getUser(token);
-      authedUserId = data?.user?.id ?? null;
-    }
-    if (!authedUserId) {
-      try {
-        const serverSupabase = await createServerClient();
-        const { data } = await serverSupabase.auth.getUser();
-        authedUserId = data?.user?.id ?? null;
-      } catch {
-        // ignore
-      }
-    }
+    const token = extractBearerToken(request);
+    const authedUser = await resolveUser(token);
+    const authedUserId = authedUser?.id ?? null;
     if (!authedUserId) {
       return NextResponse.json({ error: "Unauthorized. Please log in first." }, { status: 401 });
     }
 
+    // Throttle: at most one sync per user per 60s (LeetCode + write protection).
+    // Read-only check here; the stamp lands after ownership verification so
+    // rejected (403/404) requests don't burn the caller's cooldown.
+    const SYNC_COOLDOWN_MS = 60_000;
+    const service = getServiceClient();
+    if (service) {
+      const { data: limit } = await service
+        .from("sync_rate_limits")
+        .select("last_sync_at")
+        .eq("user_id", authedUserId)
+        .maybeSingle();
+      if (limit?.last_sync_at) {
+        const elapsed = Date.now() - new Date(limit.last_sync_at).getTime();
+        if (elapsed < SYNC_COOLDOWN_MS) {
+          const retryAfter = Math.ceil((SYNC_COOLDOWN_MS - elapsed) / 1000);
+          return NextResponse.json(
+            { error: `Sync on cooldown. Retry in ${retryAfter}s.` },
+            { status: 429, headers: { "Retry-After": String(retryAfter) } }
+          );
+        }
+      }
+    }
+
     // Ownership check: only allow syncing a handle linked to the caller's
     // own profile, or a handle not yet claimed by anyone (first-connect flow).
-    const service = getServiceClient();
+    // Stored lowered by the DB trigger, so exact match == case-insensitive.
     if (service) {
       const { data: owner } = await service
         .from("profiles")
         .select("id")
-        .eq("leetcode_username", username.trim())
+        .eq("leetcode_username", username.trim().toLowerCase())
         .maybeSingle();
       if (owner && owner.id !== authedUserId) {
         return NextResponse.json({ error: "Forbidden. This LeetCode handle belongs to another squad member." }, { status: 403 });
       }
+      await service
+        .from("sync_rate_limits")
+        .upsert({ user_id: authedUserId, last_sync_at: new Date().toISOString() }, { onConflict: "user_id" });
     }
 
     const data = await fetchLeetCode(username);
-    if (!data) {
+    if (!data || !data.calendar || !data.recentSubmissions) {
       return NextResponse.json({ error: "User not found on LeetCode" }, { status: 404 });
     }
 
-    // 1. Persist live profile stats to squad profiles
+    // 1. Persist live profile stats to squad profiles (claims handle on first connect)
     const persisted = await persistStats(username.trim(), {
       totalEasy: data.profile.totalEasy,
       totalMedium: data.profile.totalMedium,
       totalHard: data.profile.totalHard,
-      contestRating: data.profile.contestRating ?? 1500,
+      contestRating: data.profile.contestRating ?? null,
       contestGlobalRank: data.profile.contestGlobalRank ?? null,
+      contestTopPercentage: data.profile.contestTopPercentage ?? null,
+      contestAttended: data.profile.contestAttended ?? 0,
       ranking: data.profile.ranking ?? null,
       streak: data.calendar.streak ?? 0,
       avatar: data.profile.avatar ?? null,
-    });
+    }, { userId: authedUserId });
 
-    // 2. Automatically infer and mark recent accepted questions as solved in user_problem_status
+    // 2. Verify + infer ONLY from LeetCode-proof recent submissions. Self-attested
+    // rows are never trusted here — that was a full verify bypass.
     let inferred = 0;
     let verified = 0;
+    const verifySlugs = data.recentSubmissions;
     if (data.recentSubmissions.length > 0) {
       inferred = await inferSolvedFromLeetcode(username.trim(), data.recentSubmissions);
-      verified = await verifySuggestions(username.trim(), data.recentSubmissions);
-    }
-
-    // Auto-verify suggestions the client passed in directly
-    const verifiedSuggestions: string[] = [];
-    if (pendingSuggestions.length > 0 && data.recentSubmissions.length > 0) {
-      const recentSlugs = new Set(data.recentSubmissions.map((s) => s.titleSlug.toLowerCase()));
-      for (const suggestion of pendingSuggestions) {
-        if (recentSlugs.has(suggestion.problem_slug.toLowerCase())) {
-          verifiedSuggestions.push(suggestion.id);
-        }
-      }
+      verified = await verifySuggestions(username.trim(), verifySlugs);
     }
 
     return NextResponse.json({
@@ -352,7 +453,6 @@ export async function POST(request: Request) {
         totalActiveDays: data.calendar.totalActiveDays,
       },
       recentSubmissions: data.recentSubmissions,
-      verifiedSuggestions,
     });
   } catch (error) {
     console.error("Sync POST error:", error);

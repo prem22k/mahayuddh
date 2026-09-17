@@ -1,36 +1,18 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getServiceClient, isAuthorizedCron } from "@/lib/supabase/service";
 import { CURATED_SHEETS } from "@/lib/data/curatedSheetsData";
-
-function getServiceClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
-  if (!url || !serviceKey) return null;
-  return createClient(url, serviceKey, { auth: { persistSession: false } });
-}
 
 export async function POST(request: Request) {
   return seedSheetsHandler(request);
 }
 
-export async function GET(request: Request) {
-  return seedSheetsHandler(request);
+// Reads must never mutate curated data.
+export async function GET() {
+  return NextResponse.json({ error: "Method not allowed. Use POST." }, { status: 405 });
 }
 
 async function seedSheetsHandler(request: Request) {
-  const authHeader = request.headers.get("Authorization");
-  const cronSecret = authHeader?.replace(/^Bearer\s+/i, "");
-  const urlObj = new URL(request.url);
-  const queryKey = urlObj.searchParams.get("key");
-
-  // Allow execution if CRON_SECRET matches, or in development, or if service role is present
-  if (
-    process.env.CRON_SECRET &&
-    cronSecret !== process.env.CRON_SECRET &&
-    queryKey !== process.env.CRON_SECRET &&
-    process.env.NODE_ENV === "production"
-  ) {
+  if (!isAuthorizedCron(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -70,10 +52,8 @@ async function seedSheetsHandler(request: Request) {
 
       const listId = listRow.id;
 
-      // 2. Clear old problems for this curated list to avoid duplicates
-      await supabase.from("list_problems").delete().eq("list_id", listId);
-
-      // 3. Insert all problems for this sheet in chunks
+      // 2. Idempotent upsert (list_id, title_slug) unique: crash-safe,
+      // no delete-then-insert window where readers see an empty list.
       const problemsToInsert = sheet.problems.map((p) => ({
         list_id: listId,
         title: p.title,
@@ -84,19 +64,22 @@ async function seedSheetsHandler(request: Request) {
       }));
 
       const CHUNK = 50;
+      let insertedForSheet = 0;
       for (let i = 0; i < problemsToInsert.length; i += CHUNK) {
         const slice = problemsToInsert.slice(i, i + CHUNK);
         const { error: insertErr } = await supabase
           .from("list_problems")
-          .insert(slice);
+          .upsert(slice, { onConflict: "list_id,title_slug" });
 
         if (insertErr) {
-          console.error(`Error inserting problems chunk for ${sheet.slug}:`, insertErr);
+          console.error(`Error upserting problems chunk for ${sheet.slug}:`, insertErr);
+        } else {
+          insertedForSheet += slice.length;
         }
       }
 
-      totalProblemsInserted += problemsToInsert.length;
-      sheetResults.push({ slug: sheet.slug, problemsCount: problemsToInsert.length });
+      totalProblemsInserted += insertedForSheet;
+      sheetResults.push({ slug: sheet.slug, problemsCount: insertedForSheet });
     }
 
     return NextResponse.json({
@@ -107,9 +90,6 @@ async function seedSheetsHandler(request: Request) {
     });
   } catch (error) {
     console.error("Failed to seed curated sheets:", error);
-    return NextResponse.json(
-      { error: "Failed to seed curated sheets", details: String(error) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to seed curated sheets" }, { status: 500 });
   }
 }
