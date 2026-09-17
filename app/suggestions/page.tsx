@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  ExternalLink,
   Plus,
   Play,
   CheckCircle2,
@@ -11,10 +10,15 @@ import {
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { cn } from "@/lib/utils";
+import { slugifyTitle } from "@/lib/slug";
 import { getSuggestions, createSuggestion, markSuggestionCompleted } from "@/lib/data/suggestions";
 import { getSquadProfiles } from "@/lib/data/profiles";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
+import { DifficultyBadge } from "@/components/ui/DifficultyBadge";
+import { ProblemLink } from "@/components/ui/ProblemLink";
+import { ModalShell } from "@/components/ui/ModalShell";
+import { PageLoader } from "@/components/ui/PageLoader";
 import { Suggestion, Profile, Difficulty } from "@/types/database";
 
 export default function SuggestionsPage() {
@@ -26,6 +30,7 @@ export default function SuggestionsPage() {
   const [activeTab, setActiveTab] = useState<"all" | "for_you" | "pending" | "completed">("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   // Form State
   const [targetUserId, setTargetUserId] = useState("");
@@ -73,16 +78,23 @@ export default function SuggestionsPage() {
 
   const handleSendChallenge = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!problemTitle || !user) return;
+    if (!problemTitle.trim() || !user) return;
     if (!targetUserId || targetUserId === "demo") {
+      setCreateError("Pick a squad member to challenge.");
+      setSubmitting(false);
+      return;
+    }
+    if (targetUserId === user.id) {
+      setCreateError("Challenge a squad mate, not yourself.");
       setSubmitting(false);
       return;
     }
 
     setSubmitting(true);
+    setCreateError(null);
     try {
-      const slug = problemSlug.trim() || problemTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-      const created = await createSuggestion({
+      const slug = (problemSlug.trim().toLowerCase() || slugifyTitle(problemTitle)).slice(0, 80);
+      const res = await createSuggestion({
         fromUser: user.id,
         toUser: targetUserId,
         problemTitle: problemTitle.trim(),
@@ -91,12 +103,13 @@ export default function SuggestionsPage() {
         note: note.trim(),
       });
 
-      if (created) {
-        setSuggestions([created, ...suggestions]);
+      if (res.ok) {
+        setSuggestions([res.suggestion, ...suggestions]);
         setIsModalOpen(false);
         setProblemTitle("");
         setProblemSlug("");
         setNote("");
+        setCreateError(null);
 
         confetti({
           particleCount: 60,
@@ -104,9 +117,16 @@ export default function SuggestionsPage() {
           origin: { y: 0.8 },
           colors: ["#fa586a", "#ffffff", "#ffd60a"],
         });
+      } else if (res.reason === "duplicate") {
+        setCreateError("This squad mate already has a pending challenge for that problem.");
+      } else if (res.reason === "invalid") {
+        setCreateError("Check the problem slug (lowercase letters, numbers, dashes) and keep hints under 2000 characters.");
+      } else {
+        setCreateError("Couldn't send the challenge. Please try again.");
       }
     } catch (err) {
       console.error("Error creating challenge:", err);
+      setCreateError("Couldn't send the challenge. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -122,9 +142,13 @@ export default function SuggestionsPage() {
     });
   };
 
+  const [completeError, setCompleteError] = useState<string | null>(null);
+
   const handleMarkCompleted = async (item: Suggestion) => {
-    const ok = await markSuggestionCompleted(item.id);
-    if (ok) {
+    if (!user) return;
+    setCompleteError(null);
+    const res = await markSuggestionCompleted(item.id, user.id);
+    if (res.ok) {
       setSuggestions((prev) =>
         prev.map((s) => (s.id === item.id ? { ...s, status: "completed", completed_at: new Date().toISOString() } : s))
       );
@@ -134,19 +158,10 @@ export default function SuggestionsPage() {
         origin: { y: 0.8 },
         colors: ["#30d158", "#ffffff"],
       });
-    }
-  };
-
-  const getDifficultyBadge = (diff: string) => {
-    switch (diff?.toLowerCase()) {
-      case "easy":
-        return "text-[#30d158] bg-[#30d158]/10 border-[#30d158]/25";
-      case "medium":
-        return "text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/25";
-      case "hard":
-        return "text-[#ff453a] bg-[#ff453a]/10 border-[#ff453a]/25";
-      default:
-        return "text-white/40";
+    } else if (res.reason === "not_solved") {
+      setCompleteError("Solve it on LeetCode first — press Sync, then mark complete.");
+    } else {
+      setCompleteError("Only the challenged member can complete this.");
     }
   };
 
@@ -178,7 +193,10 @@ export default function SuggestionsPage() {
 
         {/* Action Button */}
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            setCreateError(null);
+            setIsModalOpen(true);
+          }}
           className="px-4 py-2 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white font-semibold text-xs flex items-center gap-1.5 shadow-[0_0_20px_rgba(250,88,106,0.35)] self-start md:self-auto transition-all cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -242,11 +260,13 @@ export default function SuggestionsPage() {
       </div>
 
       {/* ── Suggestion Cards Grid ── */}
-      {loading ? (
-        <div className="h-60 flex flex-col items-center justify-center gap-3 text-white/40">
-          <div className="w-7 h-7 animate-spin rounded-full border-2 border-white/10 border-t-[#fa586a]" />
-          <span className="text-xs">Loading challenges...</span>
+      {completeError && (
+        <div role="alert" className="px-4 py-2.5 rounded-xl bg-[#ff9f0a]/10 border border-[#ff9f0a]/30 text-[#ff9f0a] text-xs font-medium">
+          {completeError}
         </div>
+      )}
+      {loading ? (
+        <PageLoader label="Loading challenges..." className="h-60" />
       ) : filteredList.length === 0 ? (
         <div className="p-12 text-center text-white/40 text-xs bg-[#1c1c1e]/60 rounded-2xl border border-white/[0.06]">
           {activeTab === "for_you"
@@ -257,7 +277,6 @@ export default function SuggestionsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredList.map((item) => {
             const isTarget = item.to_user === user?.id;
-            const isSender = item.from_user === user?.id;
             const isCompleted = item.status === "completed";
 
             return (
@@ -302,14 +321,7 @@ export default function SuggestionsPage() {
 
                   <div className="mt-3 flex items-center gap-2">
                     <h3 className="text-base font-bold text-white">{item.problem_title}</h3>
-                    <span
-                      className={cn(
-                        "px-2 py-0.5 rounded-full text-[10px] font-semibold border",
-                        getDifficultyBadge(item.difficulty)
-                      )}
-                    >
-                      {item.difficulty}
-                    </span>
+                    <DifficultyBadge difficulty={item.difficulty} />
                   </div>
 
                   {item.note && (
@@ -331,7 +343,8 @@ export default function SuggestionsPage() {
                       <span>Solve in Dock</span>
                     </button>
 
-                    {(isTarget || isSender) && !isCompleted && (
+                    {/* Only the challenged member can complete (enforced server-side too). */}
+                    {isTarget && !isCompleted && (
                       <button
                         onClick={() => handleMarkCompleted(item)}
                         className="px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#30d158]/15 hover:text-[#30d158] hover:border-[#30d158]/30 border border-white/[0.08] text-white/60 font-semibold flex items-center gap-1.5 transition-colors text-[11px] cursor-pointer"
@@ -342,15 +355,7 @@ export default function SuggestionsPage() {
                     )}
                   </div>
 
-                  <a
-                    href={`https://leetcode.com/problems/${item.problem_slug}/`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/80 hover:text-white font-semibold flex items-center gap-1.5 transition-colors text-[11px]"
-                  >
-                    <span>LeetCode</span>
-                    <ExternalLink className="w-3 h-3 text-white/50" />
-                  </a>
+                  <ProblemLink slug={item.problem_slug} variant="pill" />
                 </div>
               </div>
             );
@@ -360,13 +365,21 @@ export default function SuggestionsPage() {
 
       {/* ── Challenge Modal ── */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 select-none">
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-md" onClick={() => setIsModalOpen(false)} />
-          <div className="relative w-full max-w-lg bg-[#1c1c1e] border border-white/[0.1] rounded-3xl shadow-modal p-6 z-10 animate-in fade-in zoom-in-95">
+        <ModalShell
+          label="Challenge a friend"
+          onClose={() => { setCreateError(null); setIsModalOpen(false); }}
+          panelClassName="shadow-modal p-6"
+        >
             <h2 className="text-xl font-bold text-white mb-1">Challenge a Friend</h2>
             <p className="text-xs text-white/40 mb-5">
               Send a targeted algorithmic challenge with your custom intuition notes.
             </p>
+
+            {createError && (
+              <div role="alert" className="mb-4 px-4 py-2.5 rounded-xl bg-[#ff453a]/10 border border-[#ff453a]/30 text-[#ff453a] text-xs font-medium">
+                {createError}
+              </div>
+            )}
 
             <form onSubmit={handleSendChallenge} className="space-y-4">
               <div>
@@ -446,7 +459,7 @@ export default function SuggestionsPage() {
               <div className="flex justify-end gap-2 pt-3 border-t border-white/[0.06]">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => { setCreateError(null); setIsModalOpen(false); }}
                   className="px-4 py-2 rounded-full bg-white/[0.04] text-white/50 hover:text-white text-xs font-semibold transition-colors cursor-pointer"
                 >
                   Cancel
@@ -460,8 +473,7 @@ export default function SuggestionsPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </ModalShell>
       )}
     </div>
   );

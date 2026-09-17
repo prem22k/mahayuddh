@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { Spinner } from "@/components/ui/Spinner";
 import { cn } from "@/lib/utils";
 
 export default function LoginPage() {
@@ -86,6 +87,7 @@ export default function LoginPage() {
           if (authData.session) {
             try {
               const profileRes = await fetch("/api/auth/profile", {
+                method: "POST",
                 headers: { Authorization: `Bearer ${authData.session.access_token}` },
               });
               if (!profileRes.ok) {
@@ -129,7 +131,7 @@ export default function LoginPage() {
   if (!authLoading && user) {
     return (
       <div className="min-h-screen bg-black flex flex-col justify-center items-center gap-3">
-        <div className="w-7 h-7 animate-spin rounded-full border-2 border-white/10 border-t-[#fa586a]" />
+        <Spinner size="xl" />
         <span className="text-xs text-white/40 font-medium">Entering Arena...</span>
       </div>
     );
@@ -281,7 +283,7 @@ export default function LoginPage() {
               className="w-full py-3 mt-6 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 active:scale-[0.99] text-white font-bold text-xs shadow-[0_0_24px_rgba(250,88,106,0.4)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               {loading ? (
-                <div className="w-4 h-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                <Spinner size="md" tone="inverse" className="border-white/20" />
               ) : (
                 <span>{mode === "signin" ? "Enter Arena" : "Create Account & Sync"}</span>
               )}

@@ -14,7 +14,11 @@ import {
   Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { copyText } from "@/lib/clipboard";
 import { getSharedResources, createSharedResource, deleteSharedResource } from "@/lib/data/vault";
+import { ModalShell } from "@/components/ui/ModalShell";
+import { PageLoader } from "@/components/ui/PageLoader";
+import { FormAlert } from "@/components/ui/FormAlert";
 import { SharedResource, ResourceCategory } from "@/types/database";
 import { useAuth } from "@/components/providers/AuthProvider";
 
@@ -55,6 +59,7 @@ export default function VaultPage() {
   const [content, setContent] = useState("");
   const [externalUrl, setExternalUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadResources() {
@@ -101,8 +106,8 @@ export default function VaultPage() {
     });
   }, [resources, activeTab, searchQuery]);
 
-  const handleCopy = (id: string, code: string) => {
-    navigator.clipboard.writeText(code);
+  const handleCopy = async (id: string, code: string) => {
+    if (!(await copyText(code))) return;
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
@@ -129,6 +134,7 @@ export default function VaultPage() {
     if (!title.trim() || !content.trim() || !user) return;
 
     setSubmitting(true);
+    setCreateError(null);
     try {
       const created = await createSharedResource({
         title: title.trim(),
@@ -144,9 +150,12 @@ export default function VaultPage() {
         setTitle("");
         setContent("");
         setExternalUrl("");
+      } else {
+        setCreateError("Couldn't publish. Check your connection and try again.");
       }
     } catch (err) {
       console.error("Error creating resource:", err);
+      setCreateError("Couldn't publish. Check your connection and try again.");
     } finally {
       setSubmitting(false);
     }
@@ -172,7 +181,7 @@ export default function VaultPage() {
         <div className="flex items-center gap-3 self-start md:self-auto flex-wrap">
           {/* Add Resource Button */}
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { setCreateError(null); setIsModalOpen(true); }}
             className="px-4 py-2 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white font-semibold text-xs flex items-center gap-1.5 shadow-glow cursor-pointer transition-all"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -232,10 +241,7 @@ export default function VaultPage() {
 
       {/* ── Content List ── */}
       {loading ? (
-        <div className="h-60 flex flex-col items-center justify-center gap-3 text-white/40">
-          <div className="w-7 h-7 animate-spin rounded-full border-2 border-white/10 border-t-[#fa586a]" />
-          <span className="text-xs">Loading vault items...</span>
-        </div>
+        <PageLoader label="Loading vault items..." className="h-60" />
       ) : filteredResources.length === 0 ? (
         <div className="p-12 text-center text-white/40 text-xs bg-[#1c1c1e]/60 rounded-2xl border border-white/[0.06]">
           {searchQuery
@@ -368,14 +374,18 @@ export default function VaultPage() {
 
       {/* ── Add Modal ── */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 select-none">
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-md" onClick={() => setIsModalOpen(false)} />
-          <div className="relative w-full max-w-lg bg-[#1c1c1e] border border-white/[0.1] rounded-3xl shadow-modal p-6 z-10 animate-in fade-in zoom-in-95">
+        <ModalShell
+          label="Add to knowledge vault"
+          onClose={() => { setCreateError(null); setIsModalOpen(false); }}
+          panelClassName="shadow-modal p-6"
+        >
             <div className="flex items-center gap-2 mb-1">
               <Layers className="w-4 h-4 text-[#fa586a]" />
               <h2 className="text-xl font-bold text-white">Add to Knowledge Vault</h2>
             </div>
             <p className="text-xs text-white/40 mb-5">Share an algorithm template, cheat sheet, or company interview debrief with your squad.</p>
+
+            {createError && <div className="mb-4"><FormAlert tone="error">{createError}</FormAlert></div>}
 
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
@@ -430,7 +440,7 @@ export default function VaultPage() {
               <div className="flex justify-end gap-2 pt-3 border-t border-white/[0.06]">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => { setCreateError(null); setIsModalOpen(false); }}
                   className="px-4 py-2 rounded-full bg-white/[0.04] text-white/50 hover:text-white text-xs font-semibold transition-colors cursor-pointer"
                 >
                   Cancel
@@ -444,8 +454,7 @@ export default function VaultPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </ModalShell>
       )}
     </div>
   );

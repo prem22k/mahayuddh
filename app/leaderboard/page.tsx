@@ -1,21 +1,65 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { ExternalLink, RefreshCw, ArrowRight, Link2, Shield } from "lucide-react";
+import React, { useState, useEffect, useMemo } from "react";
+import { ExternalLink, RefreshCw, ArrowRight, Link2, Shield, ArrowUp, ArrowDown, ArrowUpDown, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { syncErrorMessage } from "@/lib/syncError";
 import { getSquadProfiles, syncUserProfileStats } from "@/lib/data/profiles";
+import { calculatePowerLevel } from "@/lib/stats";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ConnectLeetCodeModal } from "@/components/modals/ConnectLeetCodeModal";
 import { UserStatsDossierModal } from "@/components/profile/UserStatsDossierModal";
+import { Spinner } from "@/components/ui/Spinner";
+import { PageLoader } from "@/components/ui/PageLoader";
 import { Profile } from "@/types/database";
 
-type LeaderboardTab = "rating" | "streak" | "hard" | "easy";
+type MetricKey = "score" | "rating" | "contests" | "easy" | "medium" | "hard" | "total" | "streak";
+type SortDir = "desc" | "asc";
+
+const METRICS: { key: MetricKey; label: string; title: string }[] = [
+  { key: "score", label: "Score", title: "Total approximation: rating×1.5 + hard×30 + medium×10 + easy×3, streak bonus up to 40%" },
+  { key: "rating", label: "Rating", title: "LeetCode contest rating" },
+  { key: "contests", label: "Contests", title: "Contests attended" },
+  { key: "easy", label: "Easy", title: "Easy problems solved" },
+  { key: "medium", label: "Med", title: "Medium problems solved" },
+  { key: "hard", label: "Hard", title: "Hard problems solved" },
+  { key: "total", label: "Total", title: "Total problems solved" },
+  { key: "streak", label: "Streak", title: "Daily streak (days)" },
+];
+
+// Shared grid: rank | member | 8 metrics | action. Horizontal scroll below ~960px.
+const GRID = "44px minmax(170px,1.5fr) repeat(8,minmax(62px,0.65fr)) minmax(140px,0.9fr)";
+
+function getMetricValue(m: Profile, key: MetricKey): number {
+  switch (key) {
+    case "score":
+      return calculatePowerLevel(m);
+    case "rating":
+      // Unrated members sort below every rated one.
+      return m.contest_rating == null ? -1 : Math.round(m.contest_rating);
+    case "contests":
+      return m.contest_attended || 0;
+    case "easy":
+      return m.total_easy || 0;
+    case "medium":
+      return m.total_medium || 0;
+    case "hard":
+      return m.total_hard || 0;
+    case "total":
+      return (m.total_easy || 0) + (m.total_medium || 0) + (m.total_hard || 0);
+    case "streak":
+      return m.streak || 0;
+  }
+}
 
 export default function LeaderboardPage() {
   const { user, profile, refreshProfile } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<LeaderboardTab>("rating");
+  const [sortKey, setSortKey] = useState<MetricKey>("score");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [query, setQuery] = useState("");
+  const [hideUnconnected, setHideUnconnected] = useState(false);
   const [inspectedProfile, setInspectedProfile] = useState<Profile | null>(null);
 
   // Syncing state
@@ -43,10 +87,15 @@ export default function LeaderboardPage() {
     loadLeaderboardData();
   }, []);
 
+  useEffect(() => {
+    loadLeaderboardData();
+  }, []);
+
   const handleSyncMyStats = async () => {
     if (!user || !profile?.leetcode_username) return;
     setIsSyncing(true);
     setSyncSuccess(false);
+    setConnectError(null);
 
     try {
       const synced = await syncUserProfileStats(user.id, profile.leetcode_username);
@@ -60,7 +109,8 @@ export default function LeaderboardPage() {
       setTimeout(() => setSyncSuccess(false), 3000);
     } catch (e) {
       console.error("Failed to sync:", e);
-      setConnectError("Could not sync LeetCode stats. Please try again.");
+      const msg = e instanceof Response ? await syncErrorMessage(e, "Could not sync LeetCode stats. Please try again.") : "Could not sync LeetCode stats. Please try again.";
+      setConnectError(msg);
     } finally {
       setIsSyncing(false);
     }
@@ -81,34 +131,85 @@ export default function LeaderboardPage() {
       } else {
         setConnectError("Could not find LeetCode account. Check username spelling.");
       }
-    } catch {
-      setConnectError("Sync failed. Please try again.");
+    } catch (e) {
+      console.error("Failed to connect handle:", e);
+      const msg =
+        e instanceof Response
+          ? await syncErrorMessage(e, "Sync failed. Please try again.")
+          : "Sync failed. Please try again.";
+      setConnectError(msg);
     } finally {
       setIsConnectingHandle(false);
     }
   };
 
-  const sortedMembers = [...profiles].sort((a, b) => {
-    switch (activeTab) {
-      case "rating":
-        return (b.contest_rating || 0) - (a.contest_rating || 0);
-      case "streak":
-        return (b.streak || 0) - (a.streak || 0);
-      case "hard":
-        return (b.total_hard || 0) - (a.total_hard || 0);
-      case "easy":
-        return (b.total_easy || 0) - (a.total_easy || 0);
-      default:
-        return 0;
+  // Click cycles: new column → desc → asc → default (score desc)
+  const handleSort = (key: MetricKey) => {
+    if (key !== sortKey) {
+      setSortKey(key);
+      setSortDir("desc");
+    } else if (sortDir === "desc") {
+      setSortDir("asc");
+    } else {
+      setSortKey("score");
+      setSortDir("desc");
     }
-  });
+  };
 
-  // Calculate my rank in current sorting
-  const myRankIndex = user ? sortedMembers.findIndex((m) => m.id === user.id) : -1;
-  const myRank = myRankIndex !== -1 ? myRankIndex + 1 : null;
+  const { visibleMembers, rankMap } = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const filtered = profiles.filter((m) => {
+      if (hideUnconnected && !m.leetcode_username) return false;
+      if (!q) return true;
+      return (
+        m.username.toLowerCase().includes(q) ||
+        (m.leetcode_username || "").toLowerCase().includes(q)
+      );
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      // Null-rating members always sink below rated ones, in EITHER direction —
+      // getMetricValue's -1 sentinel alone would float them to the top on asc.
+      if (sortKey === "rating") {
+        const aNull = a.contest_rating == null;
+        const bNull = b.contest_rating == null;
+        if (aNull && !bNull) return 1;
+        if (!aNull && bNull) return -1;
+      }
+      const diff = getMetricValue(a, sortKey) - getMetricValue(b, sortKey);
+      if (diff !== 0) return sortDir === "desc" ? -diff : diff;
+      // Stable tiebreaks: score, then rating (unrated last), then name
+      return (
+        calculatePowerLevel(b) - calculatePowerLevel(a) ||
+        (b.contest_rating ?? -1) - (a.contest_rating ?? -1) ||
+        a.username.localeCompare(b.username)
+      );
+    });
+
+    // Dense ranks: ties on the active metric share a rank
+    const ranks = new Map<string, number>();
+    let rank = 0;
+    let prevVal: number | null = null;
+    for (const m of sorted) {
+      const v = getMetricValue(m, sortKey);
+      if (prevVal === null || v !== prevVal) {
+        rank += 1;
+        prevVal = v;
+      }
+      ranks.set(m.id, rank);
+    }
+    return { visibleMembers: sorted, rankMap: ranks };
+  }, [profiles, query, hideUnconnected, sortKey, sortDir]);
+
+  const myRank = user ? rankMap.get(user.id) ?? null : null;
 
   const totalMySolved =
     (profile?.total_easy || 0) + (profile?.total_medium || 0) + (profile?.total_hard || 0);
+  const myScore = profile ? calculatePowerLevel(profile) : 0;
+
+  // Inactive metric columns dim so the sorted column holds focus
+  const metricCell = (active: boolean) =>
+    cn("flex justify-center transition-opacity duration-200", !active && "opacity-40");
 
   const getRankIndicator = (rank: number) => {
     if (rank === 1) {
@@ -151,55 +252,33 @@ export default function LeaderboardPage() {
             Leaderboard
           </h1>
           <p className="text-xs text-white/40 mt-1">
-            Live rankings synchronized with LeetCode submissions.
+            Live rankings synchronized with LeetCode submissions. Click a column to sort.
           </p>
         </div>
 
-        {/* View Mode Filters */}
-        <div className="flex items-center p-1 bg-white/[0.04] rounded-full border border-white/[0.06] overflow-x-auto self-start md:self-auto">
+        {/* Filters */}
+        <div className="flex items-center gap-2 flex-wrap self-start md:self-auto">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.04] border border-white/[0.06] rounded-full">
+            <Search className="w-3.5 h-3.5 text-white/30 shrink-0" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search squad..."
+              className="bg-transparent text-xs text-white placeholder:text-white/25 focus:outline-none w-28 sm:w-36"
+            />
+          </div>
           <button
-            onClick={() => setActiveTab("rating")}
+            onClick={() => setHideUnconnected((v) => !v)}
             className={cn(
-              "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all shrink-0 cursor-pointer",
-              activeTab === "rating"
-                ? "bg-white/[0.12] text-white shadow-sm"
-                : "text-white/40 hover:text-white/80"
+              "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all shrink-0 cursor-pointer border",
+              hideUnconnected
+                ? "bg-white/[0.12] text-white border-white/[0.1]"
+                : "text-white/40 hover:text-white/80 border-white/[0.06]"
             )}
+            title="Hide members without a linked LeetCode handle"
           >
-            Contest Rating
-          </button>
-          <button
-            onClick={() => setActiveTab("streak")}
-            className={cn(
-              "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all shrink-0 cursor-pointer",
-              activeTab === "streak"
-                ? "bg-white/[0.12] text-white shadow-sm"
-                : "text-white/40 hover:text-white/80"
-            )}
-          >
-            Daily Streak
-          </button>
-          <button
-            onClick={() => setActiveTab("hard")}
-            className={cn(
-              "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all shrink-0 cursor-pointer",
-              activeTab === "hard"
-                ? "bg-white/[0.12] text-white shadow-sm"
-                : "text-white/40 hover:text-white/80"
-            )}
-          >
-            Hard Solved
-          </button>
-          <button
-            onClick={() => setActiveTab("easy")}
-            className={cn(
-              "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all shrink-0 cursor-pointer",
-              activeTab === "easy"
-                ? "bg-white/[0.12] text-white shadow-sm"
-                : "text-white/40 hover:text-white/80"
-            )}
-          >
-            Speed Solvers
+            Linked only
           </button>
         </div>
       </div>
@@ -251,10 +330,28 @@ export default function LeaderboardPage() {
           <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
             <div className="flex flex-col">
               <span className="text-[10px] text-white/35 font-semibold uppercase tracking-wider">
+                Score
+              </span>
+              <span className="text-lg font-black text-white font-mono leading-tight">
+                {myScore.toLocaleString()}
+              </span>
+            </div>
+
+            <div className="flex flex-col">
+              <span className="text-[10px] text-white/35 font-semibold uppercase tracking-wider">
                 Rating
               </span>
               <span className="text-lg font-black text-white font-mono leading-tight">
-                {Math.round(profile.contest_rating)}
+                {profile.contest_rating == null ? "—" : Math.round(profile.contest_rating)}
+              </span>
+            </div>
+
+            <div className="flex flex-col">
+              <span className="text-[10px] text-white/35 font-semibold uppercase tracking-wider">
+                Contests
+              </span>
+              <span className="text-lg font-black text-[#bf5af2] font-mono leading-tight">
+                {profile.contest_attended || 0}
               </span>
             </div>
 
@@ -349,7 +446,7 @@ export default function LeaderboardPage() {
                 className="px-4 py-2 rounded-xl bg-[#fa586a] hover:bg-[#fa586a]/90 text-white font-bold text-xs transition-all disabled:opacity-40 shrink-0 cursor-pointer flex items-center gap-1.5"
               >
                 {isConnectingHandle ? (
-                  <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  <Spinner size="sm" tone="inverse" />
                 ) : (
                   <>
                     <span>Connect</span>
@@ -374,132 +471,202 @@ export default function LeaderboardPage() {
       )}
 
       {/* ── Leaderboard Table ── */}
-      <div className="bg-[#1c1c1e]/60 border border-white/[0.06] rounded-2xl overflow-hidden shadow-subtle backdrop-blur-xl">
-        <div className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-white/[0.06] text-[11px] font-semibold text-white/30 uppercase tracking-wider">
-          <div className="col-span-1 text-center">#</div>
-          <div className="col-span-4 md:col-span-3">Squad Member</div>
-          <div className="col-span-2 text-center">Streak</div>
-          <div className="col-span-2 text-center">Rating</div>
-          <div className="col-span-3 md:col-span-2 text-center hidden sm:block">Solved (E/M/H)</div>
-          <div className="col-span-3 md:col-span-2 text-right">Action</div>
-        </div>
-
-        {loading ? (
-          <div className="h-48 flex flex-col items-center justify-center gap-3 text-white/40">
-            <div className="w-6 h-6 animate-spin rounded-full border-2 border-white/10 border-t-[#fa586a]" />
-            <span className="text-xs">Loading leaderboard...</span>
-          </div>
-        ) : sortedMembers.length === 0 ? (
-          <div className="p-12 text-center text-white/40 text-xs">
-            No profiles registered in this squad yet. When members log in or add their LeetCode handles, they will appear here.
-          </div>
-        ) : (
-          <div className="divide-y divide-white/[0.04]">
-            {sortedMembers.map((member, index) => {
-              const isCurrentUser = member.id === user?.id;
-
-              return (
-                <div
-                  key={member.id}
-                  className={cn(
-                    "grid grid-cols-12 gap-4 px-6 py-3.5 items-center hover:bg-white/[0.03] transition-colors group text-xs",
-                    isCurrentUser && "bg-white/[0.04] border-l-2 border-l-[#fa586a]"
-                  )}
-                >
-                  <div className="col-span-1 flex justify-center">
-                    {getRankIndicator(index + 1)}
-                  </div>
-
-                  <div className="col-span-4 md:col-span-3 flex items-center gap-3 overflow-hidden">
-                    <div className="w-8 h-8 rounded-full bg-white/[0.06] border border-white/[0.08] flex items-center justify-center font-bold text-white text-[11px] shrink-0 group-hover:border-[#fa586a]/40 transition-colors overflow-hidden">
-                      {member.avatar_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={member.avatar_url}
-                          alt={member.username}
-                          className="w-full h-full object-cover"
-                        />
+      <div aria-live="polite" className="sr-only">
+        Sorted by {METRICS.find((m) => m.key === sortKey)?.label} {sortDir === "desc" ? "descending" : "ascending"};{" "}
+        {visibleMembers.length} squad member{visibleMembers.length === 1 ? "" : "s"} shown.
+      </div>
+      <div
+        role="table"
+        aria-label="Squad leaderboard"
+        className="bg-[#1c1c1e]/60 border border-white/[0.06] rounded-2xl overflow-hidden shadow-subtle backdrop-blur-xl"
+      >
+        <div className="overflow-x-auto">
+          <div className="min-w-[960px]">
+            <div
+              role="row"
+              className="grid gap-2 px-6 py-3 border-b border-white/[0.06] text-[11px] font-semibold text-white/30 uppercase tracking-wider items-center"
+              style={{ gridTemplateColumns: GRID }}
+            >
+              <div className="text-center">#</div>
+              <div>Squad Member</div>
+              {METRICS.map(({ key, label, title }) => {
+                const active = sortKey === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => handleSort(key)}
+                    title={`${title}. Click to cycle desc → asc → default.`}
+                    aria-label={`Sort by ${label}${active ? ` (currently ${sortDir === "desc" ? "descending" : "ascending"})` : ""}`}
+                    className={cn(
+                      "flex items-center justify-center gap-1 uppercase tracking-wider text-[11px] font-semibold transition-colors cursor-pointer",
+                      active ? "text-white" : "hover:text-white/70"
+                    )}
+                  >
+                    <span>{label}</span>
+                    {active ? (
+                      sortDir === "desc" ? (
+                        <ArrowDown className="w-3 h-3 text-[#fa586a]" />
                       ) : (
-                        member.username.charAt(0).toUpperCase()
+                        <ArrowUp className="w-3 h-3 text-[#fa586a]" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 opacity-40" />
+                    )}
+                  </button>
+                );
+              })}
+              <div className="text-right">Action</div>
+            </div>
+
+            {loading ? (
+              <PageLoader label="Loading leaderboard..." className="h-48" />
+            ) : visibleMembers.length === 0 ? (
+              <div className="p-12 text-center text-white/40 text-xs">
+                {profiles.length === 0
+                  ? "No profiles registered in this squad yet. When members log in or add their LeetCode handles, they will appear here."
+                  : "No squad members match this filter."}
+              </div>
+            ) : (
+              <div className="divide-y divide-white/[0.04]">
+                {visibleMembers.map((member) => {
+                  const isCurrentUser = member.id === user?.id;
+                  const rank = rankMap.get(member.id) ?? 0;
+                  const contestRank = member.contest_global_rank ?? member.global_rank;
+
+                  return (
+                    <div
+                      key={member.id}
+                      role="row"
+                      aria-label={`${member.username}, rank ${rank}`}
+                      className={cn(
+                        "grid gap-2 px-6 py-3.5 items-center hover:bg-white/[0.03] transition-colors group text-xs",
+                        isCurrentUser && "bg-white/[0.04] border-l-2 border-l-[#fa586a]"
                       )}
-                    </div>
-                    <div className="flex flex-col truncate">
-                      <div className="flex items-center gap-1.5 truncate">
-                        <span className="font-semibold text-white truncate group-hover:text-[#fa586a] transition-colors">
-                          {member.username}
+                      style={{ gridTemplateColumns: GRID }}
+                    >
+                      <div className="flex justify-center">
+                        {getRankIndicator(rank)}
+                      </div>
+
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="w-8 h-8 rounded-full bg-white/[0.06] border border-white/[0.08] flex items-center justify-center font-bold text-white text-[11px] shrink-0 group-hover:border-[#fa586a]/40 transition-colors overflow-hidden">
+                          {member.avatar_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={member.avatar_url}
+                              alt={member.username}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            member.username.charAt(0).toUpperCase()
+                          )}
+                        </div>
+                        <div className="flex flex-col truncate">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="font-semibold text-white truncate group-hover:text-[#fa586a] transition-colors">
+                              {member.username}
+                            </span>
+                            {isCurrentUser && (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#fa586a] text-white uppercase tracking-wider shrink-0">
+                                YOU
+                              </span>
+                            )}
+                          </div>
+                          <a
+                            href={`https://leetcode.com/${member.leetcode_username || ""}/`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[11px] text-white/40 hover:text-white/80 transition-colors flex items-center gap-1 font-mono"
+                          >
+                            <span>@{member.leetcode_username || "no_handle"}</span>
+                            <ExternalLink className="w-2.5 h-2.5 opacity-50" />
+                          </a>
+                        </div>
+                      </div>
+
+                      <div className={metricCell(sortKey === "score")}>
+                        <span className="font-mono font-black text-white text-sm">
+                          {calculatePowerLevel(member).toLocaleString()}
                         </span>
-                        {isCurrentUser && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#fa586a] text-white uppercase tracking-wider shrink-0">
-                            YOU
+                      </div>
+
+                      <div className={cn(metricCell(sortKey === "rating"), "flex-col !justify-center")}>
+                        <span className="font-mono font-bold text-white text-sm">
+                          {member.contest_rating == null ? "—" : Math.round(member.contest_rating)}
+                        </span>
+                        <span
+                          className="text-[10px] text-white/40 font-mono"
+                          title={member.contest_top_percentage ? `Top ${member.contest_top_percentage}% of contestants` : undefined}
+                        >
+                          {contestRank ? `Rank #${contestRank.toLocaleString()}` : "—"}
+                        </span>
+                      </div>
+
+                      <div className={metricCell(sortKey === "contests")}>
+                        <span className="font-mono font-bold text-[#bf5af2] text-sm">
+                          {member.contest_attended || 0}
+                        </span>
+                      </div>
+
+                      <div className={metricCell(sortKey === "easy")}>
+                        <span className="px-1.5 py-0.5 rounded bg-[#30d158]/10 text-[#30d158] font-mono text-[11px] font-semibold">
+                          {member.total_easy}
+                        </span>
+                      </div>
+
+                      <div className={metricCell(sortKey === "medium")}>
+                        <span className="px-1.5 py-0.5 rounded bg-[#ff9f0a]/10 text-[#ff9f0a] font-mono text-[11px] font-semibold">
+                          {member.total_medium}
+                        </span>
+                      </div>
+
+                      <div className={metricCell(sortKey === "hard")}>
+                        <span className="px-1.5 py-0.5 rounded bg-[#ff453a]/10 text-[#ff453a] font-mono text-[11px] font-semibold">
+                          {member.total_hard}
+                        </span>
+                      </div>
+
+                      <div className={metricCell(sortKey === "total")}>
+                        <span className="font-mono font-bold text-white text-sm">
+                          {(member.total_easy || 0) + (member.total_medium || 0) + (member.total_hard || 0)}
+                        </span>
+                      </div>
+
+                      <div className={metricCell(sortKey === "streak")}>
+                        <div className="px-2.5 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-white/80 font-mono text-[11px] font-semibold">
+                          {member.streak}d
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => setInspectedProfile(member)}
+                          className="px-2.5 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#fa586a]/15 hover:border-[#fa586a]/30 border border-white/[0.08] text-white/70 hover:text-[#fa586a] text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+                          title="Inspect Battle Dossier"
+                        >
+                          <Shield className="w-3 h-3" />
+                          <span className="hidden md:inline">Dossier</span>
+                        </button>
+                        {!isCurrentUser ? (
+                          <a
+                            href={`/suggestions?to=${member.id}`}
+                            className="px-2.5 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#fa586a] hover:text-white border border-white/[0.08] text-white/60 text-xs font-semibold transition-all shadow-sm"
+                          >
+                            Challenge
+                          </a>
+                        ) : (
+                          <span className="text-[11px] text-white/30 font-medium italic pr-1 hidden lg:inline">
+                            You
                           </span>
                         )}
                       </div>
-                      <a
-                        href={`https://leetcode.com/${member.leetcode_username || ""}/`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[11px] text-white/40 hover:text-white/80 transition-colors flex items-center gap-1 font-mono"
-                      >
-                        <span>@{member.leetcode_username || "no_handle"}</span>
-                        <ExternalLink className="w-2.5 h-2.5 opacity-50" />
-                      </a>
                     </div>
-                  </div>
-
-                  <div className="col-span-2 flex justify-center">
-                    <div className="px-2.5 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-white/80 font-mono text-[11px] font-semibold">
-                      {member.streak}d
-                    </div>
-                  </div>
-
-                  <div className="col-span-2 flex flex-col items-center justify-center">
-                    <span className="font-mono font-bold text-white text-sm">
-                      {Math.round(member.contest_rating)}
-                    </span>
-                    <span className="text-[10px] text-white/40 font-mono">
-                      Rank #{member.global_rank ? member.global_rank.toLocaleString() : "—"}
-                    </span>
-                  </div>
-
-                  <div className="col-span-3 md:col-span-2 hidden sm:flex items-center justify-center gap-1.5 font-mono text-[11px]">
-                    <span className="px-1.5 py-0.5 rounded bg-[#30d158]/10 text-[#30d158] font-semibold">
-                      {member.total_easy}
-                    </span>
-                    <span className="px-1.5 py-0.5 rounded bg-[#ff9f0a]/10 text-[#ff9f0a] font-semibold">
-                      {member.total_medium}
-                    </span>
-                    <span className="px-1.5 py-0.5 rounded bg-[#ff453a]/10 text-[#ff453a] font-semibold">
-                      {member.total_hard}
-                    </span>
-                  </div>
-
-                  <div className="col-span-3 md:col-span-2 flex items-center justify-end gap-1.5">
-                    <button
-                      onClick={() => setInspectedProfile(member)}
-                      className="px-2.5 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#fa586a]/15 hover:border-[#fa586a]/30 border border-white/[0.08] text-white/70 hover:text-[#fa586a] text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 shadow-sm"
-                      title="Inspect Battle Dossier"
-                    >
-                      <Shield className="w-3 h-3" />
-                      <span className="hidden md:inline">Dossier</span>
-                    </button>
-                    {!isCurrentUser ? (
-                      <a
-                        href={`/suggestions?to=${member.id}`}
-                        className="px-2.5 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#fa586a] hover:text-white border border-white/[0.08] text-white/60 text-xs font-semibold transition-all shadow-sm"
-                      >
-                        Challenge
-                      </a>
-                    ) : (
-                      <span className="text-[11px] text-white/30 font-medium italic pr-1 hidden lg:inline">
-                        You
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* User Stats Holographic Dossier Modal */}

@@ -11,7 +11,6 @@ import {
   Trophy,
   MessageSquare,
   Sparkles,
-  ExternalLink,
   CheckCircle2,
 } from "lucide-react";
 import {
@@ -30,6 +29,10 @@ import { useSolving } from "@/components/providers/SolvingProvider";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ConnectLeetCodeModal } from "@/components/modals/ConnectLeetCodeModal";
 import { UserStatsDossierModal } from "@/components/profile/UserStatsDossierModal";
+import { PageLoader } from "@/components/ui/PageLoader";
+import { parseProblemStatusEvent, applyStatusChange } from "@/lib/problemStatusEvent";
+import { difficultyBadgeClass } from "@/components/ui/DifficultyBadge";
+import { ProblemLink } from "@/components/ui/ProblemLink";
 import { Profile, CustomList, ListProblem, TriState } from "@/types/database";
 import { cn } from "@/lib/utils";
 
@@ -69,7 +72,8 @@ export default function ArenaPage() {
   const [showAllTopics, setShowAllTopics] = useState(false);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
   const [isDossierOpen, setIsDossierOpen] = useState(false);
-  const [refreshKey] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const currentDisplayName = profile?.username || user?.email?.split("@")[0] || "Squad Member";
 
@@ -92,10 +96,12 @@ export default function ArenaPage() {
         setCatalogCount(totalCatalog);
         const userMap = toStatusMap(userStatuses);
         setStatusMap(userMap);
+        setLoadError(null);
         // Topic summary depends on the user's status map
         setTopics(await getCatalogTopicsSummary(userMap));
       } catch (err) {
         console.error("Error loading Arena data:", err);
+        setLoadError("Couldn't load Arena data. Check your connection and retry.");
       } finally {
         setLoading(false);
       }
@@ -103,20 +109,26 @@ export default function ArenaPage() {
     loadArenaData();
   }, [user, refreshKey]);
 
-  // Listen for problem-status-changed events across open tabs & dock
+  const handleRetryLoad = () => {
+    setLoadError(null);
+    setLoading(true);
+    setRefreshKey((k) => k + 1);
+  };
+
+  // Dock + auto-sync dispatch same-document "problem-status-changed" events
+  // (CustomEvent never crosses tabs). Validate the payload, merge it, and
+  // resync topic counts so the strip doesn't go stale behind statusMap.
   useEffect(() => {
     const handleStatusChange = (e: Event) => {
-      const custom = e as CustomEvent<{ slug: string; status: TriState }>;
-      if (custom.detail?.slug) {
-        setStatusMap((prev) => ({
-          ...prev,
-          [custom.detail.slug]: custom.detail.status,
-        }));
-      }
+      const parsed = parseProblemStatusEvent(e);
+      if (!parsed) return;
+      const next = applyStatusChange(statusMap, parsed.slug, parsed.status);
+      setStatusMap(next);
+      getCatalogTopicsSummary(next).then(setTopics).catch(() => {});
     };
     window.addEventListener("problem-status-changed", handleStatusChange);
     return () => window.removeEventListener("problem-status-changed", handleStatusChange);
-  }, []);
+  }, [statusMap]);
 
   const totalStreak = profiles.reduce((acc, p) => acc + (p.streak || 0), 0);
   const topMember = profiles[0];
@@ -139,12 +151,7 @@ export default function ArenaPage() {
   const catalogTotal = catalogCount || topics.reduce((acc, t) => acc + t.count, 0) || 0;
 
   if (loading) {
-    return (
-      <div className="h-[60vh] flex flex-col items-center justify-center gap-3 text-white/40">
-        <div className="w-7 h-7 animate-spin rounded-full border-2 border-white/10 border-t-[#fa586a]" />
-        <span className="text-xs font-medium tracking-wide">Loading Arena...</span>
-      </div>
-    );
+    return <PageLoader label="Loading Arena..." />;
   }
 
   const handleStartPotd = (e: React.MouseEvent) => {
@@ -157,19 +164,6 @@ export default function ArenaPage() {
         difficulty: potd.difficulty,
         category: potd.category,
       });
-    }
-  };
-
-  const getDiffBadge = (diff: string) => {
-    switch (diff?.toLowerCase()) {
-      case "easy":
-        return "text-[#30d158] bg-[#30d158]/10 border-[#30d158]/20";
-      case "medium":
-        return "text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/20";
-      case "hard":
-        return "text-[#ff453a] bg-[#ff453a]/10 border-[#ff453a]/20";
-      default:
-        return "text-white/60 bg-white/10 border-white/15";
     }
   };
 
@@ -209,6 +203,17 @@ export default function ArenaPage() {
       </div>
 
       {/* ── 1. APPLE MUSIC EDITORIAL SPOTLIGHT (TOP PICKS) ── */}
+      {loadError && (
+        <div role="alert" className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-5 py-4 rounded-2xl bg-[#ff453a]/10 border border-[#ff453a]/30">
+          <span className="text-xs text-[#ff453a] font-medium">{loadError}</span>
+          <button
+            onClick={handleRetryLoad}
+            className="px-4 py-1.5 rounded-full bg-[#ff453a]/15 hover:bg-[#ff453a]/25 border border-[#ff453a]/30 text-[#ff453a] text-xs font-bold transition-all cursor-pointer shrink-0"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -265,7 +270,7 @@ export default function ArenaPage() {
               {/* Card Body */}
               <div className="relative z-10 my-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className={cn("px-2.5 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider", getDiffBadge(potd.difficulty))}>
+                  <span className={cn("px-2.5 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider", difficultyBadgeClass(potd.difficulty))}>
                     {potd.difficulty}
                   </span>
                   <span className="text-xs text-white/50 font-medium">
@@ -287,16 +292,10 @@ export default function ArenaPage() {
                     <Play className="w-3.5 h-3.5 fill-current" />
                     <span>{isPotdSolved ? "Solve Again" : "Start Session"}</span>
                   </button>
-                  <a
-                    href={`https://leetcode.com/problems/${potd.title_slug}/`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
+                  <ProblemLink
+                    slug={potd.title_slug}
                     className="p-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-white/70 hover:text-white transition-all border border-white/[0.08]"
-                    title="Open on LeetCode"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
+                  />
                 </div>
                 <span className="text-[11px] text-white/40 font-mono hidden sm:inline">
                   Dock Solver Ready
@@ -374,7 +373,7 @@ export default function ArenaPage() {
 
             <div className="relative z-10">
               <div className="text-3xl md:text-4xl font-black text-white font-mono tracking-tight">
-                {topMember ? Math.round(topMember.contest_rating) : 1500}
+                {topMember?.contest_rating != null ? Math.round(topMember.contest_rating) : "—"}
               </div>
               <div className="text-xs font-semibold text-white/80 mt-1">
                 Top Rating Standing

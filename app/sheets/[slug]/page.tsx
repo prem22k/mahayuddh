@@ -3,7 +3,6 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import {
-  ExternalLink,
   Search,
   Play,
   CheckCircle2,
@@ -20,6 +19,10 @@ import {
   setProblemStatus,
   batchSetProblemStatuses,
 } from "@/lib/data/sheets";
+import { parseProblemStatusEvent, applyStatusChange } from "@/lib/problemStatusEvent";
+import { DifficultyBadge } from "@/components/ui/DifficultyBadge";
+import { ProblemLink } from "@/components/ui/ProblemLink";
+import { PageLoader } from "@/components/ui/PageLoader";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { ProblemStatusCell } from "@/components/matrix/ProblemStatusCell";
@@ -72,35 +75,55 @@ function SheetContent() {
     loadSheetData();
   }, [slug, user?.id]);
 
-  // Refresh status when the dock (or another tab) marks a problem done.
+  // Refresh status when the dock marks a problem done. Payloads are
+  // validated — junk events are ignored, never merged.
   useEffect(() => {
     const onStatusChanged = (e: Event) => {
-      const { slug: changedSlug, status } = (e as CustomEvent).detail ?? {};
-      if (changedSlug) {
-        setStatuses((prev) => ({ ...prev, [changedSlug]: (status as TriState) || "solved" }));
+      const parsed = parseProblemStatusEvent(e);
+      if (parsed) {
+        setStatuses((prev) => applyStatusChange(prev, parsed.slug, parsed.status));
       }
     };
     window.addEventListener("problem-status-changed", onStatusChanged);
     return () => window.removeEventListener("problem-status-changed", onStatusChanged);
   }, []);
 
-  const handleToggle = async (problemSlug: string, next: TriState) => {
-    // Optimistic UI update
-    setStatuses((prev) => ({ ...prev, [problemSlug]: next }));
-    if (!user) return;
-    await setProblemStatus(user.id, problemSlug, next);
+  const handleToggle = async (problemSlug: string, next: TriState): Promise<boolean> => {
+    // Optimistic UI update, rolled back when the write fails.
+    const prev = statuses[problemSlug];
+    setStatuses((p) => applyStatusChange(p, problemSlug, next));
+    if (!user) return true;
+    const ok = await setProblemStatus(user.id, problemSlug, next);
+    if (!ok) {
+      setStatuses((p) => {
+        const rolled = { ...p };
+        if (prev) rolled[problemSlug] = prev;
+        else delete rolled[problemSlug];
+        return rolled;
+      });
+    }
+    return ok;
   };
 
   const handleBatchToggleTopic = async (categoryName: string, next: TriState) => {
     const categoryProblems = problems.filter((p) => p.category === categoryName);
     const slugs = categoryProblems.map((p) => p.title_slug);
 
-    const newStatuses = { ...statuses };
+    const snapshot = { ...statuses };
+    const optimistic = { ...statuses };
     slugs.forEach((slug) => {
-      newStatuses[slug] = next;
+      if (next === "unsolved") delete optimistic[slug];
+      else optimistic[slug] = next;
     });
-    setStatuses(newStatuses);
+    setStatuses(optimistic);
 
+    if (!user) return;
+    const ok = await batchSetProblemStatuses(user.id, slugs, next);
+    if (!ok) {
+      setStatuses(snapshot);
+      return;
+    }
+    // Celebrate only persisted solves.
     if (next === "solved") {
       confetti({
         particleCount: 50,
@@ -109,9 +132,6 @@ function SheetContent() {
         colors: ["#30d158", "#ffffff", "#ffd60a"],
       });
     }
-
-    if (!user) return;
-    await batchSetProblemStatuses(user.id, slugs, next);
   };
 
   const handleStartSolving = (p: ListProblem) => {
@@ -185,26 +205,8 @@ function SheetContent() {
     }))
     .filter((group) => group.problems.length > 0);
 
-  const getDifficultyBadge = (diff: string) => {
-    switch (diff?.toLowerCase()) {
-      case "easy":
-        return "text-[#30d158] bg-[#30d158]/10 border-[#30d158]/25";
-      case "medium":
-        return "text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/25";
-      case "hard":
-        return "text-[#ff453a] bg-[#ff453a]/10 border-[#ff453a]/25";
-      default:
-        return "text-white/40";
-    }
-  };
-
   if (loading) {
-    return (
-      <div className="h-[60vh] flex flex-col items-center justify-center gap-3 text-white/40">
-        <div className="w-7 h-7 animate-spin rounded-full border-2 border-white/10 border-t-[#fa586a]" />
-        <span className="text-xs font-medium tracking-wide">Loading roadmap...</span>
-      </div>
-    );
+    return <PageLoader label="Loading roadmap..." />;
   }
 
   const title = list?.title || slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
@@ -452,14 +454,10 @@ function SheetContent() {
                             >
                               {problem.title}
                             </span>
-                            <span
-                              className={cn(
-                                "px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0",
-                                getDifficultyBadge(problem.difficulty)
-                              )}
-                            >
-                              {problem.difficulty}
-                            </span>
+                            <DifficultyBadge
+                              difficulty={problem.difficulty}
+                              className="shrink-0"
+                            />
                           </div>
 
                           {/* Actions */}
@@ -481,15 +479,11 @@ function SheetContent() {
                             </button>
 
                             {/* LeetCode Link */}
-                            <a
-                              href={`https://leetcode.com/problems/${problem.title_slug}/`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors"
+                            <ProblemLink
+                              slug={problem.title_slug}
                               title={`Open ${problem.title} on LeetCode`}
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </a>
+                              className="p-1.5 rounded-lg hover:bg-white/[0.06]"
+                            />
                           </div>
                         </div>
                       );
@@ -507,14 +501,7 @@ function SheetContent() {
 
 export default function SheetPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="h-[60vh] flex flex-col items-center justify-center gap-3 text-white/40">
-          <div className="w-7 h-7 animate-spin rounded-full border-2 border-white/10 border-t-[#fa586a]" />
-          <span className="text-xs font-medium tracking-wide">Loading roadmap...</span>
-        </div>
-      }
-    >
+    <Suspense fallback={<PageLoader label="Loading roadmap..." />}>
       <SheetContent />
     </Suspense>
   );
