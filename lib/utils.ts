@@ -15,16 +15,3 @@ export function formatTime(seconds: number): string {
   }
   return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 }
-
-export function getDifficultyColor(difficulty: "Easy" | "Medium" | "Hard" | string) {
-  switch (difficulty?.toLowerCase()) {
-    case "easy":
-      return "text-difficulty-easy bg-difficulty-easy/10 border-difficulty-easy/20";
-    case "medium":
-      return "text-difficulty-medium bg-difficulty-medium/10 border-difficulty-medium/20";
-    case "hard":
-      return "text-difficulty-hard bg-difficulty-hard/10 border-difficulty-hard/20";
-    default:
-      return "text-txt-secondary bg-surface-raised border-border-subtle";
-  }
-}
