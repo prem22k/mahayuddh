@@ -8,7 +8,8 @@ import confetti from "canvas-confetti";
 
 interface ProblemStatusCellProps {
   status: TriState;
-  onToggle: (next: TriState) => void;
+  /** Return false when the write fails so the cell skips its celebration. */
+  onToggle: (next: TriState) => void | Promise<boolean>;
   size?: "sm" | "md" | "lg";
   showLabel?: boolean;
 }
@@ -21,7 +22,7 @@ export function ProblemStatusCell({
 }: ProblemStatusCellProps) {
   const [animating, setAnimating] = useState(false);
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
 
     let next: TriState = "solved";
@@ -33,7 +34,9 @@ export function ProblemStatusCell({
       next = "unsolved";
     }
 
-    if (next === "solved") {
+    // Celebrate only persisted solves — a failed write rolls back upstream.
+    const persisted = await onToggle(next);
+    if (next === "solved" && persisted !== false) {
       setAnimating(true);
       confetti({
         particleCount: 25,
@@ -46,8 +49,6 @@ export function ProblemStatusCell({
       });
       setTimeout(() => setAnimating(false), 600);
     }
-
-    onToggle(next);
   };
 
   const isSolved = status === "solved";
@@ -67,7 +68,7 @@ export function ProblemStatusCell({
       className={cn(
         "group relative flex items-center justify-center rounded-xl transition-all select-none cursor-pointer",
         size === "sm" && "p-1.5 text-xs",
-        size === "md" && "px-2.5 py-1.2 text-xs",
+        size === "md" && "px-2.5 py-1 text-xs",
         size === "lg" && "px-3.5 py-2 text-sm",
         isSolved &&
           "bg-[#30d158]/15 text-[#30d158] border border-[#30d158]/35 hover:bg-[#30d158]/25 shadow-[0_0_12px_rgba(48,209,88,0.2)]",

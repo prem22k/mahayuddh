@@ -5,10 +5,11 @@ import {
   Play,
   Pause,
   RotateCcw,
-  ExternalLink,
   X,
 } from "lucide-react";
 import { cn, formatTime } from "@/lib/utils";
+import { difficultyBadgeClass } from "@/components/ui/DifficultyBadge";
+import { ProblemLink } from "@/components/ui/ProblemLink";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { toggleProblemStatus } from "@/lib/data/sheets";
@@ -63,22 +64,27 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
 
   const handleComplete = useCallback(async () => {
     if (!activeProblem) return;
-    setIsCompleted(true);
-    setIsPlaying(false);
 
+    // Persist first: only celebrate + notify when the write lands, so open
+    // views never show a solve the database rejected.
     if (user) {
+      let saved = false;
       try {
-        await toggleProblemStatus(user.id, activeProblem.slug, true);
-        // Notify open sheet views so their solved status refreshes immediately.
-        window.dispatchEvent(
-          new CustomEvent("problem-status-changed", {
-            detail: { slug: activeProblem.slug, status: "solved" },
-          })
-        );
+        saved = await toggleProblemStatus(user.id, activeProblem.slug, true);
       } catch (err) {
         console.error("Error marking problem as solved in Supabase:", err);
       }
+      if (!saved) return;
+      // Notify open sheet views so their solved status refreshes immediately.
+      window.dispatchEvent(
+        new CustomEvent("problem-status-changed", {
+          detail: { slug: activeProblem.slug, status: "solved" },
+        })
+      );
     }
+
+    setIsCompleted(true);
+    setIsPlaying(false);
 
     try {
       const confetti = (await import("canvas-confetti")).default;
@@ -125,19 +131,6 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
 
     return () => clearInterval(interval);
   }, [isPlaying, activeProblem?.slug, profile?.leetcode_username, handleComplete, session?.access_token]);
-
-  const getDifficultyBadge = (diff: string) => {
-    switch (diff?.toLowerCase()) {
-      case "easy":
-        return "text-[#30d158] bg-[#30d158]/10 border-[#30d158]/25";
-      case "medium":
-        return "text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/25";
-      case "hard":
-        return "text-[#ff453a] bg-[#ff453a]/10 border-[#ff453a]/25";
-      default:
-        return "text-white/40";
-    }
-  };
 
   return (
     <>
@@ -235,7 +228,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                     <span
                       className={cn(
                         "px-1.5 py-0.2 rounded-full text-[9px] font-semibold border shrink-0",
-                        getDifficultyBadge(activeProblem.difficulty)
+                        difficultyBadgeClass(activeProblem.difficulty)
                       )}
                     >
                       {activeProblem.difficulty}
@@ -272,16 +265,10 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                 </button>
 
                 {/* LeetCode Link */}
-                <a
-                  href={`https://leetcode.com/problems/${activeProblem.slug}/`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1.5 rounded-full bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] text-white/40 hover:text-white transition-colors"
-                  title="Open on LeetCode"
-                  aria-label="Open on LeetCode"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                <ProblemLink
+                  slug={activeProblem.slug}
+                  className="p-1.5 rounded-full bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06]"
+                />
 
                 {/* Mark Solved */}
                 <button

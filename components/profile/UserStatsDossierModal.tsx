@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   X,
   ExternalLink,
@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { cn } from "@/lib/utils";
+import { copyText } from "@/lib/clipboard";
+import { ModalShell } from "@/components/ui/ModalShell";
 import { Profile } from "@/types/database";
 import {
   getTierInfo,
@@ -46,19 +48,9 @@ export function UserStatsDossierModal({
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "radar">("overview");
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
-
   if (!isOpen || !profile) return null;
 
-  const rating = profile.contest_rating || 1500;
+  const rating = profile.contest_rating;
   const tier = getTierInfo(rating);
   const powerLevel = calculatePowerLevel(profile);
   const streakStats = calculateStreaks(userCalendarJson);
@@ -71,10 +63,14 @@ export function UserStatsDossierModal({
 
   const totalSolved =
     (profile.total_easy || 0) + (profile.total_medium || 0) + (profile.total_hard || 0);
+  const hasActivity = streakStats.totalActiveDays > 0;
+  const displayName = profile.username || "Squad Member";
 
-  const handleCopyShare = () => {
+  const handleCopyShare = async () => {
     const text = generateDossierShareText(profile, powerLevel, tier);
-    navigator.clipboard.writeText(text);
+    // Clipboard unavailable (permissions / non-secure context): no confetti,
+    // no fake confirmation.
+    if (!(await copyText(text))) return;
     setCopied(true);
     confetti({
       particleCount: 50,
@@ -117,27 +113,23 @@ export function UserStatsDossierModal({
       id: "contest_veteran",
       title: "Contest Veteran",
       desc: "Achieved 1600+ contest battle rating",
-      unlocked: rating >= 1600,
+      unlocked: (rating ?? 0) >= 1600,
       icon: "🏆",
       color: "#bf5af2",
     },
   ];
 
   return (
-    <div className="fixed inset-0 z-[350] flex items-center justify-center p-3 sm:p-4 select-none overflow-y-auto">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/85 backdrop-blur-xl transition-opacity"
-        onClick={onClose}
-      />
-
-      {/* Holographic Battle Dossier Container */}
-      <div
-        className={cn(
-          "relative w-full max-w-2xl bg-[#141416]/95 border rounded-3xl overflow-hidden z-10 shadow-[0_25px_80px_rgba(0,0,0,0.9)] animate-in fade-in zoom-in-95 my-auto",
-          tier.borderColor
-        )}
-      >
+    <ModalShell
+      label={`Battle dossier for ${displayName}`}
+      onClose={onClose}
+      zIndexClass="z-[350]"
+      maxWidthClass="max-w-2xl"
+      panelClassName={cn(
+        "bg-[#141416]/95 overflow-hidden shadow-[0_25px_80px_rgba(0,0,0,0.9)] my-auto",
+        tier.borderColor
+      )}
+    >
         {/* Ambient Top Glow Banner */}
         <div
           className={cn(
@@ -164,7 +156,7 @@ export function UserStatsDossierModal({
                   />
                 ) : (
                   <span className="text-2xl font-black text-white">
-                    {profile.username.charAt(0).toUpperCase()}
+                    {displayName.charAt(0).toUpperCase()}
                   </span>
                 )}
               </div>
@@ -180,7 +172,7 @@ export function UserStatsDossierModal({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-2xl font-extrabold text-white tracking-tight">
-                  @{profile.username}
+                  @{displayName}
                 </h2>
                 {profile.leetcode_username && (
                   <a
@@ -282,7 +274,7 @@ export function UserStatsDossierModal({
                 <Trophy className="w-3.5 h-3.5 text-[#bf5af2]" />
               </div>
               <div className="text-2xl font-black text-white font-mono mt-2">
-                {Math.round(rating)}
+                {rating == null ? "—" : Math.round(rating)}
               </div>
               <div className="text-[10px] text-white/40 mt-0.5">{tier.tier} Division</div>
             </div>
@@ -343,7 +335,9 @@ export function UserStatsDossierModal({
                     <span>7-Day Activity Pulse</span>
                   </div>
                   <p className="text-[11px] text-white/40 mt-0.5">
-                    Total Active Days Recorded: {streakStats.totalActiveDays || effectiveMaxStreak}
+                    {hasActivity
+                      ? `Total Active Days Recorded: ${streakStats.totalActiveDays}`
+                      : "No activity recorded yet — solve your first problem to light the pulse."}
                   </p>
                 </div>
 
@@ -407,7 +401,9 @@ export function UserStatsDossierModal({
                 <div>
                   <div className="text-sm font-bold text-white">Algorithmic Combat Radar</div>
                   <p className="text-[11px] text-white/40">
-                    6-Pillar Domain Mastery plotted from your roadmap submissions
+                    {totalSolved > 0
+                      ? "6-Pillar Domain Mastery plotted from your roadmap submissions"
+                      : "Solve roadmap problems to populate your combat radar."}
                   </p>
                 </div>
                 <span className="px-2.5 py-1 rounded-full bg-[#fa586a]/15 text-[#fa586a] border border-[#fa586a]/30 text-[10px] font-bold">
@@ -433,7 +429,6 @@ export function UserStatsDossierModal({
             Done
           </button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

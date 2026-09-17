@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Search, X, ExternalLink } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Search, X } from "lucide-react";
 import { getAllProblems } from "@/lib/data/sheets";
 import { searchCatalogProblems } from "@/lib/data/problems";
+import { DifficultyBadge } from "@/components/ui/DifficultyBadge";
+import { ProblemLink } from "@/components/ui/ProblemLink";
+import { ModalShell } from "@/components/ui/ModalShell";
+import { Spinner } from "@/components/ui/Spinner";
 import { ListProblem, Problem } from "@/types/database";
 import { useSolving } from "@/components/providers/SolvingProvider";
 
@@ -54,16 +57,6 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
 
     return () => clearTimeout(handler);
   }, [query]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
 
   useEffect(() => {
     if (isOpen) {
@@ -126,19 +119,6 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
 
   if (!isOpen) return null;
 
-  const getDifficultyBadge = (diff: string) => {
-    switch (diff?.toLowerCase()) {
-      case "easy":
-        return "text-[#30d158] bg-[#30d158]/10 border-[#30d158]/25";
-      case "medium":
-        return "text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/25";
-      case "hard":
-        return "text-[#ff453a] bg-[#ff453a]/10 border-[#ff453a]/25";
-      default:
-        return "text-white/40";
-    }
-  };
-
   const handleSelectProblem = (p: {
     id: string | number;
     title: string;
@@ -158,15 +138,14 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-start justify-center pt-20 px-4 select-none">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/80 backdrop-blur-md transition-opacity"
-        onClick={onClose}
-      />
-
-      {/* Modal Dialog */}
-      <div className="relative w-full max-w-2xl bg-[#1c1c1e] border border-white/[0.1] rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.8)] overflow-hidden z-10 animate-in fade-in zoom-in-95">
+    <ModalShell
+      label="Search problems"
+      onClose={onClose}
+      zIndexClass="z-[300]"
+      maxWidthClass="max-w-2xl"
+      alignTop
+      panelClassName="shadow-[0_25px_70px_rgba(0,0,0,0.8)] overflow-hidden"
+    >
         {/* Search Header */}
         <div className="p-4 border-b border-white/[0.06] flex items-center gap-3">
           <Search className="w-4 h-4 text-[#fa586a] shrink-0" />
@@ -191,7 +170,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
         <div className="max-h-[60vh] overflow-y-auto p-2 divide-y divide-white/[0.04]">
           {loading ? (
             <div className="p-8 text-center text-white/40 text-xs flex items-center justify-center gap-2">
-              <div className="w-4 h-4 animate-spin rounded-full border-2 border-white/20 border-t-[#fa586a]" />
+              <Spinner size="md" tone="soft" />
               <span>Indexing database problems...</span>
             </div>
           ) : combined.length === 0 ? (
@@ -220,23 +199,11 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
                 </div>
 
                 <div className="flex items-center gap-3 shrink-0">
-                  <span
-                    className={cn(
-                      "px-2 py-0.5 rounded-full text-[10px] font-semibold border",
-                      getDifficultyBadge(problem.difficulty)
-                    )}
-                  >
-                    {problem.difficulty}
-                  </span>
-                  <a
-                    href={`https://leetcode.com/problems/${problem.title_slug}/`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="p-1 text-white/20 hover:text-white rounded-lg transition-colors"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
+                  <DifficultyBadge difficulty={problem.difficulty} />
+                  <ProblemLink
+                    slug={problem.title_slug}
+                    className="p-1 text-white/20 hover:text-white rounded-lg"
+                  />
                 </div>
               </div>
             ))
@@ -256,7 +223,6 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
             {problems.length > 0 ? `${problems.length} Curated Sheets • 4,000+ Catalog Indexed` : "4,000+ Catalog Indexed"}
           </div>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import { PUBLIC_PROFILE_COLUMNS } from "@/lib/data/profiles";
 import { Profile } from "@/types/database";
 
 interface AuthContextType {
@@ -37,7 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // 1. Try fast read from profiles table
         const { data, error } = await supabase
           .from("profiles")
-          .select("*")
+          .select(PUBLIC_PROFILE_COLUMNS)
           .eq("id", userId)
           .maybeSingle();
 
@@ -53,6 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (token) {
           const res = await fetch("/api/auth/profile", {
+            method: "POST",
             headers: {
               Authorization: `Bearer ${token}`,
             },

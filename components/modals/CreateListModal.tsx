@@ -4,6 +4,9 @@ import React, { useState, useEffect, useRef } from "react";
 import { X, Search, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getAllProblems, createCustomList } from "@/lib/data/sheets";
+import { difficultyBadgeClass } from "@/components/ui/DifficultyBadge";
+import { ModalShell } from "@/components/ui/ModalShell";
+import { Spinner } from "@/components/ui/Spinner";
 import { ListProblem } from "@/types/database";
 import { useAuth } from "@/components/providers/AuthProvider";
 
@@ -108,29 +111,14 @@ export function CreateListModal({
     }
   };
 
-  const getDifficultyBadge = (diff: string) => {
-    switch (diff?.toLowerCase()) {
-      case "easy":
-        return "text-[#30d158] bg-[#30d158]/10 border-[#30d158]/25";
-      case "medium":
-        return "text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/25";
-      case "hard":
-        return "text-[#ff453a] bg-[#ff453a]/10 border-[#ff453a]/25";
-      default:
-        return "text-white/40";
-    }
-  };
-
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 select-none">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/80 backdrop-blur-md transition-opacity"
-        onClick={onClose}
-      />
-
-      {/* Modal Card */}
-      <div className="relative w-full max-w-xl bg-[#1c1c1e] border border-white/[0.1] rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.8)] overflow-hidden z-10 flex flex-col max-h-[85vh]">
+    <ModalShell
+      label="Create new problem list"
+      onClose={onClose}
+      zIndexClass="z-[300]"
+      maxWidthClass="max-w-xl"
+      panelClassName="shadow-[0_25px_70px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col max-h-[85vh]"
+    >
         {/* Header */}
         <div className="p-5 border-b border-white/[0.06] flex items-center justify-between">
           <div>
@@ -220,7 +208,7 @@ export function CreateListModal({
             <div className="max-h-48 overflow-y-auto rounded-xl border border-white/[0.06] bg-black/30 divide-y divide-white/[0.03] p-1">
               {loadingProblems ? (
                 <div className="p-4 text-center text-white/40 text-xs flex items-center justify-center gap-2">
-                  <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-white/20 border-t-[#fa586a]" />
+                  <Spinner size="sm" tone="soft" />
                   <span>Loading problems...</span>
                 </div>
               ) : filteredProblems.length === 0 ? (
@@ -256,7 +244,7 @@ export function CreateListModal({
                         <span
                           className={cn(
                             "px-1.5 py-0.2 rounded-full text-[9px] font-semibold border shrink-0",
-                            getDifficultyBadge(p.difficulty)
+                            difficultyBadgeClass(p.difficulty)
                           )}
                         >
                           {p.difficulty}
@@ -293,7 +281,7 @@ export function CreateListModal({
             >
               {isSubmitting ? (
                 <>
-                  <div className="w-3 h-3 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                  <Spinner size="xs" tone="inverse" className="border-white/40" />
                   <span>Creating...</span>
                 </>
               ) : (
@@ -302,7 +290,6 @@ export function CreateListModal({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

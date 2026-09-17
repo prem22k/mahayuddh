@@ -16,7 +16,11 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { syncUserProfileStats } from "@/lib/data/profiles";
+import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
+import { ModalShell } from "@/components/ui/ModalShell";
+import { Spinner } from "@/components/ui/Spinner";
+import { FormAlert } from "@/components/ui/FormAlert";
 import confetti from "canvas-confetti";
 
 interface ConnectLeetCodeModalProps {
@@ -158,16 +162,19 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
     }
   };
 
-  const handleCopySnippet = () => {
-    navigator.clipboard.writeText(consoleSnippet);
+  const handleCopySnippet = async () => {
+    if (!(await copyText(consoleSnippet))) return;
     setCopiedSnippet(true);
     setTimeout(() => setCopiedSnippet(false), 2500);
   };
 
   return (
-    <div className="fixed inset-0 z-[350] flex items-center justify-center p-4 select-none">
-      <div className="fixed inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-[#1c1c1e] border border-white/[0.1] rounded-3xl shadow-modal p-6 z-10 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+    <ModalShell
+      label="Sync LeetCode status"
+      onClose={onClose}
+      zIndexClass="z-[350]"
+      panelClassName="shadow-modal p-6 max-h-[90vh] overflow-y-auto"
+    >
         {/* Header */}
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
@@ -259,8 +266,8 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
               />
             </div>
 
-            {error && <div className="text-xs text-[#ff453a] font-medium bg-[#ff453a]/10 p-3 rounded-xl border border-[#ff453a]/20">{error}</div>}
-            {success && <div className="text-xs text-[#30d158] font-medium bg-[#30d158]/10 p-3 rounded-xl border border-[#30d158]/20 flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /><span>{success}</span></div>}
+            {error && <FormAlert tone="error">{error}</FormAlert>}
+            {success && <FormAlert tone="success">{success}</FormAlert>}
 
             <button
               type="submit"
@@ -269,7 +276,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
             >
               {submitting ? (
                 <>
-                  <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  <Spinner size="sm" tone="inverse" />
                   <span>Syncing LeetCode Stats...</span>
                 </>
               ) : (
@@ -398,8 +405,8 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
               />
             </div>
 
-            {error && <div className="text-xs text-[#ff453a] font-medium bg-[#ff453a]/10 p-3 rounded-xl border border-[#ff453a]/20">{error}</div>}
-            {success && <div className="text-xs text-[#30d158] font-medium bg-[#30d158]/10 p-3 rounded-xl border border-[#30d158]/20 flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /><span>{success}</span></div>}
+            {error && <FormAlert tone="error">{error}</FormAlert>}
+            {success && <FormAlert tone="success">{success}</FormAlert>}
 
             <button
               type="submit"
@@ -408,7 +415,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
             >
               {submitting ? (
                 <>
-                  <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  <Spinner size="sm" tone="inverse" />
                   <span>Importing Solved History...</span>
                 </>
               ) : (
@@ -420,7 +427,6 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
             </button>
           </form>
         )}
-      </div>
-    </div>
+    </ModalShell>
   );
 }

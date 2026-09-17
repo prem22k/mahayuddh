@@ -33,20 +33,24 @@ export function LeetCodeAutoSync() {
 
       if (data?.recentSubmissions && Array.isArray(data.recentSubmissions)) {
         let newlyDetected = 0;
+        const seeding = knownSolvedSlugsRef.current.size === 0;
         data.recentSubmissions.forEach((sub: { titleSlug: string; title: string }) => {
           if (sub.titleSlug) {
             const slug = sub.titleSlug.toLowerCase();
-            // Dispatch event for any recent submission so open sheet views stay fresh
+            // First run only seeds the baseline silently; later runs notify
+            // (and celebrate) strictly new solves. Broadcasting every recent
+            // on every tab-focus would storm open views with redundant
+            // refetches.
+            const isNew = !seeding && !knownSolvedSlugsRef.current.has(slug);
+            knownSolvedSlugsRef.current.add(slug);
+            if (!isNew) return;
+
+            newlyDetected++;
             window.dispatchEvent(
               new CustomEvent("problem-status-changed", {
                 detail: { slug, status: "solved" },
               })
             );
-
-            if (knownSolvedSlugsRef.current.size > 0 && !knownSolvedSlugsRef.current.has(slug)) {
-              newlyDetected++;
-            }
-            knownSolvedSlugsRef.current.add(slug);
           }
         });
 
@@ -57,7 +61,7 @@ export function LeetCodeAutoSync() {
             origin: { y: 0.85 },
             colors: ["#30d158", "#fa586a", "#ffffff"],
           });
-          refreshProfile();
+          void refreshProfile();
         }
       }
     } catch {
