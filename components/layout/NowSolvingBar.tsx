@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Play,
   Pause,
@@ -10,9 +10,16 @@ import {
 import { cn, formatTime } from "@/lib/utils";
 import { difficultyBadgeClass } from "@/components/ui/DifficultyBadge";
 import { ProblemLink } from "@/components/ui/ProblemLink";
-import { useSolving } from "@/components/providers/SolvingProvider";
+import {
+  useSolving,
+  BATTLE_ID_STORAGE_KEY,
+} from "@/components/providers/SolvingProvider";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { toggleProblemStatus } from "@/lib/data/sheets";
+import { toggleProblemStatus, setProblemStatus } from "@/lib/data/sheets";
+import { track } from "@/lib/analytics";
+import { startBattle, heartbeatBattle, endBattle } from "@/lib/data/battles";
+import { logProblemEvent } from "@/lib/data/problemEvents";
+import { logFeedEvent } from "@/lib/data/feed";
 
 interface NowSolvingBarProps {
   onSearchOpen?: () => void;
@@ -22,27 +29,88 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
   const { user, profile, session } = useAuth();
   const {
     activeProblem,
+    setActiveProblem,
     isPlaying,
     setIsPlaying,
     seconds,
     setSeconds,
+    startedAt,
   } = useSolving();
+
+  // Elapsed time derived from wall clock, not accumulated ticks: a backgrounded
+  // tab or a throttled interval must not make the timer drift (Step 7 honesty).
+  const elapsedSec = useMemo(() => {
+    if (startedAt == null) return seconds;
+    return Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+  }, [seconds, startedAt]);
 
   const [isScratchpadOpen, setIsScratchpadOpen] = useState(false);
   const [scratchpadNote, setScratchpadNote] = useState("");
   const [isCompleted, setIsCompleted] = useState(false);
+  const [battleId, setBattleId] = useState<string | null>(null);
+  const [stuckOpen, setStuckOpen] = useState(false);
+  const [ending, setEnding] = useState(false);
 
   // Load scratchpad note whenever activeProblem changes
   useEffect(() => {
     if (activeProblem?.slug) {
       const savedNote = localStorage.getItem(`mahayuddh_notes_${activeProblem.slug}`) || "";
       setScratchpadNote(savedNote);
+      setIsCompleted(false);
+      setStuckOpen(false);
+
+      // Resume the existing server session after a refresh. Without this the
+      // battleId was lost, heartbeats silently no-op'd, and the server row was
+      // abandoned by the next start (Step 7: "session survives refresh").
+      const storedBattleId = (() => {
+        try {
+          return localStorage.getItem(BATTLE_ID_STORAGE_KEY);
+        } catch {
+          return null;
+        }
+      })();
+      const storedSlug = (() => {
+        try {
+          const raw = localStorage.getItem("mahayuddh_battle_slug");
+          return raw;
+        } catch {
+          return null;
+        }
+      })();
+
+      if (storedBattleId && storedSlug === activeProblem.slug) {
+        setBattleId(storedBattleId);
+        return;
+      }
+
+      // Persist a server session (fire-and-forget; localStorage is the fallback).
+      if (user) {
+        startBattle(
+          activeProblem.slug,
+          profile?.active_squad_id ?? null,
+          activeProblem.challengeId ?? null
+        ).then((res) => {
+          if (res.battle) {
+            setBattleId(res.battle.id);
+            try {
+              localStorage.setItem(BATTLE_ID_STORAGE_KEY, res.battle.id);
+              localStorage.setItem("mahayuddh_battle_slug", activeProblem.slug);
+            } catch {
+              // ignore
+            }
+          }
+        }).catch(() => {});
+      } else {
+        setBattleId(null);
+      }
     } else {
       setScratchpadNote("");
+      setBattleId(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProblem?.slug]);
 
-  // Stopwatch interval
+  // Stopwatch interval. Ticks only to re-render; elapsedSec comes from the clock.
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     if (isPlaying && activeProblem) {
@@ -59,22 +127,69 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
     setScratchpadNote(text);
     if (activeProblem?.slug) {
       localStorage.setItem(`mahayuddh_notes_${activeProblem.slug}`, text);
+      // Mirror to server session (debounced by keystroke batching upstream).
+      if (battleId) heartbeatBattle(battleId, { scratchpad_md: text.slice(0, 20000) }).catch(() => {});
     }
   };
 
-  const handleComplete = useCallback(async () => {
+  // Heartbeat duration every 15s while solving (plan Step 7: persist every 15s).
+  // Sends the real elapsed time computed from the wall clock, never a guess.
+  useEffect(() => {
+    if (!isPlaying || !battleId) return;
+    const send = () => {
+      const real = Math.max(0, Math.floor((Date.now() - (startedAt ?? Date.now())) / 1000));
+      heartbeatBattle(battleId, { duration_sec: real }).catch(() => {});
+    };
+    send();
+    const t = setInterval(send, 15000);
+    return () => clearInterval(t);
+  }, [isPlaying, battleId, startedAt]);
+
+  const handleComplete = useCallback(async (evidence: "leetcode" | "none" = "none") => {
     if (!activeProblem) return;
 
     // Persist first: only celebrate + notify when the write lands, so open
     // views never show a solve the database rejected.
     if (user) {
       let saved = false;
+      // Revisit detection: solving an already-solved problem logs "revisited".
+      let wasSolved = false;
       try {
+        const { createClient } = await import("@/lib/supabase/client");
+        const supabase = createClient();
+        const { data: prev } = await supabase
+          .from("user_problem_status")
+          .select("status")
+          .eq("user_id", user.id)
+          .eq("problem_slug", activeProblem.slug.toLowerCase())
+          .maybeSingle();
+        wasSolved = (prev as { status: string } | null)?.status === "solved";
         saved = await toggleProblemStatus(user.id, activeProblem.slug, true);
       } catch (err) {
         console.error("Error marking problem as solved in Supabase:", err);
       }
       if (!saved) return;
+      track("battle_solved", { problem_slug: activeProblem.slug });
+      if (wasSolved) track("revisit_done", { problem_slug: activeProblem.slug, via: "dock" });
+      if (battleId) {
+        endBattle(battleId, "solved", { duration_sec: elapsedSec, evidence }).catch(() => {});
+      }
+      logProblemEvent({
+        problemSlug: activeProblem.slug,
+        kind: wasSolved ? "revisited" : "solved",
+        battleId,
+        durationSec: elapsedSec,
+        source: evidence === "leetcode" ? "leetcode" : "self",
+      }).catch(() => {});
+      // Squad activity: solves generate feed without requiring prose (§50).
+      logFeedEvent({
+        eventType: "solve",
+        squadId: profile?.active_squad_id ?? null,
+        problemTitle: activeProblem.title,
+        problemSlug: activeProblem.slug,
+        difficulty: activeProblem.difficulty,
+        metadata: { duration_sec: elapsedSec, source: evidence },
+      }).catch(() => {});
       // Notify open sheet views so their solved status refreshes immediately.
       window.dispatchEvent(
         new CustomEvent("problem-status-changed", {
@@ -99,7 +214,57 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
     }
 
     setTimeout(() => setIsCompleted(false), 4000);
-  }, [activeProblem, setIsPlaying, user]);
+  }, [activeProblem, setIsPlaying, user, battleId, elapsedSec, profile?.active_squad_id]);
+
+  const handleFail = useCallback(async () => {
+    if (!activeProblem || !user) return;
+    setEnding(true);
+    try {
+      // Failed ≠ unsolved: record an honest attempt, never downgrade a prior solve.
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      const { data: existing } = await supabase
+        .from("user_problem_status")
+        .select("status")
+        .eq("user_id", user.id)
+        .eq("problem_slug", activeProblem.slug.toLowerCase())
+        .maybeSingle();
+      if ((existing as { status: string } | null)?.status !== "solved") {
+        await setProblemStatus(user.id, activeProblem.slug, "attempted");
+        window.dispatchEvent(
+          new CustomEvent("problem-status-changed", {
+            detail: { slug: activeProblem.slug, status: "attempted" },
+          })
+        );
+      }
+      if (battleId) {
+        await endBattle(battleId, "failed", { duration_sec: elapsedSec }).catch(() => {});
+      }
+      await logProblemEvent({
+        problemSlug: activeProblem.slug,
+        kind: "failed",
+        battleId,
+        durationSec: elapsedSec,
+      }).catch(() => {});
+      track("battle_failed", { problem_slug: activeProblem.slug });
+      // No feed event: failed battles stay private until revenge (Phase 3).
+      setBattleId(null);
+      setIsPlaying(false);
+      setStuckOpen(false);
+    } finally {
+      setEnding(false);
+    }
+  }, [activeProblem, user, battleId, elapsedSec, setIsPlaying]);
+
+  const handleAbandon = useCallback(async () => {
+    if (!activeProblem) return;
+    if (!window.confirm("Abandon this battle? The timer stops; nothing is recorded as attempted.")) return;
+    if (battleId) await endBattle(battleId, "abandoned", { duration_sec: elapsedSec }).catch(() => {});
+    setBattleId(null);
+    setActiveProblem(null);
+    setIsPlaying(false);
+    setStuckOpen(false);
+  }, [activeProblem, battleId, elapsedSec, setActiveProblem, setIsPlaying]);
 
   // Background auto-detection: check if active problem was accepted on LeetCode while solving
   useEffect(() => {
@@ -122,7 +287,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
           (s: { titleSlug: string }) => s.titleSlug?.toLowerCase() === activeSlug
         );
         if (isAc) {
-          handleComplete();
+          handleComplete("leetcode");
         }
       } catch {
         // silent fail
@@ -134,6 +299,37 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
 
   return (
     <>
+      {/* ── Stuck Ladder Popover (v0: static guidance; full ladder lands Step 18) ── */}
+      {stuckOpen && activeProblem && (
+        <div className="fixed bottom-[calc(var(--bottom-bar-height)+var(--bottom-bar-margin)+12px)] left-1/2 -translate-x-1/2 w-96 max-w-[calc(100vw-3rem)] bg-[#1c1c1e]/95 backdrop-blur-2xl border border-white/[0.1] rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] z-[150] p-4 space-y-2">
+          <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
+            <span className="text-xs font-bold text-white pl-1">I&apos;m stuck — least help first</span>
+            <button onClick={() => setStuckOpen(false)} className="p-1 text-white/40 hover:text-white rounded-md transition-colors cursor-pointer" aria-label="Close stuck help">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          {[
+            { level: "Nudge", text: "Re-read the constraints. Solve the smallest input by hand. What is the brute force?", href: null as string | null, cta: null as string | null },
+            { level: "Pattern hint", text: "Name two patterns this could be, then check the problem category against a roadmap.", href: "/practice", cta: "Browse patterns" },
+            { level: "Direction", text: "Write the invariant in one sentence. If you can't, that gap is the question — open the problem and hunt it.", href: null, cta: null },
+            { level: "Full explanation", text: "Accept the spoiler: read a squad template, then re-solve from scratch within 48 hours.", href: "/vault", cta: "Search vault" },
+          ].map((s) => (
+            <button
+              key={s.level}
+              onClick={() => {
+                track("stuck_requested", { problem_slug: activeProblem.slug, level: s.level });
+                if (s.href) window.location.assign(s.href);
+                else setStuckOpen(false);
+              }}
+              className="w-full text-left p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] transition-colors cursor-pointer"
+            >
+              <div className="text-[11px] font-bold text-[#ff9f0a]">{s.level}</div>
+              <div className="text-[11px] text-white/60 mt-0.5">{s.text}</div>
+              {s.cta && <div className="text-[11px] text-[#fa586a] font-semibold mt-1">{s.cta} →</div>}
+            </button>
+          ))}
+        </div>
+      )}
       {/* ── Scratchpad Popover ─────────────────────────── */}
       {isScratchpadOpen && activeProblem && (
         <div className="fixed bottom-[calc(var(--bottom-bar-height)+var(--bottom-bar-margin)+12px)] right-6 w-96 max-w-[calc(100vw-3rem)] bg-[#1c1c1e]/95 backdrop-blur-2xl border border-white/[0.1] rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] z-[150] p-4">
@@ -204,7 +400,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
 
             <div className="flex flex-col ml-0.5">
               <span className="font-mono text-[11px] font-bold text-white tracking-wider">
-                {formatTime(seconds)}
+                {formatTime(elapsedSec)}
               </span>
               <span className="text-[9px] text-white/35 uppercase tracking-wider font-semibold">
                 {activeProblem ? (isPlaying ? "Solving" : "Paused") : "Idle"}
@@ -270,9 +466,33 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                   className="p-1.5 rounded-full bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06]"
                 />
 
+                {/* I'm Stuck */}
+                <button
+                  onClick={() => setStuckOpen((v) => !v)}
+                  title="Stuck? Get the smallest useful hint."
+                  className={cn(
+                    "px-2.5 py-1 rounded-full border text-[11px] font-semibold transition-colors cursor-pointer hidden sm:block",
+                    stuckOpen
+                      ? "bg-[#ff9f0a]/15 border-[#ff9f0a]/40 text-[#ff9f0a]"
+                      : "bg-white/[0.03] border-white/[0.06] text-white/40 hover:text-white hover:bg-white/[0.06]"
+                  )}
+                >
+                  Stuck?
+                </button>
+
+                {/* Mark Failed */}
+                <button
+                  onClick={handleFail}
+                  disabled={ending}
+                  title="Couldn't crack it — records an honest attempt for revenge later."
+                  className="px-2.5 py-1 rounded-full bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.06] text-white/40 hover:text-white text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-40"
+                >
+                  Failed
+                </button>
+
                 {/* Mark Solved */}
                 <button
-                  onClick={handleComplete}
+                  onClick={() => handleComplete()}
                   disabled={isCompleted}
                   className={cn(
                     "px-3 py-1 rounded-full font-semibold text-[11px] transition-all cursor-pointer",
@@ -282,6 +502,16 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                   )}
                 >
                   {isCompleted ? "Solved" : "Mark Solved"}
+                </button>
+
+                {/* Abandon */}
+                <button
+                  onClick={handleAbandon}
+                  title="Abandon battle (nothing recorded)"
+                  aria-label="Abandon battle"
+                  className="p-1.5 rounded-full text-white/25 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </>
             ) : (
