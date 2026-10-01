@@ -192,3 +192,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Import failed" }, { status: 500 });
   }
 }
+
+// DELETE: remove the stored LeetCode session (Bible §43 — session is an
+// optional enhancement, never a core dependency). Identity, squads, notes,
+// challenges, and history survive; only the evidence badge is lost.
+export async function DELETE(request: Request) {
+  const supabase = getServiceClient();
+  if (!supabase) {
+    return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+  }
+  const user = await resolveUser(extractBearerToken(request));
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized. Please log in first." }, { status: 401 });
+  }
+  const { error } = await supabase
+    .from("profiles")
+    .update({ leetcode_session_encrypted: null, leetcode_session_synced_at: null })
+    .eq("id", user.id);
+  if (error) {
+    return NextResponse.json({ error: "Failed to remove session" }, { status: 500 });
+  }
+  return NextResponse.json({ success: true });
+}

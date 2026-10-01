@@ -1,8 +1,10 @@
 import { createClient } from "@/lib/supabase/client";
 import { Profile } from "@/types/database";
+import { DataError } from "@/lib/data/errors";
+import { track } from "@/lib/analytics";
 
 export const PUBLIC_PROFILE_COLUMNS =
-  "id,username,leetcode_username,avatar_url,contest_rating,global_rank,streak,total_easy,total_medium,total_hard,contest_attended,contest_global_rank,contest_top_percentage,last_synced_at,created_at";
+  "id,username,leetcode_username,avatar_url,active_squad_id,contest_rating,global_rank,streak,total_easy,total_medium,total_hard,contest_attended,contest_global_rank,contest_top_percentage,last_synced_at,created_at";
 
 export async function getSquadProfiles(opts?: {
   limit?: number;
@@ -17,10 +19,10 @@ export async function getSquadProfiles(opts?: {
 
   const { data, error } = await query;
 
-  if (error || !data || data.length === 0) {
-    if (error) console.error("getSquadProfiles error:", error.message);
-    return [];
+  if (error) {
+    throw new DataError("profiles", "Couldn't load squad profiles. Check your connection and retry.", { cause: error });
   }
+  if (!data || data.length === 0) return [];
 
   return data as Profile[];
 }
@@ -71,6 +73,7 @@ export async function syncUserProfileStats(
         .maybeSingle();
 
       if (!error && data) {
+        track("sync_completed", { userId });
         return data as Profile;
       }
     }

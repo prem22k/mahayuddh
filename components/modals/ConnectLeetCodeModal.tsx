@@ -40,6 +40,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
   const [copiedSnippet, setCopiedSnippet] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [removingSession, setRemovingSession] = useState(false);
 
   if (!isOpen) return null;
 
@@ -168,6 +169,30 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
     setTimeout(() => setCopiedSnippet(false), 2500);
   };
 
+  const handleRemoveSession = async () => {
+    if (!user) return;
+    setRemovingSession(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/sync/leetcode-history", {
+        method: "DELETE",
+        headers: {
+          Authorization: session?.access_token ? `Bearer ${session.access_token}` : "",
+        },
+      });
+      if (!res.ok) {
+        setError("Couldn't remove the stored session. Try again.");
+        return;
+      }
+      setSuccess("Stored LeetCode session removed. Your squads, notes, and history are untouched — only the evidence badge is gone.");
+      await refreshProfile();
+    } catch {
+      setError("Couldn't remove the stored session. Try again.");
+    } finally {
+      setRemovingSession(false);
+    }
+  };
+
   return (
     <ModalShell
       label="Sync LeetCode status"
@@ -193,6 +218,12 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
         </div>
 
         {/* Tab Switcher */}
+        <p className="text-[11px] text-white/40 leading-relaxed mb-3">
+          Optional enhancement — Mahayuddh works fully without LeetCode. Connecting adds contest stats + solve evidence badges.{" "}
+          <button type="button" onClick={handleRemoveSession} disabled={removingSession} className="text-[#fa586a] hover:underline font-semibold cursor-pointer">
+            {removingSession ? "Removing…" : "Remove stored session"}
+          </button>
+        </p>
         <div className="grid grid-cols-3 gap-1 p-1 bg-white/[0.04] rounded-2xl border border-white/[0.06] my-4">
           <button
             type="button"

@@ -175,7 +175,7 @@ async function verifySuggestions(
 
   const { data: pending } = await supabase
     .from("suggestions")
-    .select("id, problem_slug")
+    .select("id, problem_slug, from_user")
     .eq("to_user", profile.id)
     .eq("status", "pending")
     .in("problem_slug", Array.from(recentSlugs));
@@ -192,6 +192,54 @@ async function verifySuggestions(
     console.error("Suggestion verification error:", error);
     return 0;
   }
+  // Timeline: auto-verified completions append history like manual ones.
+  await supabase.from("problem_events").insert(
+    pending.map((s) => ({
+      user_id: profile.id,
+      problem_slug: s.problem_slug,
+      kind: "challenge_completed",
+      metadata: { source: "leetcode" },
+    }))
+  );
+
+  // Squad activity from LeetCode verification (anti-ghost, §50). Without this a
+  // squad that syncs purely via LeetCode shows an empty feed.
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("active_squad_id")
+    .eq("id", profile.id)
+    .maybeSingle();
+  const squadId = (prof as { active_squad_id: string | null } | null)?.active_squad_id;
+  if (squadId) {
+    await supabase.from("feed_events").insert(
+      pending.map((s) => ({
+        user_id: profile.id,
+        event_type: "complete",
+        squad_id: squadId,
+        object_type: "suggestion",
+        object_id: s.id,
+        problem_slug: s.problem_slug,
+        metadata: { source: "leetcode" },
+      }))
+    );
+  }
+
+  // The sender is owed an answer.
+  for (const s of pending) {
+    try {
+      await supabase.from("notifications").insert({
+        user_id: s.from_user,
+        kind: "challenge_completed",
+        title: "Challenge completed",
+        body: `Verified on LeetCode.`,
+        deep_link: `/c/${s.id}`,
+        actor_id: profile.id,
+      });
+    } catch {
+      // Best-effort: never block the verification pass.
+    }
+  }
+
   return pending.length;
 }
 
