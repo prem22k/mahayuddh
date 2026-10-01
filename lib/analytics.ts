@@ -105,3 +105,9 @@ export async function flushAnalytics(): Promise<boolean> {
 export function readAnalyticsQueue(): AnalyticsEntry[] {
   return readQueue();
 }
+
+// Attribution storage lives in lib/shareSource.ts: the expiry and one-shot
+// rules there are worth testing, and this module's `@/` imports keep it out of
+// reach of the plain node test runner. Re-exported so call sites have one
+// analytics entry point.
+export { rememberSource, consumeSource, peekSource, isValidSlug } from "@/lib/shareSource";

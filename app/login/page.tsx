@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Spinner } from "@/components/ui/Spinner";
 import { PageLoader } from "@/components/ui/PageLoader";
-import { track } from "@/lib/analytics";
+import { track, consumeSource, peekSource } from "@/lib/analytics";
 import { safeNext } from "@/lib/safeNext";
 import { cn } from "@/lib/utils";
 
@@ -69,13 +69,19 @@ function LoginForm() {
     }
   }, [user, authLoading, nextPath]);
 
-  // Fire the deep-link signup event the plan asks for (Step 2/Step 26 Loop A).
+  // Where this visit came from, if a shared artifact sent it (§56 Loop B).
+  // Peeked for display, consumed at signup so one visit is credited once.
+  const source = useMemo(() => peekSource(), []);
+
+  // Fire the deep-link signup event the plan asks for (Step 2/Step 26 Loop A),
+  // plus the Loop B attribution when a share link sent the visitor here.
   const trackSignupFromChallenge = useCallback(
     (via: string) => {
+      const from = consumeSource();
       if (isChallengeSignup) {
-        track("signup_from_challenge", { via, next: nextPath });
+        track("signup_from_challenge", { via, next: nextPath, source: from ?? undefined });
       }
-      track("signup_completed", { via, next: nextPath });
+      track("signup_completed", { via, next: nextPath, source: from ?? undefined });
     },
     [isChallengeSignup, nextPath]
   );
@@ -261,6 +267,13 @@ function LoginForm() {
           <p className="text-xs text-white/50 mt-3 max-w-xs mx-auto leading-relaxed">
             Practice DSA with your people. Learn how they think. Challenge them. Get better together.
           </p>
+          {/* Attribution is shown, not hidden. A visitor who arrived from a
+              shared artifact should be able to see that we know it. */}
+          {source && (
+            <p className="text-[10px] text-white/25 mt-3 font-mono">
+              arrived from {source}
+            </p>
+          )}
         </div>
 
         {/* ── Frosted Glass Auth Card ── */}

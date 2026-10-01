@@ -58,7 +58,16 @@ export async function updateSession(request: NextRequest) {
   const isInvitePath =
     request.nextUrl.pathname.startsWith("/c/") ||
     request.nextUrl.pathname.startsWith("/b/") ||
+    request.nextUrl.pathname.startsWith("/u/") ||
     request.nextUrl.pathname.startsWith("/squad/join/");
+
+  // One frozen recap is public (Step 20) so a shared week renders for a
+  // logged-out visitor. Matched precisely: the *list* at /squad/[id]/recaps
+  // still requires auth, because it offers the generate button.
+  const isPublicRecapPath = /^\/squad\/[^/]+\/recaps\/[^/]+$/.test(
+    request.nextUrl.pathname
+  );
+  const isPublicSharePath = isInvitePath || isPublicRecapPath;
 
   // Fast-path: Check if any Supabase auth cookies exist in request
   const allCookies = request.cookies.getAll();
@@ -74,7 +83,7 @@ export async function updateSession(request: NextRequest) {
   // - Public/login/auth/invite routes pass through immediately
   // - Protected routes redirect to /login
   if (!hasAuthCookie) {
-    if (isLoginPage || isAuthCallback || isPublicApi || isInvitePath) {
+    if (isLoginPage || isAuthCallback || isPublicApi || isPublicSharePath) {
       return supabaseResponse;
     }
     return loginUrlFor(request, supabaseResponse);
@@ -109,7 +118,7 @@ export async function updateSession(request: NextRequest) {
     const user = data?.user ?? null;
 
     // If user is not authenticated and trying to access protected route
-    if (!user && !isLoginPage && !isAuthCallback && !isPublicApi && !isInvitePath) {
+    if (!user && !isLoginPage && !isAuthCallback && !isPublicApi && !isPublicSharePath) {
       return loginUrlFor(request, supabaseResponse);
     }
 
@@ -123,7 +132,7 @@ export async function updateSession(request: NextRequest) {
     }
   } catch (err) {
     console.warn("Supabase auth check in middleware encountered an error:", err);
-    if (!isLoginPage && !isAuthCallback && !isPublicApi && !isInvitePath) {
+    if (!isLoginPage && !isAuthCallback && !isPublicApi && !isPublicSharePath) {
       return loginUrlFor(request, supabaseResponse);
     }
   }

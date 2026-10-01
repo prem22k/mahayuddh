@@ -1,8 +1,11 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getServiceClient } from "@/lib/supabase/service";
 import { buildPublicCard, BattleCardInput, formatDuration } from "@/lib/battleCard";
+import { ShareRow } from "@/components/ui/ShareRow";
+import { TrackVisit } from "@/components/ui/TrackVisit";
 import type { Battle, ProblemEvent, Approach, Suggestion, Problem } from "@/types/database";
 
 /**
@@ -191,6 +194,11 @@ export default async function BattleSharePage({
             : "Self-reported solve — logged by the developer, not independently verified."}
         </p>
 
+        {/* Reads ?via= so a signup from this card can be credited to it (§56). */}
+        <Suspense fallback={null}>
+          <TrackVisit artifact={`battle:${id}`} />
+        </Suspense>
+
         <div className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-6 space-y-4">
           <h2 className="text-lg font-bold">Solve the same problem</h2>
           <p className="text-xs text-white/45">
@@ -209,6 +217,12 @@ export default async function BattleSharePage({
             >
               See the problem
             </Link>
+            <ShareRow
+              path={`/b/${id}`}
+              artifact={{ kind: "battle", id }}
+              text={`I solved ${card.title} on Mahayuddh${solved ? ` in ${solved}` : ""}.`}
+              label="Share card"
+            />
           </div>
         </div>
       </div>

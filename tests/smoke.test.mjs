@@ -40,6 +40,25 @@ import {
   activeMembers,
 } from "../lib/recap.ts";
 import { RITUALS } from "../lib/rituals.ts";
+import { buildJourney, journeyWindow, median } from "../lib/journey.ts";
+import { withVia, viaSlug, artifactPath, shareTargets } from "../lib/share.ts";
+import {
+  rememberSource,
+  consumeSource,
+  peekSource,
+  isValidSlug,
+  SOURCE_TTL_MS,
+} from "../lib/shareSource.ts";
+
+function fakeStore() {
+  const map = new Map();
+  return {
+    map,
+    getItem: (k) => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => map.set(k, v),
+    removeItem: (k) => map.delete(k),
+  };
+}
 import {
   inferTechnique,
   buildComparison,
@@ -1072,5 +1091,295 @@ describe("rituals", () => {
 
   it("covers the week", () => {
     assert.deepEqual(RITUALS.map((r) => r.day), ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]);
+  });
+});
+
+// ── Step 20: Personal Journey ────────────────────────────────────────────────
+
+const J = {
+  userId: "me",
+  username: "prem",
+  days: 30,
+  now: new Date("2026-10-30T12:00:00Z"),
+  events: [],
+  battles: [],
+  approaches: [],
+  challenges: [],
+  stuck: [],
+  problemPattern: new Map([["two-sum", "Array"], ["lru-cache", "Design"]]),
+};
+
+function jev(kind, slug, day) {
+  return {
+    id: `${kind}-${slug}-${day}`,
+    user_id: "me",
+    problem_slug: slug,
+    kind,
+    battle_id: null,
+    duration_sec: null,
+    metadata: {},
+    created_at: `${day}T10:00:00.000Z`,
+  };
+}
+
+function jchal(over) {
+  return {
+    id: "c",
+    from_user: "me",
+    to_user: "them",
+    problem_slug: "lru-cache",
+    problem_title: "LRU",
+    difficulty: "Medium",
+    status: "pending",
+    created_at: "2026-10-20T10:00:00Z",
+    completed_at: null,
+    ...over,
+  };
+}
+
+describe("journeyWindow", () => {
+  it("spans the requested number of days inclusive", () => {
+    const w = journeyWindow(30, new Date("2026-10-30T12:00:00Z"));
+    assert.equal(w.days, 30);
+    assert.equal(w.to, "2026-10-30");
+    assert.equal(w.from, "2026-10-01");
+  });
+});
+
+describe("median", () => {
+  it("averages the middle pair and never invents a value", () => {
+    assert.equal(median([5, 1, 3]), 3);
+    assert.equal(median([1, 2, 3, 4]), 3); // (2+3)/2 = 2.5 -> 3
+    assert.equal(median([]), null);
+  });
+});
+
+describe("buildJourney", () => {
+  it("says nothing happened rather than showing zeroes as achievement", () => {
+    const j = buildJourney(J);
+    assert.equal(j.battlesStarted, 0);
+    assert.match(j.summary, /Nothing logged/);
+  });
+
+  it("does not say 'no battles' beside recorded solves", () => {
+    // A solve logged from the roadmap matrix has no battle session. Reporting
+    // zero battles next to three solves would be plainly wrong.
+    const j = buildJourney({
+      ...J,
+      events: [jev("solved", "two-sum", "2026-10-10")],
+      battles: [],
+    });
+    assert.equal(j.battlesStarted, 0);
+    assert.equal(j.solved, 1);
+    assert.doesNotMatch(j.summary, /Nothing logged|No battles/);
+  });
+
+  it("counts patterns from the catalog only, never guessing", () => {
+    const j = buildJourney({
+      ...J,
+      events: [
+        jev("solved", "two-sum", "2026-10-10"),
+        jev("solved", "lru-cache", "2026-10-11"),
+        jev("solved", "unknown-problem", "2026-10-12"),
+      ],
+    });
+    assert.equal(j.solved, 3);
+    // "unknown-problem" has no topic row, so it contributes no pattern.
+    assert.equal(j.patterns, 2);
+    assert.deepEqual(j.patternsList, ["Array", "Design"]);
+  });
+
+  it("counts revenge only when a failure preceded the solve", () => {
+    const ordered = buildJourney({
+      ...J,
+      events: [
+        jev("failed", "two-sum", "2026-10-05"),
+        jev("solved", "two-sum", "2026-10-08"),
+      ],
+    });
+    assert.equal(ordered.revengesWon, 1);
+    assert.match(ordered.summary, /failed then finished/);
+
+    // A solve with no prior failure is not a revenge.
+    const noPriorFail = buildJourney({
+      ...J,
+      events: [jev("solved", "two-sum", "2026-10-08")],
+    });
+    assert.equal(noPriorFail.revengesWon, 0);
+  });
+
+  it("resolves challenge direction against the real user id", () => {
+    const j = buildJourney({
+      ...J,
+      challenges: [
+        jchal({ id: "1", from_user: "me", to_user: "them" }),
+        jchal({ id: "2", from_user: "them", to_user: "me", status: "completed" }),
+        jchal({ id: "3", from_user: "stranger", to_user: "someone-else", status: "completed" }),
+      ],
+    });
+    assert.equal(j.challengesSent, 1);
+    assert.equal(j.challengesReceived, 1);
+    assert.equal(j.challengesAnswered, 1);
+  });
+
+  it("does not claim a median solve time when durations are unrecorded", () => {
+    const j = buildJourney({
+      ...J,
+      events: [jev("solved", "two-sum", "2026-10-10")],
+      battles: [bt("me", "two-sum", "2026-10-10", "solved", null)],
+    });
+    assert.equal(j.medianSolveSec, null);
+    assert.equal(j.fastestSolveSec, null);
+  });
+
+  it("ignores activity outside the window", () => {
+    const j = buildJourney({ ...J, events: [jev("solved", "two-sum", "2026-01-10")] });
+    assert.equal(j.solved, 0);
+  });
+});
+
+// ── Step 26: Loop B share attribution ─────────────────────────────────────────
+
+describe("viaSlug", () => {
+  it("is a type plus an id, never a URL", () => {
+    assert.equal(viaSlug({ kind: "battle", id: "9f3c" }), "battle:9f3c");
+    assert.equal(viaSlug({ kind: "journey", id: "prem" }), "journey:prem");
+  });
+});
+
+describe("withVia", () => {
+  const battle = { kind: "battle", id: "9f3c" };
+
+  it("appends the slug to a bare path", () => {
+    assert.equal(withVia("/b/9f3c", battle), "/b/9f3c?via=battle:9f3c");
+  });
+
+  it("keeps an existing query and a hash", () => {
+    assert.equal(
+      withVia("/b/9f3c?utm=x#card", battle),
+      "/b/9f3c?utm=x&via=battle:9f3c#card"
+    );
+  });
+
+  it("does not append a second ?via=", () => {
+    assert.equal(withVia("/b/9f3c?via=primer:p1", battle), "/b/9f3c?via=primer:p1");
+  });
+
+  it("is a no-op without an artifact", () => {
+    assert.equal(withVia("/b/9f3c", null), "/b/9f3c");
+  });
+
+  it("encodes an id that would otherwise break the query", () => {
+    assert.equal(
+      withVia(artifactPath({ kind: "journey", id: "a b&c" }), { kind: "journey", id: "a b&c" }),
+      "/u/a%20b%26c?via=journey:a%20b%26c"
+    );
+  });
+
+  it("keeps the colon readable instead of escaping it", () => {
+    // %3A is valid but makes a shared link look machine-generated in a chat.
+    assert.equal(withVia("/b/9f3c", { kind: "battle", id: "9f3c" }), "/b/9f3c?via=battle:9f3c");
+  });
+});
+
+describe("artifactPath", () => {
+  it("points each artifact at the surface that renders it", () => {
+    assert.equal(artifactPath({ kind: "battle", id: "x" }), "/b/x");
+    assert.equal(artifactPath({ kind: "recap", id: "r", squadId: "s1" }), "/squad/s1/recaps/r");
+  });
+});
+
+describe("shareTargets", () => {
+  it("percent-encodes both the message and the link", () => {
+    const targets = shareTargets("https://mahayuddh.app/b/9f3c?via=battle:9f3c", "a & b");
+    for (const t of targets) {
+      assert.doesNotMatch(t.href, /[&]text=a & b/);
+    }
+    const whats = targets.find((t) => t.id === "whatsapp");
+    assert.ok(whats.href.includes("a%20%26%20b"));
+  });
+
+  it("omits Discord, which has no public share intent", () => {
+    assert.equal(shareTargets("https://x.dev", "t").some((t) => t.id === "discord"), false);
+  });
+});
+
+// ── Step 26: attribution store rules ─────────────────────────────────────────
+
+describe("isValidSlug", () => {
+  it("accepts only type:id with artifact-safe characters", () => {
+    assert.equal(isValidSlug("battle:9f3c"), true);
+    assert.equal(isValidSlug("journey:prem"), true);
+  });
+
+  it("rejects a URL, a bare word, and anything with a query", () => {
+    assert.equal(isValidSlug("https://mahayuddh.app/b/x"), false);
+    assert.equal(isValidSlug("battle"), false);
+    assert.equal(isValidSlug("battle:9f3c?utm=x"), false);
+    assert.equal(isValidSlug("battle:../../etc"), false);
+  });
+});
+
+describe("rememberSource", () => {
+  it("refuses a slug that is not a slug", () => {
+    const store = fakeStore();
+    rememberSource("javascript:alert(1)", { store, now: 1000 });
+    assert.equal(store.map.size, 0);
+  });
+});
+
+describe("peekSource / consumeSource", () => {
+  it("returns null when nothing was stored", () => {
+    assert.equal(peekSource({ store: fakeStore(), now: 1 }), null);
+    assert.equal(consumeSource({ store: fakeStore(), now: 1 }), null);
+  });
+
+  it("peeks without consuming, so a re-render cannot double-credit", () => {
+    const store = fakeStore();
+    rememberSource("battle:9f3c", { store, now: 1000 });
+    assert.equal(peekSource({ store, now: 2000 }), "battle:9f3c");
+    assert.equal(peekSource({ store, now: 2000 }), "battle:9f3c");
+  });
+
+  it("consumes once, then returns null", () => {
+    const store = fakeStore();
+    rememberSource("battle:9f3c", { store, now: 1000 });
+    assert.equal(consumeSource({ store, now: 2000 }), "battle:9f3c");
+    assert.equal(consumeSource({ store, now: 2000 }), null);
+  });
+
+  it("expires after 30 days", () => {
+    const store = fakeStore();
+    rememberSource("battle:9f3c", { store, now: 0 });
+    assert.equal(peekSource({ store, now: SOURCE_TTL_MS - 1 }), "battle:9f3c");
+    assert.equal(peekSource({ store, now: SOURCE_TTL_MS + 1 }), null);
+  });
+
+  it("treats a clock skewed into the future as expired, not as extra time", () => {
+    const store = fakeStore();
+    rememberSource("battle:9f3c", { store, now: 10 * SOURCE_TTL_MS });
+    assert.equal(peekSource({ store, now: 0 }), null);
+  });
+
+  it("survives corrupt storage instead of throwing into a signup flow", () => {
+    const store = fakeStore();
+    store.setItem("mahayuddh_via", "{not json");
+    assert.equal(consumeSource({ store, now: 1 }), null);
+  });
+
+  it("still credits the signup when removing the key fails", () => {
+    const store = {
+      getItem: () => JSON.stringify({ slug: "battle:9f3c", at: 1000 }),
+      setItem: () => {},
+      removeItem: () => {
+        throw new Error("denied");
+      },
+    };
+    assert.equal(consumeSource({ store, now: 2000 }), "battle:9f3c");
+  });
+
+  it("no-ops without a store, so server renders are unaffected", () => {
+    assert.equal(rememberSource("battle:9f3c", { store: null, now: 1 }), undefined);
+    assert.equal(peekSource({ store: null, now: 1 }), null);
   });
 });

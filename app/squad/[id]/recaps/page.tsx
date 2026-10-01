@@ -3,13 +3,12 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Sparkles, Check, Link2 } from "lucide-react";
+import { ArrowLeft, Sparkles } from "lucide-react";
+import { ShareRow } from "@/components/ui/ShareRow";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { getRecaps, generateRecap, currentWeek } from "@/lib/data/recap";
 import { getSquadDetail } from "@/lib/data/squads";
 import { dataErrorMessage } from "@/lib/data/errors";
-import { copyText } from "@/lib/clipboard";
-import { track } from "@/lib/analytics";
 import { recapShareText } from "@/lib/recap";
 import type { SquadRecap } from "@/types/database";
 
@@ -30,7 +29,6 @@ export default function SquadRecapsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -137,25 +135,23 @@ export default function SquadRecapsPage() {
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div>
                     <div className="text-[10px] font-bold uppercase tracking-widest text-white/35">
-                      Week of {body.window?.weekStart ?? r.week_start}
+                      <Link
+                        href={`/squad/${squadId}/recaps/${r.id}`}
+                        className="hover:text-white transition-colors"
+                      >
+                        Week of {body.window?.weekStart ?? r.week_start}
+                      </Link>
                       {isThis ? " · current week" : ""}
                     </div>
                     <p className="text-sm font-bold text-white mt-1">{body.headline}</p>
                   </div>
-                  <button
-                    onClick={async () => {
-                      const url = `${window.location.origin}/squad/${squadId}/recaps`;
-                      if (!(await copyText(recapShareText({ squadName, body, url })))) return;
-                      track("share_clicked", { artifact: "recap", week_start: r.week_start });
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    }}
-                    className="px-3 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-white text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
-                    title="Copy a share-ready message for WhatsApp or Discord"
-                  >
-                    {copied ? <Check className="w-3.5 h-3.5 text-[#30d158]" /> : <Link2 className="w-3.5 h-3.5" />}
-                    {copied ? "Copied" : "Share text"}
-                  </button>
+                  {/* The per-week route, not this list: a frozen week stays
+                      shareable after the week it describes has scrolled away. */}
+                  <ShareRow
+                    path={`/squad/${squadId}/recaps/${r.id}`}
+                    artifact={{ kind: "recap", id: r.id, squadId }}
+                    text={recapShareText({ squadName, body, url: "" }).trim()}
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">

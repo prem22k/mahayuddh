@@ -309,6 +309,8 @@ export function recapShareText(weeks: { squadName: string; body: RecapBody; url:
       `Biggest improvement: ${body.biggestImprovement.slug} ${formatDuration(body.biggestImprovement.fromSec)} → ${formatDuration(body.biggestImprovement.toSec)}.`
     );
   }
-  lines.push(url);
+  // Empty url is allowed: the share component appends the link itself, and a
+  // blank trailing line in a copied message looks like a bug.
+  if (url) lines.push(url);
   return lines.join("\n");
 }
