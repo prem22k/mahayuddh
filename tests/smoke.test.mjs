@@ -32,6 +32,15 @@ import {
 } from "../lib/stuckLadder.ts";
 import { daysBetween, relativeDays } from "../lib/format.ts";
 import {
+  buildRecap,
+  weekOf,
+  biggestImprovement,
+  inWindow,
+  recapShareText,
+  activeMembers,
+} from "../lib/recap.ts";
+import { RITUALS } from "../lib/rituals.ts";
+import {
   inferTechnique,
   buildComparison,
   isComparable,
@@ -836,5 +845,232 @@ describe("differences", () => {
     const a = { ...row({}), technique: "stack", time: "O(n)", space: "O(n)" };
     const b = { ...row({}), technique: "stack", time: "O(n)", space: "O(n)" };
     assert.deepEqual(differences(a, b), []);
+  });
+});
+
+// ── Step 20: a recap is derived, and a quiet week says so ────────────────────
+
+function ev(kind, slug, user, day, extra = {}) {
+  return {
+    id: `${kind}-${slug}-${user}-${day}`,
+    user_id: user,
+    problem_slug: slug,
+    kind,
+    battle_id: null,
+    duration_sec: null,
+    metadata: {},
+    created_at: `${day}T10:00:00.000Z`,
+    ...extra,
+  };
+}
+
+function bt(user, slug, day, outcome, duration_sec, id) {
+  return {
+    id: id ?? `${user}-${slug}-${day}`,
+    user_id: user,
+    problem_slug: slug,
+    squad_id: null,
+    started_at: `${day}T10:00:00.000Z`,
+    ended_at: `${day}T10:30:00.000Z`,
+    duration_sec,
+    outcome,
+    self_reported: true,
+    evidence: "none",
+    confidence: null,
+    created_at: `${day}T10:00:00.000Z`,
+  };
+}
+
+const W = { weekStart: "2026-10-05", weekEnd: "2026-10-11" };
+
+const baseRecap = {
+  window: W,
+  squadName: "College DSA crew",
+  memberIds: ["u1", "u2"],
+  usernames: new Map([["u1", "prem"], ["u2", "rahul"]]),
+  events: [],
+  battles: [],
+  approaches: [],
+  challenges: [],
+  primerTitles: new Map(),
+  primerCopies: new Map(),
+  now: new Date("2026-10-11T12:00:00Z"),
+};
+
+describe("weekOf", () => {
+  it("anchors on Monday and spans seven days", () => {
+    // 2026-10-07 is a Wednesday.
+    const w = weekOf(new Date("2026-10-07T15:00:00Z"));
+    assert.equal(w.weekStart, "2026-10-05");
+    assert.equal(w.weekEnd, "2026-10-11");
+  });
+
+  it("is inclusive at both ends", () => {
+    assert.equal(inWindow("2026-10-05T00:00:00Z", W), true);
+    assert.equal(inWindow("2026-10-11T23:59:59Z", W), true);
+    assert.equal(inWindow("2026-10-04T23:59:59Z", W), false);
+    assert.equal(inWindow("2026-10-12T00:00:00Z", W), false);
+  });
+});
+
+describe("buildRecap", () => {
+  it("calls a quiet week quiet instead of padding it", () => {
+    const body = buildRecap(baseRecap);
+    assert.equal(body.solves, 0);
+    assert.equal(body.challengesSent, 0);
+    assert.match(body.headline, /quiet/i);
+    assert.ok(body.empty.includes("No solves logged this week."));
+    assert.ok(body.empty.includes("Nobody wrote an approach down."));
+    assert.equal(body.entries.length, 0);
+  });
+
+  it("names the half-running loop when people solve but never challenge", () => {
+    const body = buildRecap({
+      ...baseRecap,
+      events: [ev("solved", "two-sum", "u1", "2026-10-06")],
+    });
+    assert.equal(body.solves, 1);
+    assert.match(body.headline, /nobody challenged anybody/);
+    assert.match(body.headline, /half running/);
+  });
+
+  it("reports shared problems and completion counts", () => {
+    const body = buildRecap({
+      ...baseRecap,
+      events: [
+        ev("solved", "two-sum", "u1", "2026-10-06"),
+        ev("solved", "two-sum", "u2", "2026-10-07"),
+        ev("solved", "lru-cache", "u1", "2026-10-07"),
+      ],
+      challenges: [
+        { id: "c1", from_user: "u1", to_user: "u2", problem_slug: "lru-cache", problem_title: "LRU Cache", difficulty: "Medium", status: "completed", created_at: "2026-10-06T10:00:00Z", completed_at: "2026-10-07T10:00:00Z" },
+      ],
+    });
+    assert.equal(body.solves, 3);
+    assert.equal(body.challengesSent, 1);
+    assert.equal(body.challengesCompleted, 1);
+    assert.equal(body.sharedProblems[0].slug, "two-sum");
+    assert.equal(body.sharedProblems[0].solvers, 2);
+    assert.equal(body.mostChallenged.slug, "lru-cache");
+    assert.match(body.headline, /1 answered/);
+  });
+
+  it("ignores activity outside the window", () => {
+    const body = buildRecap({
+      ...baseRecap,
+      events: [ev("solved", "two-sum", "u1", "2026-09-30")],
+    });
+    assert.equal(body.solves, 0);
+  });
+
+  it("ignores activity from non-members", () => {
+    const body = buildRecap({
+      ...baseRecap,
+      events: [ev("solved", "two-sum", "stranger", "2026-10-06")],
+    });
+    assert.equal(body.solves, 0);
+  });
+});
+
+describe("biggestImprovement", () => {
+  it("picks the largest measurable speed-up", () => {
+    const result = biggestImprovement(
+      [
+        bt("u1", "two-sum", "2026-10-06", "solved", 2466, "a"),
+        bt("u1", "two-sum", "2026-10-08", "solved", 1691, "b"),
+        bt("u2", "lru-cache", "2026-10-06", "solved", 900, "c"),
+        bt("u2", "lru-cache", "2026-10-09", "solved", 800, "d"),
+      ],
+      new Map([["u1", "prem"]])
+    );
+    assert.equal(result.slug, "two-sum");
+    assert.equal(result.fromSec, 2466);
+    assert.equal(result.toSec, 1691);
+    assert.equal(result.username, "prem");
+  });
+
+  it("returns null when nothing got faster", () => {
+    assert.equal(
+      biggestImprovement(
+        [
+          bt("u1", "two-sum", "2026-10-06", "solved", 900, "a"),
+          bt("u1", "two-sum", "2026-10-08", "solved", 1200, "b"),
+        ],
+        new Map()
+      ),
+      null
+    );
+  });
+
+  it("will not invent an improvement from a missing duration", () => {
+    assert.equal(
+      biggestImprovement(
+        [
+          bt("u1", "two-sum", "2026-10-06", "solved", null, "a"),
+          bt("u1", "two-sum", "2026-10-08", "solved", 1200, "b"),
+        ],
+        new Map()
+      ),
+      null
+    );
+  });
+
+  it("never compares across different people", () => {
+    assert.equal(
+      biggestImprovement(
+        [
+          bt("u1", "two-sum", "2026-10-06", "solved", 3000, "a"),
+          bt("u2", "two-sum", "2026-10-08", "solved", 600, "b"),
+        ],
+        new Map()
+      ),
+      null
+    );
+  });
+});
+
+describe("recapShareText", () => {
+  it("includes the window so a shared recap is not mistaken for now", () => {
+    const body = buildRecap({
+      ...baseRecap,
+      events: [ev("solved", "two-sum", "u1", "2026-10-06")],
+      challenges: [
+        { id: "c1", from_user: "u1", to_user: "u2", problem_slug: "lru-cache", problem_title: "LRU", difficulty: "Medium", status: "completed", created_at: "2026-10-06T10:00:00Z", completed_at: "2026-10-07T10:00:00Z" },
+      ],
+    });
+    const text = recapShareText({ squadName: "Crew", body, url: "https://x.test/r" });
+    assert.match(text, /Crew — week of 2026-10-05/);
+    assert.match(text, /1 solves/);
+    assert.match(text, /https:\/\/x\.test\/r/);
+  });
+});
+
+describe("activeMembers", () => {
+  it("lists who showed up, without scoring them", () => {
+    const list = activeMembers(
+      [
+        ev("solved", "two-sum", "u1", "2026-10-06"),
+        ev("solved", "lru-cache", "u2", "2026-10-07"),
+        ev("solved", "x", "stranger", "2026-10-07"),
+        ev("solved", "y", "u1", "2026-09-01"),
+      ],
+      ["u1", "u2"],
+      W
+    );
+    assert.deepEqual(list.sort(), ["u1", "u2"]);
+  });
+});
+
+describe("rituals", () => {
+  it("every ritual points at a real surface — none is a dead promise", () => {
+    assert.ok(RITUALS.length >= 5);
+    for (const r of RITUALS) {
+      assert.ok(r.href.startsWith("/"), `${r.day} ${r.label} has no href`);
+      assert.ok(r.intent.length > 10, `${r.day} ${r.label} has no intent copy`);
+    }
+  });
+
+  it("covers the week", () => {
+    assert.deepEqual(RITUALS.map((r) => r.day), ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]);
   });
 });

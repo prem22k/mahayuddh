@@ -543,6 +543,27 @@ export default function SquadPage() {
         </Link>
       )}
 
+      {/* Step 20 surfaces. Both are read-only projections over rows that
+          already exist — nothing here creates a second source of truth. */}
+      {activeId && (
+        <div className="flex items-center gap-4 flex-wrap">
+          <Link
+            href={`/squad/${activeId}/recaps`}
+            className="flex items-center gap-1.5 text-xs text-[#bf5af2] font-semibold hover:underline"
+          >
+            <span>Weekly recaps</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+          <Link
+            href={`/squad/${activeId}/wall`}
+            className="flex items-center gap-1.5 text-xs text-[#30d158] font-semibold hover:underline"
+          >
+            <span>Squad wall</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
+
       <Link href="/challenges" className="flex items-center gap-1.5 text-xs text-[#fa586a] font-semibold hover:underline">
         <span>Open challenges</span>
         <ArrowRight className="w-3.5 h-3.5" />

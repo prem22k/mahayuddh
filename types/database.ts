@@ -1,3 +1,5 @@
+import type { RecapBody } from "@/lib/recap";
+
 export type Json =
   | string
   | number
@@ -245,6 +247,37 @@ export interface Notification {
   created_at: string;
   actor?: Profile;
 }
+
+export interface SquadRecap {
+  id: string;
+  squad_id: string;
+  week_start: string;
+  week_end: string;
+  /** Frozen projection. See lib/recap.ts for the shape. */
+  body_json: RecapBody;
+  generated_by: string | null;
+  created_at: string;
+}
+
+/** Wall entries, appended by trigger. See migration 20261003000006. */
+export interface SquadMilestone {
+  id: string;
+  squad_id: string;
+  kind: MilestoneKind;
+  title: string;
+  detail: string | null;
+  occurred_at: string;
+}
+
+export type MilestoneKind =
+  | "first_member"
+  | "first_challenge"
+  | "first_solve"
+  | "milestone_solves"
+  | "milestone_solves_100"
+  | "milestone_challenges"
+  | "season_complete"
+  | "goal_complete";
 
 export interface SquadSeason {
   id: string;
