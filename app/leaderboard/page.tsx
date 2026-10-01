@@ -5,6 +5,7 @@ import { ExternalLink, RefreshCw, ArrowRight, Link2, Shield, ArrowUp, ArrowDown,
 import { cn } from "@/lib/utils";
 import { syncErrorMessage } from "@/lib/syncError";
 import { getSquadProfiles, syncUserProfileStats } from "@/lib/data/profiles";
+import { createClient } from "@/lib/supabase/client";
 import { calculatePowerLevel } from "@/lib/stats";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ConnectLeetCodeModal } from "@/components/modals/ConnectLeetCodeModal";
@@ -56,7 +57,14 @@ export default function LeaderboardPage() {
   const { user, profile, refreshProfile } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sortKey, setSortKey] = useState<MetricKey>("score");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Squad tab is primary (accountability with people you know, Bible §33);
+  // Global is secondary (aspiration/discovery), never the default for squad members.
+  const [tab, setTab] = useState<"squad" | "global">("squad");
+  const [squadIds, setSquadIds] = useState<Set<string>>(new Set());
+  // Default sort is Total, not the synthetic Score: Bible §22 bans a single skill
+// score as the headline. Score stays available as one column among many.
+  const [sortKey, setSortKey] = useState<MetricKey>("total");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [query, setQuery] = useState("");
   const [hideUnconnected, setHideUnconnected] = useState(false);
@@ -73,11 +81,27 @@ export default function LeaderboardPage() {
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
 
   const loadLeaderboardData = async () => {
+    setLoadError(null);
     try {
       const data = await getSquadProfiles();
       setProfiles(data);
+      // Squad scope: members of the caller's active squad (empty = solo → global).
+      if (profile?.active_squad_id) {
+        const supabase = createClient();
+        const { data: mems } = await supabase
+          .from("squad_members")
+          .select("user_id")
+          .eq("squad_id", profile.active_squad_id);
+        setSquadIds(new Set((mems ?? []).map((m) => (m as { user_id: string }).user_id)));
+        // Squad is the landing tab. Solo users legitimately see Global — the
+        // empty state teaches them to create a squad instead.
+      } else {
+        setSquadIds(new Set());
+        setTab("global");
+      }
     } catch (err) {
       console.error("Error loading profiles:", err);
+      setLoadError("Couldn't load leaderboard. Check your connection and retry.");
     } finally {
       setLoading(false);
     }
@@ -85,10 +109,7 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     loadLeaderboardData();
-  }, []);
-
-  useEffect(() => {
-    loadLeaderboardData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSyncMyStats = async () => {
@@ -143,7 +164,7 @@ export default function LeaderboardPage() {
     }
   };
 
-  // Click cycles: new column → desc → asc → default (score desc)
+  // Click cycles: new column → desc → asc → default (Total desc)
   const handleSort = (key: MetricKey) => {
     if (key !== sortKey) {
       setSortKey(key);
@@ -151,14 +172,15 @@ export default function LeaderboardPage() {
     } else if (sortDir === "desc") {
       setSortDir("asc");
     } else {
-      setSortKey("score");
+      setSortKey("total");
       setSortDir("desc");
     }
   };
 
   const { visibleMembers, rankMap } = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const filtered = profiles.filter((m) => {
+    const scoped = tab === "squad" && squadIds.size > 0 ? profiles.filter((m) => squadIds.has(m.id)) : profiles;
+    const filtered = scoped.filter((m) => {
       if (hideUnconnected && !m.leetcode_username) return false;
       if (!q) return true;
       return (
@@ -199,7 +221,7 @@ export default function LeaderboardPage() {
       ranks.set(m.id, rank);
     }
     return { visibleMembers: sorted, rankMap: ranks };
-  }, [profiles, query, hideUnconnected, sortKey, sortDir]);
+  }, [profiles, squadIds, tab, query, hideUnconnected, sortKey, sortDir]);
 
   const myRank = user ? rankMap.get(user.id) ?? null : null;
 
@@ -252,12 +274,27 @@ export default function LeaderboardPage() {
             Leaderboard
           </h1>
           <p className="text-xs text-white/40 mt-1">
-            Live rankings synchronized with LeetCode submissions. Click a column to sort.
+            Squad first, global second. Click a column to sort.
           </p>
         </div>
 
         {/* Filters */}
         <div className="flex items-center gap-2 flex-wrap self-start md:self-auto">
+          <div className="flex items-center gap-1 p-1 bg-white/[0.04] rounded-full border border-white/[0.06]">
+            {(["squad", "global"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={cn(
+                  "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer capitalize",
+                  tab === t ? "bg-white/[0.12] text-white shadow-sm" : "text-white/40 hover:text-white/80"
+                )}
+                title={t === "squad" ? "Your active squad — accountability" : "Everyone — aspiration and discovery"}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
           <div className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.04] border border-white/[0.06] rounded-full">
             <Search className="w-3.5 h-3.5 text-white/30 shrink-0" />
             <input
@@ -284,6 +321,8 @@ export default function LeaderboardPage() {
       </div>
 
       {/* ── Personal Standing & LeetCode Stats Ribbon ── */}
+      {/* Step 1 decoupling: the table below is rendered regardless of LeetCode. This
+          ribbon is an OPTIONAL stats enhancement, not a gate on participation. */}
       {profile?.leetcode_username ? (
         <div className="p-5 rounded-3xl bg-gradient-to-r from-white/[0.04] via-white/[0.02] to-transparent border border-white/[0.08] backdrop-blur-xl shadow-subtle flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
           <div className="flex items-center gap-4">
@@ -423,10 +462,11 @@ export default function LeaderboardPage() {
               LeetCode Integration
             </div>
             <h3 className="text-base font-bold text-white mt-0.5">
-              Connect your LeetCode handle to join the leaderboard
+              Connect LeetCode for extra stats
             </h3>
             <p className="text-xs text-white/40 mt-0.5">
-              Synchronize your contest rating, problem counts, and daily active streaks.
+              Optional. Adds contest rating and daily streaks — you&apos;re already on the
+              leaderboard without it. Bible §43: never gate the product on LeetCode.
             </p>
           </div>
 
@@ -471,6 +511,20 @@ export default function LeaderboardPage() {
       )}
 
       {/* ── Leaderboard Table ── */}
+      {loadError && (
+        <div role="alert" className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-5 py-4 rounded-2xl bg-[#ff453a]/10 border border-[#ff453a]/30">
+          <span className="text-xs text-[#ff453a] font-medium">{loadError}</span>
+          <button
+            onClick={() => {
+              setLoading(true);
+              loadLeaderboardData();
+            }}
+            className="px-4 py-1.5 rounded-full bg-[#ff453a]/15 hover:bg-[#ff453a]/25 border border-[#ff453a]/30 text-[#ff453a] text-xs font-bold transition-all cursor-pointer shrink-0"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       <div aria-live="polite" className="sr-only">
         Sorted by {METRICS.find((m) => m.key === sortKey)?.label} {sortDir === "desc" ? "descending" : "ascending"};{" "}
         {visibleMembers.length} squad member{visibleMembers.length === 1 ? "" : "s"} shown.
@@ -521,10 +575,23 @@ export default function LeaderboardPage() {
             {loading ? (
               <PageLoader label="Loading leaderboard..." className="h-48" />
             ) : visibleMembers.length === 0 ? (
-              <div className="p-12 text-center text-white/40 text-xs">
-                {profiles.length === 0
-                  ? "No profiles registered in this squad yet. When members log in or add their LeetCode handles, they will appear here."
-                  : "No squad members match this filter."}
+              <div className="p-12 text-center space-y-3">
+                <p className="text-white/40 text-xs">
+                  {tab === "squad"
+                    ? "No squad members here yet. Join or create a squad — this tab ranks people you practice with."
+                    : profiles.length === 0
+                      ? "No squad members yet. Invite 2–7 friends to start your accountability loop."
+                      : "No squad members match this filter. Clear the search or show unlinked members."}
+                </p>
+                {tab === "squad" ? (
+                  <a href="/squad" className="inline-block px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold hover:bg-[#fa586a]/90 transition-all">
+                    Go to squad
+                  </a>
+                ) : profiles.length === 0 ? (
+                  <a href="/challenges" className="inline-block px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold hover:bg-[#fa586a]/90 transition-all">
+                    Challenge a friend to start
+                  </a>
+                ) : null}
               </div>
             ) : (
               <div className="divide-y divide-white/[0.04]">
@@ -649,7 +716,7 @@ export default function LeaderboardPage() {
                         </button>
                         {!isCurrentUser ? (
                           <a
-                            href={`/suggestions?to=${member.id}`}
+                            href={`/challenges?to=${member.id}`}
                             className="px-2.5 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#fa586a] hover:text-white border border-white/[0.08] text-white/60 text-xs font-semibold transition-all shadow-sm"
                           >
                             Challenge
