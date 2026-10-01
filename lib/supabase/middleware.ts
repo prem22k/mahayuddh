@@ -51,10 +51,13 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/api/auth") ||
     request.nextUrl.pathname.startsWith("/api/analytics") ||
     request.nextUrl.pathname.startsWith("/api/squads/preview");
-  // Invite deep links preview for logged-out users (Bible §42: preview first,
-  // signup second). Join/accept actions still require auth inside the pages.
+// Invite + share deep links preview for logged-out users (Bible §42: preview
+  // first, signup second). Join/accept/start actions still require auth inside
+  // the pages. /b/* is the share surface (Step 16) — a share link that demands a
+  // login before showing anything cannot drive Loop B growth.
   const isInvitePath =
     request.nextUrl.pathname.startsWith("/c/") ||
+    request.nextUrl.pathname.startsWith("/b/") ||
     request.nextUrl.pathname.startsWith("/squad/join/");
 
   // Fast-path: Check if any Supabase auth cookies exist in request

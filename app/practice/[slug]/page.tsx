@@ -14,6 +14,7 @@ import { ProblemLink } from "@/components/ui/ProblemLink";
 import { getCatalogBySlugs } from "@/lib/data/problems";
 import { getPrimersForPatterns } from "@/lib/data/primers";
 import { setProblemStatus } from "@/lib/data/sheets";
+import { BattleCard } from "@/components/battle/BattleCard";
 import { getProblemTimeline, logProblemEvent } from "@/lib/data/problemEvents";
 import { getBattlesForSlug } from "@/lib/data/battles";
 import { getChallengesForSlug } from "@/lib/data/suggestions";
@@ -470,6 +471,19 @@ export default function ProblemPage() {
           <span className="text-white/50"> — open your practice queue →</span>
         </Link>
       )}
+
+      {/* ── Battle Card (Step 16: the canonical artifact for a solve) ── */}
+      {user &&
+        battles
+          .filter((b) => b.outcome === "solved" || b.outcome === "failed")
+          .slice(0, 1)
+          .map((b) => (
+            <BattleCard
+              key={b.id}
+              battleId={b.id}
+              onCompareAvailable={approaches.filter((a) => a.user_id !== user.id).length > 0}
+            />
+          ))}
 
       {/* ── Your attempts (During — Bible §15) ── */}
       {battles.length > 0 && (

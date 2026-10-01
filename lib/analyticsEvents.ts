@@ -32,6 +32,16 @@ export const ANALYTICS_EVENTS = [
   // Squad
   "squad_created",
   "squad_joined",
+  // Shareable artifacts (Step 16, Bible §56 Loop B)
+  "share_clicked",
+  "battle_card_viewed",
+  // Social learning (Steps 17-20)
+  "revenge_started",
+  "revenge_completed",
+  "stuck_resolved",
+  "approach_copied",
+  "compare_viewed",
+  "recap_generated",
   // Misc
   "sync_completed",
   "stuck_requested",

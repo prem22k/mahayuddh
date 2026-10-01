@@ -168,6 +168,45 @@ export async function completeSquadGoal(goalId: string, squadId: string): Promis
   if (error) throw new DataError("squads", "Couldn't complete goal. Try again.", { cause: error });
 }
 
+/**
+ * Members of the caller's ACTIVE squad, for pickers (challenge targets, mentions).
+ * Empty when the caller is solo — the caller is not offered a global user
+ * directory, because a challenge is a relationship, not a broadcast (§61).
+ */
+export async function getActiveSquadMembers(): Promise<
+  { id: string; username: string }[]
+> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data: profile, error: pErr } = await supabase
+    .from("profiles")
+    .select("active_squad_id")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (pErr) {
+    throw new DataError("squads", "Couldn't load your squad. Retry.", { cause: pErr });
+  }
+  const squadId = (profile as { active_squad_id: string | null } | null)?.active_squad_id;
+  if (!squadId) return [];
+
+  const { data, error } = await supabase
+    .from("squad_members")
+    .select("user_id, profile:user_id (username)")
+    .eq("squad_id", squadId)
+    .neq("user_id", user.id);
+  if (error) {
+    throw new DataError("squads", "Couldn't load squad members. Retry.", { cause: error });
+  }
+
+  // Embedded `profile:user_id (...)` widens to an array under the generated
+  // PostgREST types; the runtime shape is a single object.
+  return ((data ?? []) as unknown as { user_id: string; profile: { username: string } | null }[]).map(
+    (m) => ({ id: m.user_id, username: m.profile?.username ?? "member" })
+  );
+}
+
 /** Active member ids of one squad (not all profiles). */
 export async function getSquadMemberIds(squadId: string): Promise<string[]> {
   const supabase = createClient();
