@@ -24,14 +24,25 @@ import { longestActiveChain, CHAIN_STATE_CLASS, CHAIN_STATE_LABEL } from "@/lib/
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
 import { logFeedEvent } from "@/lib/data/feed";
-import { Squad, SquadMember, SquadGoal } from "@/types/database";
+import {
+  computeGoalProgress,
+  getActiveGoals,
+  getSeasons,
+  computeSeasonMetrics,
+  GoalProgress,
+  SeasonMetrics,
+} from "@/lib/data/goals";
+import { RITUALS } from "@/lib/rituals";
+import { Squad, SquadMember, SquadSeason } from "@/types/database";
 
 export default function SquadPage() {
   const { user, profile, refreshProfile } = useAuth();
   const [squads, setSquads] = useState<Squad[]>([]);
   const [activeId, setActiveId] = useState<string | null>(profile?.active_squad_id ?? null);
   const [members, setMembers] = useState<SquadMember[]>([]);
-  const [goals, setGoals] = useState<SquadGoal[]>([]);
+  const [goalProgress, setGoalProgress] = useState<GoalProgress[]>([]);
+  const [season, setSeason] = useState<SquadSeason | null>(null);
+  const [seasonMetrics, setSeasonMetrics] = useState<SeasonMetrics | null>(null);
   const [solveCounts, setSolveCounts] = useState<Record<string, number>>({});
   const [activeSquad, setActiveSquad] = useState<Squad | null>(null);
   // Step 17: the squad's longest live chain is a reason to come back.
@@ -72,15 +83,33 @@ export default function SquadPage() {
         const detail = await getSquadDetail(resolvedActive);
         setActiveSquad(detail.squad);
         setMembers(detail.members);
-        setGoals(detail.goals);
         setSolveCounts(await getSquadSolveCounts(detail.members.map((m) => m.user_id)));
+
+        // Multiple goals, each with windowed progress.
+        const activeGoals = await getActiveGoals(resolvedActive);
+        const progress = await Promise.all(
+          activeGoals.map((g) => computeGoalProgress(g, detail.members).catch(() => null))
+        );
+        setGoalProgress(progress.filter((p): p is GoalProgress => p !== null));
+
+        // Season + plain metrics, no score.
+        const seasons = await getSeasons(resolvedActive).catch(() => []);
+        const live = seasons.find((x) => x.status === "active") ?? null;
+        setSeason(live);
+        setSeasonMetrics(
+          live
+            ? await computeSeasonMetrics(live, detail.members.map((m) => m.user_id)).catch(() => null)
+            : null
+        );
         // Step 17: longest live chain in this squad.
         const chainRows = await getSquadChallengeRows(resolvedActive).catch(() => []);
         setHotChain(longestActiveChain(chainRows));
       } else {
         setActiveSquad(null);
         setMembers([]);
-        setGoals([]);
+        setGoalProgress([]);
+        setSeason(null);
+        setSeasonMetrics(null);
         setSolveCounts({});
         setHotChain(null);
       }
@@ -202,9 +231,6 @@ export default function SquadPage() {
 
   if (loading) return <PageLoader label="Loading squad..." />;
 
-  const goal = goals[0] ?? null;
-  const totalSolved = Object.values(solveCounts).reduce((a, b) => a + b, 0);
-  const goalPct = goal ? Math.min(100, Math.round((totalSolved / goal.target_count) * 100)) : 0;
 
   return (
     <div className="space-y-8 select-none">
@@ -287,40 +313,62 @@ export default function SquadPage() {
                 </div>
               </div>
 
+              {/* Goals (Step 19: multiple, and progress measured inside the
+                  goal's window rather than all-time). */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider flex items-center gap-1.5">
                     <Target className="w-3.5 h-3.5" />
-                    <span>Squad goal</span>
+                    <span>Squad goals</span>
                   </span>
-                  {!goal && (
-                    <button onClick={() => { setFormError(null); setShowGoal(true); }} className="text-xs text-[#fa586a] font-semibold hover:underline cursor-pointer">
-                      Set a goal
-                    </button>
-                  )}
+                  <button onClick={() => { setFormError(null); setShowGoal(true); }} className="text-xs text-[#fa586a] font-semibold hover:underline cursor-pointer">
+                    Set a goal
+                  </button>
                 </div>
-                {goal ? (
-                  <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-sm font-bold text-white">{goal.title}</span>
-                      <button
-                        onClick={async () => { await completeSquadGoal(goal.id, goal.squad_id); await load(); }}
-                        className="text-[11px] text-white/40 hover:text-[#30d158] font-semibold cursor-pointer"
-                      >
-                        Mark complete
-                      </button>
-                    </div>
-                    <div className="text-[11px] text-white/40 mt-1 font-mono">
-                      {totalSolved} / {goal.target_count} all-time squad solves
-                      {goal.pattern ? ` · ${goal.pattern}` : ""}
-                      {goal.deadline ? ` · due ${goal.deadline}` : ""}
-                    </div>
-                    <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                      <div className="h-full rounded-full bg-[#fa586a] transition-all" style={{ width: `${goalPct}%` }} />
-                    </div>
-                  </div>
+
+                {goalProgress.length === 0 ? (
+                  <p className="text-[11px] text-white/30">
+                    No active goal. Set one — e.g. “Complete 50 Graph problems by Oct 30.”
+                  </p>
                 ) : (
-                  <p className="text-[11px] text-white/30">No active goal. Set one — e.g. “Complete 50 Graph problems by Oct 30.”</p>
+                  <div className="space-y-2">
+                    {goalProgress.map((gp) => (
+                      <div key={gp.goal.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="text-sm font-bold text-white">{gp.goal.title}</span>
+                          <button
+                            onClick={async () => {
+                              await completeSquadGoal(gp.goal.id, gp.goal.squad_id);
+                              await load();
+                            }}
+                            className="text-[11px] text-white/40 hover:text-[#30d158] font-semibold cursor-pointer"
+                          >
+                            Mark complete
+                          </button>
+                        </div>
+                        <div className="text-[11px] text-white/40 mt-1 font-mono">
+                          {gp.done} / {gp.target} solves
+                          {gp.goal.pattern ? ` · ${gp.goal.pattern}` : ""}
+                          {gp.goal.starts_at ? ` · since ${gp.goal.starts_at}` : ""}
+                          {gp.daysRemaining != null ? ` · ${gp.daysRemaining}d left` : ""}
+                        </div>
+                        <div className="text-[10px] text-white/30 mt-0.5">
+                          {gp.participants} of {gp.memberCount}{" "}
+                          {gp.memberCount === 1 ? "member has" : "members have"} contributed
+                        </div>
+                        <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                          <div className="h-full rounded-full bg-[#fa586a] transition-all" style={{ width: `${gp.pct}%` }} />
+                        </div>
+                        {/* The nudge only appears when it is close enough to act on. */}
+                        {gp.nudge && (
+                          <p className="text-[11px] text-[#ff9f0a] mt-1.5">{gp.nudge}</p>
+                        )}
+                        {gp.remaining === 0 && (
+                          <p className="text-[11px] text-[#30d158] mt-1.5">Goal reached.</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
 
@@ -409,6 +457,68 @@ export default function SquadPage() {
           </button>
         </form>
       </ModalShell>)}
+
+      {/* ── Season (Step 19). Plain counts, no unlocks, no shop. ── */}
+      {season && (
+        <section className="space-y-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider">
+              Season — {season.name}
+            </span>
+            <span className="text-[10px] text-white/30 font-mono">
+              {season.starts_at}
+              {season.ends_at ? ` → ${season.ends_at}` : " → open"}
+            </span>
+          </div>
+          {season.objective && (
+            <p className="text-xs text-white/50">{season.objective}</p>
+          )}
+          {seasonMetrics && (
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              {[
+                { label: "Solves", value: seasonMetrics.solves },
+                { label: "Challenges sent", value: seasonMetrics.challengesSent },
+                { label: "Completed", value: seasonMetrics.challengesCompleted },
+                { label: "Approaches", value: seasonMetrics.approachesWritten },
+                { label: "Active members", value: seasonMetrics.activeMembers },
+              ].map((m) => (
+                <div key={m.label} className="p-3 rounded-2xl bg-white/[0.02] border border-white/[0.06] text-center">
+                  <div className="text-xl font-black text-white font-mono">{m.value}</div>
+                  <div className="text-[10px] text-white/35 mt-0.5">{m.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-[10px] text-white/25">
+            Counts, not a score. There is nothing to unlock.
+          </p>
+        </section>
+      )}
+
+      {/* ── Rituals (Step 19). Config only — nothing is scheduled. ── */}
+      <section className="space-y-2">
+        <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider">
+          Weekly rituals
+        </span>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {RITUALS.map((r) => (
+            <Link
+              key={r.day}
+              href={r.href}
+              className="p-3 rounded-2xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/[0.06] transition-all"
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-[#fa586a] font-mono">{r.day}</span>
+                <span className="text-[11px] font-bold text-white/80">{r.label}</span>
+              </div>
+              <div className="text-[10px] text-white/35 mt-1 leading-snug">{r.intent}</div>
+            </Link>
+          ))}
+        </div>
+        <p className="text-[10px] text-white/25">
+          A suggestion, not a schedule. Nobody is going to remind you.
+        </p>
+      </section>
 
       {/* ── Longest live chain (Step 17) ── */}
       {hotChain && (

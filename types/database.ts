@@ -246,6 +246,18 @@ export interface Notification {
   actor?: Profile;
 }
 
+export interface SquadSeason {
+  id: string;
+  squad_id: string;
+  name: string;
+  objective: string | null;
+  starts_at: string;
+  ends_at: string | null;
+  status: "upcoming" | "active" | "complete";
+  created_by: string | null;
+  created_at: string;
+}
+
 export interface SquadGoal {
   id: string;
   squad_id: string;
@@ -256,6 +268,9 @@ export interface SquadGoal {
   status: "active" | "completed";
   created_by: string | null;
   created_at: string;
+  /** Progress counts solves from this date on (Step 19). */
+  starts_at?: string | null;
+  archived?: boolean;
 }
 
 export type BattleOutcome = "in_progress" | "solved" | "failed" | "abandoned";

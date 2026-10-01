@@ -32,6 +32,13 @@ import {
 } from "../lib/stuckLadder.ts";
 import { daysBetween, relativeDays } from "../lib/format.ts";
 import {
+  inferTechnique,
+  buildComparison,
+  isComparable,
+  differences,
+  TECHNIQUE_LABEL,
+} from "../lib/approachCompare.ts";
+import {
   buildRevengeOffer,
   buildRevengeResult,
   revengeLabel,
@@ -724,5 +731,110 @@ describe("daysBetween", () => {
     assert.equal(daysBetween("2026-10-09T00:00:00Z", now), 1);
     assert.equal(daysBetween("2026-10-21T00:00:00Z", now), 0); // future -> clamped
     assert.equal(daysBetween("not-a-date", now), 0);
+  });
+});
+
+// ── Step 19: comparison shows differences, never ranks ──────────────────────
+
+function approach(over = {}) {
+  return {
+    id: "a1",
+    user_id: "u1",
+    problem_slug: "two-sum",
+    pattern: null,
+    core_idea: "",
+    complexity_time: null,
+    complexity_space: null,
+    key_detail: null,
+    edge_cases: null,
+    mistakes: null,
+    code: null,
+    related_slugs: [],
+    visibility: "squad",
+    squad_id: null,
+    fork_of: null,
+    created_at: at("2026-10-01T10:00:00Z"),
+    updated_at: at("2026-10-01T10:00:00Z"),
+    ...over,
+  };
+}
+
+describe("inferTechnique", () => {
+  it("labels the common techniques from the author's own words", () => {
+    assert.equal(inferTechnique({ core_idea: "Use a hash map, single pass" }), "single_pass");
+    assert.equal(inferTechnique({ pattern: "Two Pointers" }), "two_pointer");
+    assert.equal(inferTechnique({ core_idea: "sliding window over the array" }), "two_pointer");
+    assert.equal(inferTechnique({ core_idea: "monotonic stack, next greater" }), "stack");
+    assert.equal(inferTechnique({ core_idea: "BFS from the source" }), "graph_search");
+    assert.equal(inferTechnique({ core_idea: "bottom-up DP with memoization" }), "dynamic_programming");
+    assert.equal(inferTechnique({ core_idea: "min-heap for k largest" }), "heap");
+  });
+
+  it("says 'other' rather than guessing when there is nothing to read", () => {
+    assert.equal(inferTechnique({}), "other");
+    assert.equal(inferTechnique({ core_idea: "   " }), "other");
+    assert.equal(inferTechnique({ core_idea: "just did it somehow" }), "other");
+  });
+});
+
+describe("buildComparison", () => {
+  it("groups by technique and orders the biggest group first", () => {
+    const result = buildComparison([
+      approach({ id: "1", core_idea: "single pass with a hash map" }),
+      approach({ id: "2", core_idea: "two pointers, one from each end" }),
+      approach({ id: "3", core_idea: "one pass, hash table" }),
+    ]);
+    assert.equal(result.total, 3);
+    assert.equal(result.techniqueCount, 2);
+    assert.equal(result.groups[0].technique, "single_pass");
+    assert.equal(result.groups[0].rows.length, 2);
+  });
+
+  it("reports an honest technique count", () => {
+    const one = buildComparison([approach({ core_idea: "BFS" })]);
+    assert.equal(one.techniqueCount, 1);
+    assert.equal(one.groups[0].label, TECHNIQUE_LABEL.graph_search);
+  });
+});
+
+describe("isComparable", () => {
+  it("needs two approaches to make a side-by-side worthwhile", () => {
+    assert.equal(isComparable(0), false);
+    assert.equal(isComparable(1), false);
+    assert.equal(isComparable(2), true);
+  });
+});
+
+describe("differences", () => {
+  const row = (over) => ({ approach: approach(over), technique: "single_pass", time: null, space: null });
+
+  it("stays neutral — no winner language anywhere", () => {
+    const a = { ...row({}), technique: "single_pass", time: "O(n)" };
+    const b = { ...row({}), technique: "graph_search", time: "O(n log n)" };
+    const ds = differences(a, b);
+    assert.ok(ds.length > 0);
+    for (const d of ds) {
+      assert.doesNotMatch(d, /better|worse|best|worst|faster is|loses|wins/i);
+    }
+  });
+
+  it("notes a differing time claim without calling either one correct", () => {
+    const a = { ...row({}), technique: "single_pass", time: "O(n)" };
+    const b = { ...row({}), technique: "single_pass", time: "O(n^2)" };
+    const d = differences(a, b).join(" ");
+    assert.match(d, /Time claim differs/);
+    assert.match(d, /may be right/);
+  });
+
+  it("flags when only one author recorded a complexity", () => {
+    const a = { ...row({}), technique: "single_pass", time: "O(n)" };
+    const b = { ...row({}), technique: "single_pass", time: null };
+    assert.match(differences(a, b).join(" "), /Only one author recorded/);
+  });
+
+  it("says nothing when two approaches are identical in these respects", () => {
+    const a = { ...row({}), technique: "stack", time: "O(n)", space: "O(n)" };
+    const b = { ...row({}), technique: "stack", time: "O(n)", space: "O(n)" };
+    assert.deepEqual(differences(a, b), []);
   });
 });
