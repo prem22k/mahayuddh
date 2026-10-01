@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import Link from "next/link";
 import {
   Play,
   Pause,
@@ -20,6 +21,8 @@ import { track } from "@/lib/analytics";
 import { startBattle, heartbeatBattle, endBattle } from "@/lib/data/battles";
 import { logProblemEvent } from "@/lib/data/problemEvents";
 import { logFeedEvent } from "@/lib/data/feed";
+import { revengeResultLabel, RevengeResult } from "@/lib/revenge";
+import { detectRevengeCompletion } from "@/lib/data/revenge";
 
 interface NowSolvingBarProps {
   onSearchOpen?: () => void;
@@ -50,6 +53,8 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
   const [battleId, setBattleId] = useState<string | null>(null);
   const [stuckOpen, setStuckOpen] = useState(false);
   const [ending, setEnding] = useState(false);
+  // Step 17: closes the "failed -> solved" loop with the real before/after.
+  const [revengeResult, setRevengeResult] = useState<RevengeResult | null>(null);
 
   // Load scratchpad note whenever activeProblem changes
   useEffect(() => {
@@ -190,6 +195,21 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
         difficulty: activeProblem.difficulty,
         metadata: { duration_sec: elapsedSec, source: evidence },
       }).catch(() => {});
+
+      // Revenge (Step 17): a solve that answers a recorded failure is a
+      // different event from a solve — it closes a loop the user opened.
+      if (battleId) {
+        detectRevengeCompletion(activeProblem.slug, battleId, activeProblem.title)
+          .then((result) => {
+            if (!result) return;
+            track("revenge_completed", {
+              problem_slug: activeProblem.slug,
+              improved: result.improved,
+            });
+            setRevengeResult(result);
+          })
+          .catch(() => {});
+      }
       // Notify open sheet views so their solved status refreshes immediately.
       window.dispatchEvent(
         new CustomEvent("problem-status-changed", {
@@ -299,6 +319,59 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
 
   return (
     <>
+      {/* ── REVENGE COMPLETE (Step 17). A solve that answers a recorded failure
+          is a different event from a solve: it closes a loop the user opened. ── */}
+      {revengeResult && (
+        <div className="fixed bottom-[calc(var(--bottom-bar-height)+var(--bottom-bar-margin)+14px)] left-1/2 -translate-x-1/2 w-[26rem] max-w-[calc(100vw-2rem)] z-[160] rounded-3xl bg-[#1c1c1e]/95 backdrop-blur-2xl border border-[#30d158]/30 shadow-[0_20px_60px_rgba(0,0,0,0.6)] p-4 space-y-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[10px] font-extrabold uppercase tracking-widest text-[#30d158]">
+                Revenge complete
+              </div>
+              <div className="text-sm font-bold text-white mt-0.5 truncate">
+                {revengeResult.title}
+              </div>
+              <div className="text-[11px] text-white/60 font-mono mt-1">
+                {revengeResultLabel(revengeResult)}
+              </div>
+              {revengeResult.improved ? (
+                <div className="text-[11px] text-[#30d158] mt-0.5">
+                  Beat your own failure.
+                </div>
+              ) : (
+                /* No fake speedup when either duration is missing (§44). */
+                <div className="text-[11px] text-white/35 mt-0.5">
+                  Solved. Durations were not both recorded, so there is no speed to claim.
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => setRevengeResult(null)}
+              className="p-1 text-white/40 hover:text-white rounded-md transition-colors cursor-pointer shrink-0"
+              aria-label="Dismiss"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <Link
+              href={`/practice/${revengeResult.problemSlug}#explain`}
+              onClick={() => setRevengeResult(null)}
+              className="px-3 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-white text-[11px] font-bold transition-all"
+            >
+              Write up what changed
+            </Link>
+            <Link
+              href="/practice"
+              onClick={() => setRevengeResult(null)}
+              className="px-3 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-white text-[11px] font-bold transition-all"
+            >
+              Next battle
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* ── Stuck Ladder Popover (v0: static guidance; full ladder lands Step 18) ── */}
       {stuckOpen && activeProblem && (
         <div className="fixed bottom-[calc(var(--bottom-bar-height)+var(--bottom-bar-margin)+12px)] left-1/2 -translate-x-1/2 w-96 max-w-[calc(100vw-3rem)] bg-[#1c1c1e]/95 backdrop-blur-2xl border border-white/[0.1] rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] z-[150] p-4 space-y-2">

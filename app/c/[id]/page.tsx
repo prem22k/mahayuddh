@@ -9,7 +9,9 @@ import { useSolving } from "@/components/providers/SolvingProvider";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { DifficultyBadge } from "@/components/ui/DifficultyBadge";
 import { getSuggestionById, getChallengeChain } from "@/lib/data/suggestions";
+import { chainState, CHAIN_STATE_LABEL, CHAIN_STATE_CLASS } from "@/lib/chains";
 import { track } from "@/lib/analytics";
+import { cn } from "@/lib/utils";
 import { Suggestion } from "@/types/database";
 
 function fmtTime(sec: number): string {
@@ -112,20 +114,43 @@ export default function ChallengeDeepLinkPage() {
         )}
       </div>
 
+      {/* Chain (Step 17). States matter: a challenge somebody is working on and
+          one that quietly died look identical if you only render "pending". */}
       {chain.length > 1 && (
         <div className="p-6 rounded-3xl bg-white/[0.02] border border-white/[0.06] space-y-2">
-          <div className="text-[11px] font-bold text-[#bf5af2] uppercase tracking-wider">
-            Challenge chain — {item.problem_title}
-          </div>
-          {chain.map((c, i) => (
-            <div key={c.id} className="flex items-center gap-2 text-xs text-white/60">
-              <span className="font-mono text-white/30">{i + 1}.</span>
-              <span className="font-semibold text-white/80">@{c.from_profile?.username}</span>
-              <ArrowRight className="w-3 h-3 text-white/20" />
-              <span className="font-semibold text-white/80">@{c.to_profile?.username}</span>
-              {c.status === "completed" && <span className="text-[#30d158] text-[10px] font-bold">done</span>}
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[11px] font-bold text-[#bf5af2] uppercase tracking-wider">
+              Challenge chain — {item.problem_title}
             </div>
-          ))}
+            <span className="text-[10px] text-white/30 font-mono">
+              {chain.length} {chain.length === 1 ? "hop" : "hops"}
+            </span>
+          </div>
+          {chain.map((c, i) => {
+            const state = chainState(c);
+            return (
+              <div
+                key={c.id}
+                className={cn(
+                  "flex items-center gap-2 text-xs rounded-xl px-2.5 py-1.5 border",
+                  CHAIN_STATE_CLASS[state]
+                )}
+              >
+                <span className="font-mono text-white/30">{i + 1}.</span>
+                <span className="font-semibold">@{c.from_profile?.username}</span>
+                <ArrowRight className="w-3 h-3 text-white/20 shrink-0" />
+                <span className="font-semibold">@{c.to_profile?.username}</span>
+                <span className="ml-auto text-[10px] font-bold uppercase tracking-wider">
+                  {CHAIN_STATE_LABEL[state]}
+                </span>
+              </div>
+            );
+          })}
+          {chainState(item) === "timed_out" && (
+            <p className="text-[11px] text-[#ff9f0a] pt-1">
+              This challenge is past its deadline. Solve it anyway, or pass it on.
+            </p>
+          )}
         </div>
       )}
     </div>

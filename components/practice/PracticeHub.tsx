@@ -15,6 +15,8 @@ import {
   computePatternStats,
   PatternStat,
 } from "@/lib/data/review";
+import { buildRevengeOffer, revengeLabel, RevengeOffer } from "@/lib/revenge";
+import { getOpenRevenges } from "@/lib/data/revenge";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { Primer, Problem, ReviewItem, ReviewReason } from "@/types/database";
 
@@ -33,6 +35,7 @@ export function PracticeHub() {
   const [patterns, setPatterns] = useState<PatternStat[]>([]);
   const [titles, setTitles] = useState<Map<string, Problem>>(new Map());
   const [primers, setPrimers] = useState<Primer[]>([]);
+  const [revenges, setRevenges] = useState<Map<string, RevengeOffer>>(new Map());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -50,6 +53,21 @@ export function PracticeHub() {
           const slugs = Array.from(new Set(rows.map((r) => r.problem_slug))).slice(0, 60);
           const catalog = await getCatalogBySlugs(slugs).catch(() => []);
           setTitles(new Map(catalog.map((c) => [c.title_slug, c])));
+
+          // Revenge (Step 17): a failed problem with its real failure time on it,
+          // rather than a bare "Failed" label.
+          const failedSlugs = rows.filter((r) => r.reason === "failed").map((r) => r.problem_slug);
+          if (failedSlugs.length > 0) {
+            const battlesBySlug = await getOpenRevenges(failedSlugs).catch(() => new Map());
+            const offers = new Map<string, RevengeOffer>();
+            for (const slug of failedSlugs) {
+              const offer = buildRevengeOffer(slug, battlesBySlug.get(slug) ?? []);
+              if (offer) offers.set(slug, offer);
+            }
+            setRevenges(offers);
+          } else {
+            setRevenges(new Map());
+          }
         }
       })
       .catch((err) => setLoadError(dataErrorMessage(err, "Couldn't load practice data.")))
@@ -101,20 +119,38 @@ export function PracticeHub() {
           <div className="space-y-2">
             {reviews.slice(0, 12).map((r) => {
               const meta = titles.get(r.problem_slug);
+              const revenge = revenges.get(r.problem_slug);
               return (
-                <div key={r.id} className="flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
+                <div
+                  key={r.id}
+                  className={cn(
+                    "flex items-center justify-between gap-3 p-3.5 rounded-2xl border",
+                    revenge
+                      ? "bg-[#ff9f0a]/[0.06] border-[#ff9f0a]/25"
+                      : "bg-white/[0.02] border-white/[0.06]"
+                  )}
+                >
                   <div className="min-w-0">
                     <Link href={`/practice/${r.problem_slug}`} className="text-xs font-bold text-white hover:text-[#fa586a] transition-colors truncate block">
                       {meta?.title || r.problem_slug}
                     </Link>
                     <span className="text-[10px] text-white/40">
-                      {REASON_LABEL[r.reason]}{meta ? ` · ${meta.difficulty}` : ""}
+                      {/* Revenge shows the real previous time; other reasons keep
+                          their plain label. Never invent a duration. */}
+                      {revenge
+                        ? revengeLabel(revenge)
+                        : `${REASON_LABEL[r.reason]}${meta ? ` · ${meta.difficulty}` : ""}`}
                     </span>
                   </div>
                   <button onClick={() => startRevision(r.problem_slug)}
-                    className="px-3.5 py-1.5 rounded-full bg-white text-black hover:bg-white/90 text-[11px] font-bold flex items-center gap-1.5 shrink-0 cursor-pointer">
+                    className={cn(
+                      "px-3.5 py-1.5 rounded-full text-[11px] font-bold flex items-center gap-1.5 shrink-0 cursor-pointer",
+                      revenge
+                        ? "bg-[#ff9f0a] text-black hover:bg-[#ff9f0a]/90"
+                        : "bg-white text-black hover:bg-white/90"
+                    )}>
                     <Play className="w-3 h-3 fill-current" />
-                    <span>{r.reason === "failed" ? "Take revenge" : "Start revision"}</span>
+                    <span>{revenge ? "Take revenge" : r.reason === "failed" ? "Retry" : "Start revision"}</span>
                   </button>
                 </div>
               );

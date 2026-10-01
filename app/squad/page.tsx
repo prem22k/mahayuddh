@@ -19,6 +19,8 @@ import {
   createSquadGoal,
   completeSquadGoal,
 } from "@/lib/data/squads";
+import { getSquadChallengeRows } from "@/lib/data/challenges";
+import { longestActiveChain, CHAIN_STATE_CLASS, CHAIN_STATE_LABEL } from "@/lib/chains";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
 import { logFeedEvent } from "@/lib/data/feed";
@@ -32,6 +34,8 @@ export default function SquadPage() {
   const [goals, setGoals] = useState<SquadGoal[]>([]);
   const [solveCounts, setSolveCounts] = useState<Record<string, number>>({});
   const [activeSquad, setActiveSquad] = useState<Squad | null>(null);
+  // Step 17: the squad's longest live chain is a reason to come back.
+  const [hotChain, setHotChain] = useState<ReturnType<typeof longestActiveChain>>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -70,11 +74,15 @@ export default function SquadPage() {
         setMembers(detail.members);
         setGoals(detail.goals);
         setSolveCounts(await getSquadSolveCounts(detail.members.map((m) => m.user_id)));
+        // Step 17: longest live chain in this squad.
+        const chainRows = await getSquadChallengeRows(resolvedActive).catch(() => []);
+        setHotChain(longestActiveChain(chainRows));
       } else {
         setActiveSquad(null);
         setMembers([]);
         setGoals([]);
         setSolveCounts({});
+        setHotChain(null);
       }
     } catch (err) {
       console.error("Error loading squad:", err);
@@ -401,6 +409,29 @@ export default function SquadPage() {
           </button>
         </form>
       </ModalShell>)}
+
+      {/* ── Longest live chain (Step 17) ── */}
+      {hotChain && (
+        <Link
+          href={`/c/${hotChain.leafId}`}
+          className="block p-5 rounded-3xl bg-[#bf5af2]/[0.07] border border-[#bf5af2]/25 hover:border-[#bf5af2]/45 transition-all"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-[11px] font-bold text-[#bf5af2] uppercase tracking-wider">
+              Challenge chain — {hotChain.problemTitle}
+            </div>
+            <span className={cn(
+              "px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider",
+              CHAIN_STATE_CLASS.active
+            )}>
+              {hotChain.hops} {hotChain.hops === 1 ? "hop" : "hops"} · {CHAIN_STATE_LABEL.active}
+            </span>
+          </div>
+          <p className="text-xs text-white/50 mt-1.5">
+            This problem has travelled through {hotChain.hops} {hotChain.hops === 1 ? "person" : "people"} in your squad and is still open.
+          </p>
+        </Link>
+      )}
 
       <Link href="/challenges" className="flex items-center gap-1.5 text-xs text-[#fa586a] font-semibold hover:underline">
         <span>Open challenges</span>

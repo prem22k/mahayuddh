@@ -1,4 +1,7 @@
 import type { ListProblem, TriState } from "@/types/database";
+import { formatDuration } from "./format.ts";
+
+export { formatDuration };
 
 export interface DailyPick {
   problem: ListProblem;
@@ -17,14 +20,6 @@ function hashSeed(s: string): number {
     h = Math.imul(h, 16777619);
   }
   return (h >>> 0) / 4294967295;
-}
-
-export function formatDuration(totalSeconds: number | null | undefined): string | null {
-  if (totalSeconds == null || !Number.isFinite(totalSeconds) || totalSeconds < 0) return null;
-  const s = Math.trunc(totalSeconds);
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-  return `${m}:${String(sec).padStart(2, "0")}`;
 }
 
 /**

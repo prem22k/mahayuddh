@@ -1,4 +1,8 @@
 import type { Battle, BattleOutcome, Problem, ProblemEvent, Approach, Suggestion } from "@/types/database";
+import { formatDuration, titleFromSlug } from "./format.ts";
+
+// Re-exported so existing call sites keep one import path.
+export { formatDuration, titleFromSlug };
 
 /**
  * BATTLE CARD (Step 16, Bible §7/§38/§39/§48).
@@ -84,12 +88,6 @@ export interface BattleCardInput {
   events: ProblemEvent[];
   approaches: Approach[];
   challenges: Suggestion[];
-}
-
-export function formatDuration(totalSeconds: number | null | undefined): string | null {
-  if (totalSeconds == null || !Number.isFinite(totalSeconds) || totalSeconds < 0) return null;
-  const s = Math.trunc(totalSeconds);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 /**
@@ -217,10 +215,3 @@ function excerpt(text: string, max = 180): string {
   return `${clean.slice(0, max - 1).trimEnd()}…`;
 }
 
-/** Fallback title when the catalog has no row (slug is the only identifier). */
-export function titleFromSlug(slug: string): string {
-  return slug
-    .split("-")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}

@@ -22,7 +22,14 @@ import {
   formatDuration as fmtCard,
   titleFromSlug,
 } from "../lib/battleCard.ts";
-import { chainState, longestActiveChain } from "../lib/chains.ts";
+import { chainState, longestActiveChain, chainHops, orderChainOldestFirst } from "../lib/chains.ts";
+import {
+  buildRevengeOffer,
+  buildRevengeResult,
+  revengeLabel,
+  revengeResultLabel,
+  latestFailure,
+} from "../lib/revenge.ts";
 
 // A real-ish LeetCode slug list: these are what must survive a round trip.
 const SLUG_RE = /^[a-z0-9-]{1,80}$/;
@@ -499,5 +506,153 @@ describe("longestActiveChain", () => {
     const best = longestActiveChain(rows);
     assert.equal(best?.hops, 3);
     assert.equal(best?.leafId, "3");
+  });
+});
+
+// ── Step 17: revenge is a relationship between a failure and the solve after ──
+
+function session(over = {}) {
+  return {
+    id: "s1",
+    user_id: "me",
+    problem_slug: "trapping-rain-water",
+    squad_id: null,
+    started_at: at("2026-09-21T10:00:00Z"),
+    ended_at: at("2026-09-21T10:41:00Z"),
+    duration_sec: 2466, // 41:06
+    outcome: "failed",
+    self_reported: true,
+    evidence: "none",
+    scratchpad_md: null,
+    confidence: null,
+    created_at: at("2026-09-21T10:00:00Z"),
+    ...over,
+  };
+}
+
+const NOW = new Date("2026-10-10T00:00:00Z");
+
+describe("buildRevengeOffer", () => {
+  it("returns null when nothing failed", () => {
+    assert.equal(buildRevengeOffer("trapping-rain-water", [session({ outcome: "solved" })], "T", NOW), null);
+    assert.equal(buildRevengeOffer("trapping-rain-water", [], "T", NOW), null);
+  });
+
+  it("reports the real previous duration and age", () => {
+    const offer = buildRevengeOffer("trapping-rain-water", [session()], "Trapping Rain Water", NOW);
+    assert.equal(offer?.title, "Trapping Rain Water");
+    assert.equal(offer?.previousFailedSec, 2466);
+    // 2026-09-21T10:00Z -> 2026-10-10T00:00Z is 18 full days, not 19.
+  assert.equal(offer?.daysAgo, 18);
+    assert.equal(offer?.failureCount, 1);
+  });
+
+  it("counts every recorded failure", () => {
+    const offer = buildRevengeOffer(
+      "trapping-rain-water",
+      [
+        session({ id: "a", started_at: at("2026-09-21T10:00:00Z") }),
+        session({ id: "b", started_at: at("2026-09-25T10:00:00Z") }),
+      ],
+      "T",
+      NOW
+    );
+    assert.equal(offer?.failureCount, 2);
+    // Newest failure is the one on offer.
+    assert.equal(offer?.previousFailedAt, at("2026-09-25T10:00:00Z"));
+  });
+
+  it("omits a duration rather than inventing one", () => {
+    const offer = buildRevengeOffer("trapping-rain-water", [session({ duration_sec: null })], "T", NOW);
+    assert.equal(offer?.previousFailedSec, null);
+    assert.equal(revengeLabel(offer), "Failed · 18 days ago");
+  });
+});
+
+describe("buildRevengeResult", () => {
+  const solved = session({
+    id: "w1",
+    outcome: "solved",
+    duration_sec: 1691, // 28:11
+    started_at: at("2026-10-09T10:00:00Z"),
+  });
+
+  it("is null when the solve predates the failure", () => {
+    const earlierSolve = session({
+      id: "w0",
+      outcome: "solved",
+      started_at: at("2026-09-01T10:00:00Z"),
+    });
+    assert.equal(buildRevengeResult("trapping-rain-water", earlierSolve, [session(), earlierSolve], "T"), null);
+  });
+
+  it("is null when there was no failure to answer", () => {
+    assert.equal(buildRevengeResult("trapping-rain-water", solved, [solved], "T"), null);
+  });
+
+  it("measures the improvement when both durations exist", () => {
+    const result = buildRevengeResult("trapping-rain-water", solved, [session(), solved], "T");
+    assert.equal(result?.previousFailedSec, 2466);
+    assert.equal(result?.solvedSec, 1691);
+    assert.equal(result?.improvementSec, 775);
+    assert.equal(result?.improved, true);
+    assert.equal(revengeResultLabel(result), "Previous failed 41:06 → solved 28:11");
+  });
+
+  it("does not claim an improvement when it got slower", () => {
+    const slower = session({ id: "w2", outcome: "solved", duration_sec: 3000, started_at: at("2026-10-09T11:00:00Z") });
+    const result = buildRevengeResult("trapping-rain-water", slower, [session(), slower], "T");
+    assert.equal(result?.improved, false);
+    assert.equal(result?.improvementSec, -534);
+  });
+
+  it("refuses to invent a speedup when the failure time is missing", () => {
+    const untimed = session({ id: "u1", outcome: "failed", duration_sec: null, started_at: at("2026-09-21T10:00:00Z") });
+    const result = buildRevengeResult("trapping-rain-water", solved, [untimed, solved], "T");
+    assert.equal(result?.improvementSec, null);
+    assert.equal(result?.improved, false);
+    assert.equal(revengeResultLabel(result), "Previous failed time not recorded → solved 28:11");
+  });
+});
+
+describe("latestFailure", () => {
+  it("returns the newest failure and the total count", () => {
+    const { latest, failureCount } = latestFailure([
+      session({ id: "old", started_at: at("2026-01-01T00:00:00Z") }),
+      session({ id: "new", started_at: at("2026-05-01T00:00:00Z") }),
+      session({ id: "solved", outcome: "solved" }),
+    ]);
+    assert.equal(latest?.id, "new");
+    assert.equal(failureCount, 2);
+  });
+});
+
+describe("chainHops / orderChainOldestFirst", () => {
+  it("counts the holder too, so a 3-person chain is 3", () => {
+    const rows = [
+      { id: "1", parent_id: null },
+      { id: "2", parent_id: "1" },
+      { id: "3", parent_id: "2" },
+    ];
+    assert.equal(chainHops(rows, "3"), 3);
+    assert.equal(chainHops(rows, "1"), 1);
+  });
+
+  it("survives a cycle instead of hanging", () => {
+    const rows = [
+      { id: "a", parent_id: "b" },
+      { id: "b", parent_id: "a" },
+    ];
+    assert.ok(chainHops(rows, "a") <= 10);
+    assert.ok(orderChainOldestFirst(rows, "a").length <= 10);
+  });
+
+  it("orders a chain oldest-first for display", () => {
+    const rows = [
+      { id: "1", parent_id: null },
+      { id: "2", parent_id: "1" },
+      { id: "3", parent_id: "2" },
+    ];
+    assert.deepEqual(orderChainOldestFirst(rows, "3").map((r) => r.id), ["1", "2", "3"]);
   });
 });
