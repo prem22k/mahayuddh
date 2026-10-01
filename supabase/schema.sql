@@ -67,6 +67,11 @@ create table if not exists public.suggestions (
   difficulty text check (difficulty in ('Easy', 'Medium', 'Hard')) not null,
   note text,
   status text check (status in ('pending', 'completed', 'dismissed')) default 'pending',
+  sender_time_sec int check (sender_time_sec is null or sender_time_sec >= 0),
+  beat_time boolean default false not null,
+  deadline_at timestamp with time zone,
+  parent_id uuid references public.suggestions(id) on delete set null,
+  spoiler boolean default false not null,
   created_at timestamp with time zone default now(),
   completed_at timestamp with time zone
 );
@@ -79,6 +84,9 @@ create table if not exists public.shared_resources (
   content text not null, -- Markdown
   external_url text,
   author_id uuid references public.profiles(id) on delete cascade not null,
+  visibility text default 'public' not null check (visibility in ('squad', 'public')),
+  squad_id uuid,
+  fork_of uuid,
   created_at timestamp with time zone default now()
 );
 
@@ -96,11 +104,49 @@ create table if not exists public.push_subscriptions (
 create table if not exists public.feed_events (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references public.profiles(id) on delete cascade not null,
-  event_type text check (event_type in ('solved', 'streak', 'contest', 'suggested', 'completed')) not null,
+  event_type text check (event_type in ('solved', 'streak', 'contest', 'suggested', 'completed', 'solve', 'teach', 'challenge', 'complete', 'improve', 'stuck', 'resource', 'squad_milestone')) not null,
   problem_title text,
   problem_slug text,
   difficulty text,
+  squad_id uuid,
+  object_type text,
+  object_id text,
   metadata jsonb default '{}'::jsonb,
+  created_at timestamp with time zone default now()
+);
+create index if not exists feed_events_squad_idx on public.feed_events (squad_id, created_at desc);
+create index if not exists feed_events_recent_idx on public.feed_events (created_at desc);
+-- 9. SQUADS CORE (Phase 1: many squads per user, one active in UX)
+create table if not exists public.squads (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (char_length(name) between 1 and 60),
+  avatar_url text,
+  description text check (description is null or octet_length(description) <= 2000),
+  created_by uuid references public.profiles(id) on delete set null,
+  invite_code text unique not null,
+  shared_goal_text text,
+  season_name text,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists public.squad_members (
+  squad_id uuid references public.squads(id) on delete cascade not null,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  role text check (role in ('admin', 'member')) default 'member' not null,
+  joined_at timestamp with time zone default now(),
+  last_active_at timestamp with time zone default now(),
+  primary key (squad_id, user_id)
+);
+
+create table if not exists public.squad_goals (
+  id uuid primary key default gen_random_uuid(),
+  squad_id uuid references public.squads(id) on delete cascade not null,
+  title text not null check (char_length(title) between 1 and 120),
+  target_count int not null check (target_count between 1 and 10000),
+  pattern text,
+  deadline date,
+  status text check (status in ('active', 'completed')) default 'active' not null,
+  created_by uuid references public.profiles(id) on delete set null,
   created_at timestamp with time zone default now()
 );
 
@@ -115,6 +161,9 @@ alter table public.suggestions enable row level security;
 alter table public.shared_resources enable row level security;
 alter table public.push_subscriptions enable row level security;
 alter table public.feed_events enable row level security;
+alter table public.squads enable row level security;
+alter table public.squad_members enable row level security;
+alter table public.squad_goals enable row level security;
 
 -- Final policy state (mirrors migrations through 20260916000003).
 -- Public reads everywhere; writes are own-row (or list-owner) only, with
@@ -148,9 +197,31 @@ create policy "Users can insert suggestions" on public.suggestions for insert wi
 create policy "Users can manage own suggestions" on public.suggestions for update
   using (((select auth.uid()) = from_user) or ((select auth.uid()) = to_user))
   with check (((select auth.uid()) = from_user) or ((select auth.uid()) = to_user));
+create policy "Users can delete own sent suggestions" on public.suggestions for delete
+  using ((select auth.uid()) = from_user and status = 'pending');
 
-create policy "Allow public read access for resources" on public.shared_resources for select using (true);
-create policy "Users can insert shared resources" on public.shared_resources for insert with check ((select auth.uid()) = author_id);
+create policy "Public vault readable" on public.shared_resources
+  for select using (visibility = 'public');
+create policy "Squad vault readable" on public.shared_resources
+  for select using (
+    visibility = 'squad' and squad_id is not null and exists (
+      select 1 from public.squad_members
+      where squad_members.squad_id = shared_resources.squad_id
+      and squad_members.user_id = (select auth.uid())
+    )
+  );
+create policy "Users can insert shared resources" on public.shared_resources
+  for insert with check (
+    (select auth.uid()) = author_id
+    and visibility in ('public', 'squad')
+    and (visibility = 'public' or (
+      squad_id is not null and exists (
+        select 1 from public.squad_members
+        where squad_members.squad_id = shared_resources.squad_id
+        and squad_members.user_id = (select auth.uid())
+      )
+    ))
+  );
 create policy "Users can update own shared resources" on public.shared_resources for update using ((select auth.uid()) = author_id);
 create policy "Users can delete own shared resources" on public.shared_resources for delete using ((select auth.uid()) = author_id);
 
@@ -159,6 +230,305 @@ create policy "Users can manage push subscriptions" on public.push_subscriptions
 create policy "Allow public read access for feed_events" on public.feed_events for select using (true);
 create policy "Users can create own feed events" on public.feed_events for insert with check ((select auth.uid()) = user_id);
 create policy "Users can manage own feed events" on public.feed_events for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+
+-- Squads: public read (invite preview + accountability counts), creator-admin writes.
+-- No client INSERT on squad_members: joins validate invite codes in POST /api/squads/join.
+create policy "Squads publicly readable" on public.squads for select using (true);
+create policy "Users can create squads" on public.squads for insert with check ((select auth.uid()) = created_by);
+create policy "Squad creator can update" on public.squads for update using ((select auth.uid()) = created_by) with check ((select auth.uid()) = created_by);
+create policy "Squad creator can delete" on public.squads for delete using ((select auth.uid()) = created_by);
+
+create policy "Squad members publicly readable" on public.squad_members for select using (true);
+create policy "Members can leave, creator can remove" on public.squad_members for delete
+  using (
+    (select auth.uid()) = user_id
+    or exists (select 1 from public.squads where squads.id = squad_id and squads.created_by = (select auth.uid()))
+  );
+
+create policy "Squad goals publicly readable" on public.squad_goals for select using (true);
+create policy "Squad members can create goals" on public.squad_goals for insert
+  with check (exists (select 1 from public.squad_members where squad_members.squad_id = squad_id and squad_members.user_id = (select auth.uid())));
+create policy "Squad members can manage goals" on public.squad_goals for update
+  using (exists (select 1 from public.squad_members where squad_members.squad_id = squad_id and squad_members.user_id = (select auth.uid())))
+  with check (exists (select 1 from public.squad_members where squad_members.squad_id = squad_id and squad_members.user_id = (select auth.uid())));
+create policy "Squad members can delete goals" on public.squad_goals for delete
+  using (exists (select 1 from public.squad_members where squad_members.squad_id = squad_id and squad_members.user_id = (select auth.uid())));
+
+alter table public.profiles add column if not exists active_squad_id uuid references public.squads(id) on delete set null;
+create index if not exists squad_members_user_idx on public.squad_members (user_id);
+create index if not exists squad_members_squad_idx on public.squad_members (squad_id);
+create index if not exists squad_goals_squad_idx on public.squad_goals (squad_id) where status = 'active';
+
+-- Squad FKs, deferred until squads exists (section 9 is created above).
+-- feed_events uses SET NULL, not CASCADE: deleting a squad must not erase its
+-- own activity history (§64).
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'feed_events_squad_id_fkey') then
+    alter table public.feed_events add constraint feed_events_squad_id_fkey
+      foreign key (squad_id) references public.squads(id) on delete set null;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'shared_resources_squad_id_fkey') then
+    alter table public.shared_resources add constraint shared_resources_squad_id_fkey
+      foreign key (squad_id) references public.squads(id) on delete set null;
+  end if;
+end $$;
+
+create or replace function public.generate_squad_code()
+returns text language plpgsql as $$
+declare
+  alphabet constant text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  code text := '';
+  i int;
+begin
+  for i in 1..8 loop
+    code := code || substr(alphabet, (random() * 31)::int + 1, 1);
+  end loop;
+  return code;
+end $$;
+
+-- 10. BATTLES (Phase 1: private session/Attempt object) + PROBLEM EVENTS (append-only history)
+create table if not exists public.battles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  problem_slug text not null check (problem_slug ~ '^[a-z0-9-]{1,80}$'),
+  squad_id uuid references public.squads(id) on delete set null,
+  started_at timestamp with time zone default now() not null,
+  ended_at timestamp with time zone,
+  duration_sec int check (duration_sec is null or duration_sec >= 0),
+  outcome text check (outcome in ('in_progress', 'solved', 'failed', 'abandoned')) default 'in_progress' not null,
+  self_reported boolean default true not null,
+  evidence text check (evidence in ('leetcode', 'none')) default 'none' not null,
+  scratchpad_md text check (scratchpad_md is null or octet_length(scratchpad_md) <= 20000),
+  confidence int check (confidence is null or (confidence between 1 and 5)),
+  created_at timestamp with time zone default now()
+);
+create index if not exists battles_user_slug_idx on public.battles (user_id, problem_slug, started_at desc);
+create unique index if not exists battles_one_live_per_user on public.battles (user_id) where outcome = 'in_progress';
+
+create table if not exists public.problem_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  problem_slug text not null check (problem_slug ~ '^[a-z0-9-]{1,80}$'),
+  kind text check (kind in ('attempted', 'solved', 'explained', 'revisited', 'challenge_completed', 'failed', 'stuck')) not null,
+  battle_id uuid references public.battles(id) on delete set null,
+  duration_sec int check (duration_sec is null or duration_sec >= 0),
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamp with time zone default now() not null
+);
+create index if not exists problem_events_user_slug_idx on public.problem_events (user_id, problem_slug, created_at desc);
+create index if not exists problem_events_slug_idx on public.problem_events (problem_slug, created_at desc);
+
+alter table public.battles enable row level security;
+alter table public.problem_events enable row level security;
+
+create policy "Users manage own battles" on public.battles
+  for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "Users can append own problem events" on public.problem_events
+  for insert with check ((select auth.uid()) = user_id);
+create policy "Problem events publicly readable" on public.problem_events
+  for select using (true);
+
+-- 11. APPROACHES (Phase 1: After-solving explanations, private by default)
+create table if not exists public.approaches (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  problem_slug text not null check (problem_slug ~ '^[a-z0-9-]{1,80}$'),
+  pattern text,
+  core_idea text not null check (char_length(core_idea) between 1 and 5000),
+  complexity_time text,
+  complexity_space text,
+  key_detail text,
+  edge_cases text,
+  mistakes text,
+  code text check (code is null or octet_length(code) <= 20000),
+  related_slugs text[] default '{}',
+  visibility text check (visibility in ('private', 'squad', 'public')) default 'private' not null,
+  squad_id uuid references public.squads(id) on delete set null,
+  fork_of uuid references public.approaches(id) on delete set null,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+create index if not exists approaches_slug_idx on public.approaches (problem_slug, created_at desc);
+create index if not exists approaches_user_idx on public.approaches (user_id, created_at desc);
+
+alter table public.approaches enable row level security;
+
+create policy "Owners see own approaches" on public.approaches for select
+  using ((select auth.uid()) = user_id);
+create policy "Squad members see squad approaches" on public.approaches for select
+  using (
+    visibility = 'squad' and squad_id is not null and exists (
+      select 1 from public.squad_members
+      where squad_members.squad_id = approaches.squad_id
+      and squad_members.user_id = (select auth.uid())
+    )
+  );
+create policy "Public approaches readable" on public.approaches for select
+  using (visibility = 'public');
+create policy "Users can create approaches" on public.approaches for insert
+  with check ((select auth.uid()) = user_id);
+create policy "Owners can update approaches" on public.approaches for update
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+create policy "Owners can delete approaches" on public.approaches for delete
+  using ((select auth.uid()) = user_id);
+
+-- 12. PRIMERS (Phase 2: Before-solving pattern guides. Seeds live in migration 20261002000000.)
+create table if not exists public.primers (
+  id uuid primary key default gen_random_uuid(),
+  slug text unique not null check (slug ~ '^[a-z0-9-]{1,80}$'),
+  pattern text not null,
+  title text not null check (char_length(title) between 1 and 120),
+  recognize_when text[] default '{}' not null,
+  mental_model text,
+  template_md text,
+  complexity text,
+  mistakes text[] default '{}' not null,
+  starter_slugs text[] default '{}' not null,
+  author_id uuid references public.profiles(id) on delete set null,
+  visibility text check (visibility in ('squad', 'public')) default 'public' not null,
+  squad_id uuid references public.squads(id) on delete set null,
+  created_at timestamp with time zone default now()
+);
+create index if not exists primers_pattern_idx on public.primers (pattern);
+
+alter table public.primers enable row level security;
+
+create policy "Public primers readable" on public.primers for select using (visibility = 'public');
+create policy "Squad primers readable" on public.primers for select
+  using (
+    visibility = 'squad' and squad_id is not null and exists (
+      select 1 from public.squad_members
+      where squad_members.squad_id = primers.squad_id
+      and squad_members.user_id = (select auth.uid())
+    )
+  );
+create policy "Owners see own primers" on public.primers for select
+  using ((select auth.uid()) = author_id);
+create policy "Users can create primers" on public.primers for insert
+  with check ((select auth.uid()) = author_id);
+create policy "Owners can manage primers" on public.primers for update
+  using ((select auth.uid()) = author_id)
+  with check ((select auth.uid()) = author_id);
+create policy "Owners can delete primers" on public.primers for delete
+  using ((select auth.uid()) = author_id);
+
+-- 13. NOTEBOOK (Phase 2: personal knowledge + 1:1 shares. Vault stays shared.)
+create table if not exists public.notebook_notes (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid references public.profiles(id) on delete cascade not null,
+  folder text,
+  pattern_tags text[] default '{}' not null,
+  problem_slug text check (problem_slug is null or problem_slug ~ '^[a-z0-9-]{1,80}$'),
+  title text not null check (char_length(title) between 1 and 120),
+  body_md text not null check (octet_length(body_md) <= 50000),
+  visibility text check (visibility in ('private', 'squad', 'public')) default 'private' not null,
+  squad_id uuid references public.squads(id) on delete set null,
+  fork_of uuid,
+  fork_from text,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+create index if not exists notebook_owner_idx on public.notebook_notes (owner_id, updated_at desc);
+create index if not exists notebook_squad_idx on public.notebook_notes (squad_id) where visibility = 'squad';
+
+create table if not exists public.note_shares (
+  id uuid primary key default gen_random_uuid(),
+  note_id uuid references public.notebook_notes(id) on delete cascade not null,
+  shared_with uuid references public.profiles(id) on delete cascade not null,
+  can_edit boolean default false not null,
+  created_at timestamp with time zone default now(),
+  unique (note_id, shared_with)
+);
+
+alter table public.notebook_notes enable row level security;
+alter table public.note_shares enable row level security;
+
+create policy "Owners see own notes" on public.notebook_notes for select
+  using ((select auth.uid()) = owner_id);
+create policy "Public notes readable" on public.notebook_notes for select
+  using (visibility = 'public');
+create policy "Squad notes readable" on public.notebook_notes for select
+  using (
+    visibility = 'squad' and squad_id is not null and exists (
+      select 1 from public.squad_members
+      where squad_members.squad_id = notebook_notes.squad_id
+      and squad_members.user_id = (select auth.uid())
+    )
+  );
+create policy "Shared notes readable" on public.notebook_notes for select
+  using (exists (
+    select 1 from public.note_shares
+    where note_shares.note_id = notebook_notes.id
+    and note_shares.shared_with = (select auth.uid())
+  ));
+create policy "Users can create notes" on public.notebook_notes for insert
+  with check (
+    (select auth.uid()) = owner_id
+    and visibility in ('private', 'squad', 'public')
+    and (visibility != 'squad' or (
+      squad_id is not null and exists (
+        select 1 from public.squad_members
+        where squad_members.squad_id = notebook_notes.squad_id
+        and squad_members.user_id = (select auth.uid())
+      )
+    ))
+  );
+create policy "Owners and editors can update notes" on public.notebook_notes for update
+  using (
+    (select auth.uid()) = owner_id
+    or exists (
+      select 1 from public.note_shares
+      where note_shares.note_id = notebook_notes.id
+      and note_shares.shared_with = (select auth.uid())
+      and note_shares.can_edit = true
+    )
+  )
+  with check (
+    (select auth.uid()) = owner_id
+    or exists (
+      select 1 from public.note_shares
+      where note_shares.note_id = notebook_notes.id
+      and note_shares.shared_with = (select auth.uid())
+      and note_shares.can_edit = true
+    )
+  );
+create policy "Owners can delete notes" on public.notebook_notes for delete
+  using ((select auth.uid()) = owner_id);
+
+create policy "Owners manage shares" on public.note_shares for all
+  using (exists (
+    select 1 from public.notebook_notes
+    where notebook_notes.id = note_shares.note_id
+    and notebook_notes.owner_id = (select auth.uid())
+  ))
+  with check (exists (
+    select 1 from public.notebook_notes
+    where notebook_notes.id = note_shares.note_id
+    and notebook_notes.owner_id = (select auth.uid())
+  ));
+create policy "Recipients see own shares" on public.note_shares for select
+  using ((select auth.uid()) = shared_with);
+
+-- 14. REVIEW QUEUE (Phase 2: simple revisits, no SRS. Reconciled client-side.)
+create table if not exists public.review_queue (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  problem_slug text not null check (problem_slug ~ '^[a-z0-9-]{1,80}$'),
+  reason text check (reason in ('failed', 'gap', 'weak_pattern', 'bookmark', 'low_confidence')) not null,
+  due_at timestamp with time zone default now() not null,
+  done_at timestamp with time zone,
+  created_at timestamp with time zone default now() not null
+);
+create unique index if not exists review_queue_open_unique
+  on public.review_queue (user_id, problem_slug, reason) where done_at is null;
+create index if not exists review_queue_user_open_idx
+  on public.review_queue (user_id, due_at) where done_at is null;
+
+alter table public.review_queue enable row level security;
+
+create policy "Users manage own review queue" on public.review_queue
+  for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
 -- Column-level trust boundary: clients write display columns only, never read
 -- the encrypted session. Service role bypasses RLS for server sync routes.
@@ -383,17 +753,49 @@ set search_path = public
 as $$
 declare
   affected int := 0;
+  newly_solved text[];
 begin
   perform set_config('app.allow_attempted_promotion', 'on', true);
+
+  -- Append-only history, one solved event per slug not already recorded as
+  -- LeetCode-evidenced. Without this a promoted solve never reaches the
+  -- timeline and the "LeetCode evidence" badge is unreachable. Re-syncs must
+  -- not inflate the timeline, hence the NOT EXISTS guard.
+  insert into public.problem_events (user_id, problem_slug, kind, metadata)
+  select p_user_id, s, 'solved', jsonb_build_object('source', 'leetcode')
+  from unnest(p_slugs) as s
+  where not exists (
+    select 1 from public.problem_events e
+    where e.user_id = p_user_id
+      and e.problem_slug = s
+      and e.kind = 'solved'
+      and e.metadata->>'source' = 'leetcode'
+  );
+
   with ins as (
     insert into public.user_problem_status (user_id, problem_slug, status, solved_at)
     select p_user_id, unnest(p_slugs), 'solved', now()
     on conflict (user_id, problem_slug) do update
       set status = 'solved', solved_at = now()
       where public.user_problem_status.status = 'attempted'
-    returning 1
+    returning problem_slug
   )
-  select count(*) into affected from ins;
+  select coalesce(array_agg(problem_slug), '{}'), count(*)
+    into newly_solved, affected from ins;
+
+  -- Squad activity from LeetCode-only usage (§50). Otherwise a squad that only
+  -- syncs LeetCode shows an empty feed.
+  if newly_solved <> '{}' then
+    insert into public.feed_events (user_id, event_type, object_type, object_id, squad_id, metadata)
+    select p_user_id, 'solve', 'problem', s.slug,
+      (select active_squad_id from public.profiles where id = p_user_id),
+      jsonb_build_object('source', 'leetcode')
+    from unnest(newly_solved) as s(slug)
+    where exists (
+      select 1 from public.profiles where id = p_user_id and active_squad_id is not null
+    );
+  end if;
+
   return affected;
 end $$;
 revoke all on function public.mark_solved_from_leetcode(uuid, text[]) from anon, authenticated;
@@ -416,14 +818,18 @@ create trigger preserve_attempted_on_manual_import
   before update on public.user_problem_status
   for each row execute function public.preserve_attempted_on_manual_import();
 
--- Suggestion parties/problem immutable on update.
+-- Suggestion parties/problem/terms immutable on update (chains link via parent_id at create).
 create or replace function public.lock_suggestion_parties()
 returns trigger language plpgsql as $$
 begin
   if new.from_user is distinct from old.from_user
     or new.to_user is distinct from old.to_user
-    or new.problem_slug is distinct from old.problem_slug then
-    raise exception 'suggestion parties and problem are immutable';
+    or new.problem_slug is distinct from old.problem_slug
+    or new.sender_time_sec is distinct from old.sender_time_sec
+    or new.beat_time is distinct from old.beat_time
+    or new.deadline_at is distinct from old.deadline_at
+    or new.parent_id is distinct from old.parent_id then
+    raise exception 'suggestion parties, problem and challenge terms are immutable';
   end if;
   return new;
 end $$;
@@ -434,6 +840,8 @@ create trigger lock_suggestion_parties
 
 create unique index if not exists suggestions_pending_unique
   on public.suggestions (to_user, problem_slug) where status = 'pending';
+create index if not exists suggestions_parent_idx on public.suggestions (parent_id);
+create index if not exists suggestions_to_pending_idx on public.suggestions (to_user, status) where status = 'pending';
 create unique index if not exists list_problems_list_slug_unique
   on public.list_problems (list_id, title_slug);
 
@@ -448,3 +856,218 @@ create policy "No client access to sync rate limits"
   on public.sync_rate_limits for all using (false) with check (false);
 create index if not exists sync_rate_limits_last_sync_idx
   on public.sync_rate_limits (last_sync_at);
+
+-- ============================================================================
+-- 21. PHASE 0-2 GAP REPAIR (migrations 20261003000000 – 20261003000002)
+-- Mirrors what the versioned migrations add to an existing database, so a
+-- fresh install lands on the same shape as a migrated one.
+-- ============================================================================
+
+-- Onboarding intent signal. Not a skill assessment, not a score.
+alter table public.profiles add column if not exists objective text;
+do $$ begin
+  if not exists (select 1 from pg_constraint
+                 where conname = 'profiles_objective_check'
+                   and conrelid = 'public.profiles'::regclass) then
+    alter table public.profiles add constraint profiles_objective_check
+      check (objective is null or objective in ('internship', 'fulltime', 'consistency'));
+  end if;
+end $$;
+
+-- Challenge v2 (message supersedes `note`; accept + remind stamps).
+alter table public.suggestions add column if not exists message text;
+alter table public.suggestions add column if not exists accepted_at timestamp with time zone;
+alter table public.suggestions add column if not exists reminded_at timestamp with time zone;
+update public.suggestions set message = note where message is null and note is not null;
+
+-- Keep the legacy `note` and the v2 `message` in lockstep, both ways.
+create or replace function public.sync_suggestion_message()
+returns trigger language plpgsql as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.message is null and new.note is not null then
+      new.message := new.note;
+    elsif new.note is null and new.message is not null then
+      new.note := new.message;
+    end if;
+  else
+    if new.message is distinct from old.message then
+      new.note := new.message;
+    elsif new.note is distinct from old.note then
+      new.message := new.note;
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists sync_suggestion_message on public.suggestions;
+create trigger sync_suggestion_message
+  before insert or update on public.suggestions
+  for each row execute function public.sync_suggestion_message();
+update public.suggestions set note = message where note is null and message is not null;
+
+create index if not exists suggestions_reminded_idx
+  on public.suggestions (reminded_at) where reminded_at is not null;
+
+-- The accepted challenge, attached to the session that answers it.
+alter table public.battles
+  add column if not exists challenge_id uuid references public.suggestions(id) on delete set null;
+create index if not exists battles_challenge_idx
+  on public.battles (challenge_id) where challenge_id is not null;
+
+-- Membership flag independent of the row existing.
+alter table public.squad_members add column if not exists active boolean default true not null;
+update public.squad_members set active = true where active is false;
+
+-- §64: deleting a squad must not erase its own activity history.
+alter table public.feed_events drop constraint if exists feed_events_squad_id_fkey;
+alter table public.feed_events
+  add constraint feed_events_squad_id_fkey
+  foreign key (squad_id) references public.squads(id) on delete set null;
+
+-- Today's deterministic pick cache (stable across refreshes).
+create table if not exists public.daily_battles (
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  battle_date date not null,
+  problem_slug text not null check (problem_slug ~ '^[a-z0-9-]{1,80}$'),
+  reason_json jsonb default '[]'::jsonb not null,
+  created_at timestamp with time zone default now() not null,
+  primary key (user_id, battle_date)
+);
+alter table public.daily_battles enable row level security;
+drop policy if exists "Users read own daily battles" on public.daily_battles;
+create policy "Users read own daily battles" on public.daily_battles
+  for select using ((select auth.uid()) = user_id);
+-- Own-row writes only. The row is keyed (user_id, battle_date), so a client can
+-- only touch today's pick for themselves and nobody else's.
+drop policy if exists "Users insert own daily battles" on public.daily_battles;
+create policy "Users insert own daily battles" on public.daily_battles
+  for insert with check ((select auth.uid()) = user_id);
+drop policy if exists "Users update own daily battles" on public.daily_battles;
+create policy "Users update own daily battles" on public.daily_battles
+  for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+drop policy if exists "Users delete own daily battles" on public.daily_battles;
+create policy "Users delete own daily battles" on public.daily_battles
+  for delete using ((select auth.uid()) = user_id);
+
+-- Revision queue: materialized on battle end, so a failed problem reappears
+-- even if the user never opens the Practice hub.
+create or replace function public.sync_review_queue_from_battle()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.outcome = 'failed' then
+    insert into public.review_queue (user_id, problem_slug, reason)
+    values (new.user_id, new.problem_slug, 'failed')
+    on conflict (user_id, problem_slug, reason) where done_at is null do nothing;
+  elsif new.outcome = 'solved' then
+    update public.review_queue set done_at = now()
+     where user_id = new.user_id and problem_slug = new.problem_slug and done_at is null;
+  end if;
+  return new;
+end $$;
+drop trigger if exists sync_review_queue_on_battle_end on public.battles;
+create trigger sync_review_queue_on_battle_end
+  after update on public.battles
+  for each row
+  when (old.outcome is distinct from new.outcome
+        and new.outcome in ('failed', 'solved'))
+  execute function public.sync_review_queue_from_battle();
+
+-- Loop C counters (§47): maintained by trigger, so no client write can drift them.
+alter table public.primers add column if not exists fork_count int default 0 not null;
+alter table public.shared_resources add column if not exists fork_count int default 0 not null;
+
+create or replace function public.refresh_fork_count(p_source_table text, p_source_id uuid)
+returns int language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  if p_source_table = 'primers' then
+    select count(*) into n from public.notebook_notes where fork_of = p_source_id;
+    update public.primers set fork_count = n where id = p_source_id;
+  elsif p_source_table = 'shared_resources' then
+    select count(*) into n from public.notebook_notes where fork_of = p_source_id;
+    update public.shared_resources set fork_count = n where id = p_source_id;
+  else
+    return 0;
+  end if;
+  return n;
+end $$;
+
+create or replace function public.refresh_note_fork_count()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.fork_of is not null then
+    perform public.refresh_fork_count('primers', new.fork_of);
+    perform public.refresh_fork_count('shared_resources', new.fork_of);
+  end if;
+  if tg_op = 'DELETE' and old.fork_of is not null then
+    perform public.refresh_fork_count('primers', old.fork_of);
+    perform public.refresh_fork_count('shared_resources', old.fork_of);
+  end if;
+  return coalesce(new, old);
+end $$;
+drop trigger if exists refresh_fork_count_on_note_change on public.notebook_notes;
+create trigger refresh_fork_count_on_note_change
+  after insert or delete on public.notebook_notes
+  for each row execute function public.refresh_note_fork_count();
+
+update public.primers p
+  set fork_count = (select count(*) from public.notebook_notes n where n.fork_of = p.id);
+update public.shared_resources r
+  set fork_count = (select count(*) from public.notebook_notes n where n.fork_of = r.id);
+
+-- Funnel sink. Deliberately no SELECT policy: behaviour data is server-only.
+create table if not exists public.analytics_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade,
+  event text not null check (event ~ '^[a-z0-9_]{1,60}$'),
+  props jsonb default '{}'::jsonb not null,
+  occurred_at timestamp with time zone default now() not null
+);
+create index if not exists analytics_events_event_time_idx
+  on public.analytics_events (event, occurred_at desc);
+create index if not exists analytics_events_user_idx
+  on public.analytics_events (user_id, occurred_at desc);
+alter table public.analytics_events enable row level security;
+drop policy if exists "Users append own analytics" on public.analytics_events;
+create policy "Users append own analytics" on public.analytics_events
+  for insert with check ((select auth.uid()) = user_id);
+
+-- Action-oriented notices (§36/§37). No client INSERT: written only by /api/notify.
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  kind text check (kind in ('challenge', 'challenge_completed', 'goal', 'revenge', 'recap', 'contest')) not null,
+  title text not null check (char_length(title) between 1 and 140),
+  body text check (body is null or char_length(body) <= 500),
+  deep_link text check (deep_link is null or deep_link ~ '^/[A-Za-z0-9/_?=&%-]*$'),
+  actor_id uuid references public.profiles(id) on delete set null,
+  dedupe_key text,
+  read_at timestamp with time zone,
+  created_at timestamp with time zone default now() not null
+);
+create index if not exists notifications_user_unread_idx
+  on public.notifications (user_id, created_at desc) where read_at is null;
+-- One open notice per (user, kind, key): a goal nudge can never stack.
+create unique index if not exists notifications_dedupe_open_unique
+  on public.notifications (user_id, kind, dedupe_key)
+  where dedupe_key is not null and read_at is null;
+alter table public.notifications enable row level security;
+create policy "Users read own notifications" on public.notifications
+  for select using ((select auth.uid()) = user_id);
+create policy "Users mark own notifications read" on public.notifications
+  for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "Users delete own notifications" on public.notifications
+  for delete using ((select auth.uid()) = user_id);
+
+-- Backfill evidence events for rows promoted before the RPC appended history.
+insert into public.problem_events (user_id, problem_slug, kind, metadata, created_at)
+select ups.user_id, ups.problem_slug, 'solved',
+       jsonb_build_object('source', 'leetcode'), coalesce(ups.solved_at, now())
+from public.user_problem_status ups
+where ups.status = 'solved'
+  and not exists (
+    select 1 from public.problem_events e
+    where e.user_id = ups.user_id
+      and e.problem_slug = ups.problem_slug
+      and e.kind = 'solved'
+  );
