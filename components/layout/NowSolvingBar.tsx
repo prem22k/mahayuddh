@@ -22,6 +22,7 @@ import { startBattle, heartbeatBattle, endBattle } from "@/lib/data/battles";
 import { logProblemEvent } from "@/lib/data/problemEvents";
 import { logFeedEvent } from "@/lib/data/feed";
 import { revengeResultLabel, RevengeResult } from "@/lib/revenge";
+import { StuckLadder } from "@/components/battle/StuckLadder";
 import { detectRevengeCompletion } from "@/lib/data/revenge";
 
 interface NowSolvingBarProps {
@@ -55,6 +56,8 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
   const [ending, setEnding] = useState(false);
   // Step 17: closes the "failed -> solved" loop with the real before/after.
   const [revengeResult, setRevengeResult] = useState<RevengeResult | null>(null);
+  // Feeds the ladder's suggested level: how many tries have you already had?
+  const [attemptCount, setAttemptCount] = useState(1);
 
   // Load scratchpad note whenever activeProblem changes
   useEffect(() => {
@@ -74,6 +77,13 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
           return null;
         }
       })();
+      // How many recorded attempts exist, so the ladder can suggest a level
+      // instead of always opening at "nudge".
+      import("@/lib/data/battles")
+        .then(({ getBattlesForSlug }) => getBattlesForSlug(activeProblem.slug, 25))
+        .then((rows) => setAttemptCount(Math.max(1, rows.length)))
+        .catch(() => setAttemptCount(1));
+
       const storedSlug = (() => {
         try {
           const raw = localStorage.getItem("mahayuddh_battle_slug");
@@ -372,37 +382,19 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
         </div>
       )}
 
-      {/* ── Stuck Ladder Popover (v0: static guidance; full ladder lands Step 18) ── */}
+      {/* ── I'm Stuck ladder (Step 18). Real request, four levels, enforced. ── */}
       {stuckOpen && activeProblem && (
-        <div className="fixed bottom-[calc(var(--bottom-bar-height)+var(--bottom-bar-margin)+12px)] left-1/2 -translate-x-1/2 w-96 max-w-[calc(100vw-3rem)] bg-[#1c1c1e]/95 backdrop-blur-2xl border border-white/[0.1] rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] z-[150] p-4 space-y-2">
-          <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
-            <span className="text-xs font-bold text-white pl-1">I&apos;m stuck — least help first</span>
-            <button onClick={() => setStuckOpen(false)} className="p-1 text-white/40 hover:text-white rounded-md transition-colors cursor-pointer" aria-label="Close stuck help">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          {[
-            { level: "Nudge", text: "Re-read the constraints. Solve the smallest input by hand. What is the brute force?", href: null as string | null, cta: null as string | null },
-            { level: "Pattern hint", text: "Name two patterns this could be, then check the problem category against a roadmap.", href: "/practice", cta: "Browse patterns" },
-            { level: "Direction", text: "Write the invariant in one sentence. If you can't, that gap is the question — open the problem and hunt it.", href: null, cta: null },
-            { level: "Full explanation", text: "Accept the spoiler: read a squad template, then re-solve from scratch within 48 hours.", href: "/vault", cta: "Search vault" },
-          ].map((s) => (
-            <button
-              key={s.level}
-              onClick={() => {
-                track("stuck_requested", { problem_slug: activeProblem.slug, level: s.level });
-                if (s.href) window.location.assign(s.href);
-                else setStuckOpen(false);
-              }}
-              className="w-full text-left p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] transition-colors cursor-pointer"
-            >
-              <div className="text-[11px] font-bold text-[#ff9f0a]">{s.level}</div>
-              <div className="text-[11px] text-white/60 mt-0.5">{s.text}</div>
-              {s.cta && <div className="text-[11px] text-[#fa586a] font-semibold mt-1">{s.cta} →</div>}
-            </button>
-          ))}
-        </div>
+        <StuckLadder
+          problemSlug={activeProblem.slug}
+          problemTitle={activeProblem.title}
+          battleId={battleId}
+          squadId={profile?.active_squad_id ?? null}
+          attemptCount={attemptCount}
+          hasScratchpad={scratchpadNote.trim().length > 0}
+          onClose={() => setStuckOpen(false)}
+        />
       )}
+
       {/* ── Scratchpad Popover ─────────────────────────── */}
       {isScratchpadOpen && activeProblem && (
         <div className="fixed bottom-[calc(var(--bottom-bar-height)+var(--bottom-bar-margin)+12px)] right-6 w-96 max-w-[calc(100vw-3rem)] bg-[#1c1c1e]/95 backdrop-blur-2xl border border-white/[0.1] rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] z-[150] p-4">

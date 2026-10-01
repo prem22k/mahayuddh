@@ -192,6 +192,37 @@ export interface SquadMember {
   profile?: Profile;
 }
 
+/** The I'm Stuck ladder (Step 18). Ordering matters: never answer above it. */
+export type StuckLevel = "nudge" | "pattern" | "direction" | "full";
+export type StuckVisibility = "squad" | "public" | "anon";
+export type StuckStatus = "open" | "helped" | "resolved";
+
+export interface StuckRequest {
+  id: string;
+  user_id: string;
+  problem_slug: string;
+  battle_id: string | null;
+  level: StuckLevel;
+  visibility: StuckVisibility;
+  squad_id: string | null;
+  status: StuckStatus;
+  last_reminded_at: string | null;
+  created_at: string;
+  author?: Profile;
+  replies?: StuckReply[];
+}
+
+export interface StuckReply {
+  id: string;
+  request_id: string;
+  author_id: string;
+  level: StuckLevel;
+  body_md: string;
+  accepted: boolean;
+  created_at: string;
+  author?: Profile;
+}
+
 /** Action-oriented notifications (plan Step 23, Bible §36/§37). */
 export type NotificationKind =
   | "challenge"

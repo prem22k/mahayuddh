@@ -24,6 +24,14 @@ import {
 } from "../lib/battleCard.ts";
 import { chainState, longestActiveChain, chainHops, orderChainOldestFirst } from "../lib/chains.ts";
 import {
+  STUCK_LEVELS,
+  LEVEL_RANK,
+  allowedReplyLevels,
+  isSpoilerLevel,
+  suggestLevel,
+} from "../lib/stuckLadder.ts";
+import { daysBetween, relativeDays } from "../lib/format.ts";
+import {
   buildRevengeOffer,
   buildRevengeResult,
   revengeLabel,
@@ -654,5 +662,67 @@ describe("chainHops / orderChainOldestFirst", () => {
       { id: "3", parent_id: "2" },
     ];
     assert.deepEqual(orderChainOldestFirst(rows, "3").map((r) => r.id), ["1", "2", "3"]);
+  });
+});
+
+// ── Step 18: the ladder is the product rule, not a UI preference ─────────────
+
+describe("stuck ladder ordering", () => {
+  it("orders from least help to most", () => {
+    assert.deepEqual([...STUCK_LEVELS], ["nudge", "pattern", "direction", "full"]);
+    for (let i = 1; i < STUCK_LEVELS.length; i++) {
+      assert.ok(LEVEL_RANK[STUCK_LEVELS[i]] > LEVEL_RANK[STUCK_LEVELS[i - 1]]);
+    }
+  });
+
+  it("only ever allows a helper to answer at or below what was asked", () => {
+    assert.deepEqual(allowedReplyLevels("nudge"), ["nudge"]);
+    assert.deepEqual(allowedReplyLevels("pattern"), ["nudge", "pattern"]);
+    assert.deepEqual(allowedReplyLevels("direction"), ["nudge", "pattern", "direction"]);
+    assert.deepEqual(allowedReplyLevels("full"), ["nudge", "pattern", "direction", "full"]);
+  });
+
+  it("never lets a nudge request become a full answer", () => {
+    assert.equal(allowedReplyLevels("nudge").includes("full"), false);
+  });
+
+  it("marks only 'full' as a spoiler level", () => {
+    assert.equal(isSpoilerLevel("full"), true);
+    assert.equal(isSpoilerLevel("direction"), false);
+    assert.equal(isSpoilerLevel("nudge"), false);
+  });
+});
+
+describe("suggestLevel", () => {
+  it("opens at a nudge for a first attempt", () => {
+    assert.equal(suggestLevel(1, false), "nudge");
+  });
+
+  it("opens higher once somebody has actually tried", () => {
+    assert.equal(suggestLevel(2, false), "pattern");
+    assert.equal(suggestLevel(3, true), "direction");
+  });
+
+  it("does not jump to full explanation on its own", () => {
+    for (let n = 1; n <= 10; n++) {
+      assert.notEqual(suggestLevel(n, true), "full");
+    }
+  });
+});
+
+describe("relativeDays", () => {
+  it("is honest about zero and singular", () => {
+    assert.equal(relativeDays(0), "today");
+    assert.equal(relativeDays(1), "1 day ago");
+    assert.equal(relativeDays(19), "19 days ago");
+  });
+});
+
+describe("daysBetween", () => {
+  it("counts whole days and never goes negative", () => {
+    const now = new Date("2026-10-10T00:00:00Z");
+    assert.equal(daysBetween("2026-10-09T00:00:00Z", now), 1);
+    assert.equal(daysBetween("2026-10-21T00:00:00Z", now), 0); // future -> clamped
+    assert.equal(daysBetween("not-a-date", now), 0);
   });
 });

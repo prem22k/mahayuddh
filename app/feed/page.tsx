@@ -116,17 +116,21 @@ export default function FeedPage() {
         </span>
       </div>
 
-      {/* Structured composer: actions, not a blank box (Bible §18). */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      {/* Structured composer: actions, not a blank box (Bible §18).
+          Only tiles with a real destination — a tile that goes somewhere
+          unrelated is worse than no tile. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         {[
-          { label: "Share a solve", href: "/" },
-          { label: "Challenge", href: "/suggestions" },
-          { label: "Share resource", href: "/notebook" },
-          { label: "Practice", href: "/practice" },
+          { label: "Share a solve", href: "/home", hint: "from your battle card" },
+          { label: "Challenge", href: "/challenges", hint: "problem + your time" },
+          { label: "Ask help", href: "/stuck", hint: "a nudge, not an answer" },
+          { label: "Share resource", href: "/notebook", hint: "note or vault item" },
+          { label: "Practice", href: "/practice", hint: "review queue" },
         ].map((a) => (
           <Link key={a.label} href={a.href}
-            className="p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] text-center text-[11px] font-bold text-white/70 hover:text-white transition-all">
-            {a.label}
+            className="p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] text-center transition-all">
+            <div className="text-[11px] font-bold text-white/70 hover:text-white">{a.label}</div>
+            <div className="text-[10px] text-white/30 mt-0.5">{a.hint}</div>
           </Link>
         ))}
       </div>

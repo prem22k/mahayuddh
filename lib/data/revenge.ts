@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { DataError } from "@/lib/data/errors";
 import { buildRevengeResult, RevengeResult } from "@/lib/revenge";
+import { getActiveSquadId } from "@/lib/data/squads";
 import type { Battle } from "@/types/database";
 
 /**
@@ -89,14 +90,4 @@ export async function detectRevengeCompletion(
   }
 
   return result;
-}
-
-async function getActiveSquadId(userId: string): Promise<string | null> {
-  const supabase = createClient();
-  const { data } = await supabase
-    .from("profiles")
-    .select("active_squad_id")
-    .eq("id", userId)
-    .maybeSingle();
-  return (data as { active_squad_id: string | null } | null)?.active_squad_id ?? null;
 }

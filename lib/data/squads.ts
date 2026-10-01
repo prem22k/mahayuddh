@@ -168,6 +168,20 @@ export async function completeSquadGoal(goalId: string, squadId: string): Promis
   if (error) throw new DataError("squads", "Couldn't complete goal. Try again.", { cause: error });
 }
 
+/** The caller's active squad id, or null when solo. */
+export async function getActiveSquadId(userId: string): Promise<string | null> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("active_squad_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) {
+    throw new DataError("squads", "Couldn't load your squad. Retry.", { cause: error });
+  }
+  return (data as { active_squad_id: string | null } | null)?.active_squad_id ?? null;
+}
+
 /**
  * Members of the caller's ACTIVE squad, for pickers (challenge targets, mentions).
  * Empty when the caller is solo — the caller is not offered a global user

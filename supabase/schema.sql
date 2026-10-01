@@ -169,39 +169,81 @@ alter table public.squad_goals enable row level security;
 -- Public reads everywhere; writes are own-row (or list-owner) only, with
 -- WITH CHECKs so rows can't be reassigned on update. auth.uid() wrapped in
 -- subselects (initplan). Stats/session columns are server-written only.
+drop policy if exists "Allow public read access for profiles" on public.profiles;
+drop policy if exists "Allow public read access for profiles" on public.profiles;
 create policy "Allow public read access for profiles" on public.profiles for select using (true);
+drop policy if exists "Users can insert own profile" on public.profiles;
+drop policy if exists "Users can insert own profile" on public.profiles;
 create policy "Users can insert own profile" on public.profiles for insert with check ((select auth.uid()) = id);
+drop policy if exists "Users can update own display name" on public.profiles;
+drop policy if exists "Users can update own display name" on public.profiles;
 create policy "Users can update own display name" on public.profiles for update using ((select auth.uid()) = id) with check ((select auth.uid()) = id);
 
+drop policy if exists "Allow public read access for lists" on public.custom_lists;
+drop policy if exists "Allow public read access for lists" on public.custom_lists;
 create policy "Allow public read access for lists" on public.custom_lists for select using (true);
+drop policy if exists "Users can create custom lists" on public.custom_lists;
+drop policy if exists "Users can create custom lists" on public.custom_lists;
 create policy "Users can create custom lists" on public.custom_lists for insert with check ((select auth.uid()) = created_by);
+drop policy if exists "Users can update own custom lists" on public.custom_lists;
+drop policy if exists "Users can update own custom lists" on public.custom_lists;
 create policy "Users can update own custom lists" on public.custom_lists for update using ((select auth.uid()) = created_by) with check ((select auth.uid()) = created_by);
+drop policy if exists "Users can delete own custom lists" on public.custom_lists;
+drop policy if exists "Users can delete own custom lists" on public.custom_lists;
 create policy "Users can delete own custom lists" on public.custom_lists for delete using ((select auth.uid()) = created_by);
 
+drop policy if exists "list_problems_public_read" on public.list_problems;
+drop policy if exists "list_problems_public_read" on public.list_problems;
 create policy "list_problems_public_read" on public.list_problems for select using (true);
+drop policy if exists "list_problems_owner_insert" on public.list_problems;
+drop policy if exists "list_problems_owner_insert" on public.list_problems;
 create policy "list_problems_owner_insert" on public.list_problems for insert with check (
   exists (select 1 from public.custom_lists where custom_lists.id = list_id and custom_lists.created_by = (select auth.uid())));
+drop policy if exists "list_problems_owner_update" on public.list_problems;
+drop policy if exists "list_problems_owner_update" on public.list_problems;
 create policy "list_problems_owner_update" on public.list_problems for update
   using (exists (select 1 from public.custom_lists where custom_lists.id = list_id and custom_lists.created_by = (select auth.uid())))
   with check (exists (select 1 from public.custom_lists where custom_lists.id = list_id and custom_lists.created_by = (select auth.uid())));
+drop policy if exists "list_problems_owner_delete" on public.list_problems;
+drop policy if exists "list_problems_owner_delete" on public.list_problems;
 create policy "list_problems_owner_delete" on public.list_problems for delete
   using (exists (select 1 from public.custom_lists where custom_lists.id = list_id and custom_lists.created_by = (select auth.uid())));
 
+drop policy if exists "Allow public read access for user_problem_status" on public.user_problem_status;
+drop policy if exists "Allow public read access for user_problem_status" on public.user_problem_status;
 create policy "Allow public read access for user_problem_status" on public.user_problem_status for select using (true);
+drop policy if exists "Users can insert problem status" on public.user_problem_status;
+drop policy if exists "Users can insert problem status" on public.user_problem_status;
 create policy "Users can insert problem status" on public.user_problem_status for insert with check ((select auth.uid()) = user_id);
+drop policy if exists "Users can manage own problem status" on public.user_problem_status;
+drop policy if exists "Users can manage own problem status" on public.user_problem_status;
 create policy "Users can manage own problem status" on public.user_problem_status for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+drop policy if exists "Users can delete own problem status" on public.user_problem_status;
+drop policy if exists "Users can delete own problem status" on public.user_problem_status;
 create policy "Users can delete own problem status" on public.user_problem_status for delete using ((select auth.uid()) = user_id);
 
+drop policy if exists "Allow public read access for suggestions" on public.suggestions;
+drop policy if exists "Allow public read access for suggestions" on public.suggestions;
 create policy "Allow public read access for suggestions" on public.suggestions for select using (true);
+drop policy if exists "Users can insert suggestions" on public.suggestions;
+drop policy if exists "Users can insert suggestions" on public.suggestions;
 create policy "Users can insert suggestions" on public.suggestions for insert with check ((select auth.uid()) = from_user);
+drop policy if exists "Users can manage own suggestions" on public.suggestions;
+drop policy if exists "Users can manage own suggestions" on public.suggestions;
 create policy "Users can manage own suggestions" on public.suggestions for update
   using (((select auth.uid()) = from_user) or ((select auth.uid()) = to_user))
   with check (((select auth.uid()) = from_user) or ((select auth.uid()) = to_user));
+drop policy if exists "Users can delete own sent suggestions" on public.suggestions;
+drop policy if exists "Users can delete own sent suggestions" on public.suggestions;
 create policy "Users can delete own sent suggestions" on public.suggestions for delete
   using ((select auth.uid()) = from_user and status = 'pending');
 
+drop policy if exists "Public vault readable" on public.shared_resources;
+drop policy if exists "Public vault readable" on public.shared_resources;
 create policy "Public vault readable" on public.shared_resources
   for select using (visibility = 'public');
+drop policy if exists "Squad vault readable" on public.shared_resources;
+drop policy if exists "Squad vault readable" on public.shared_resources;
 create policy "Squad vault readable" on public.shared_resources
   for select using (
     visibility = 'squad' and squad_id is not null and exists (
@@ -210,6 +252,8 @@ create policy "Squad vault readable" on public.shared_resources
       and squad_members.user_id = (select auth.uid())
     )
   );
+drop policy if exists "Users can insert shared resources" on public.shared_resources;
+drop policy if exists "Users can insert shared resources" on public.shared_resources;
 create policy "Users can insert shared resources" on public.shared_resources
   for insert with check (
     (select auth.uid()) = author_id
@@ -222,35 +266,67 @@ create policy "Users can insert shared resources" on public.shared_resources
       )
     ))
   );
+drop policy if exists "Users can update own shared resources" on public.shared_resources;
+drop policy if exists "Users can update own shared resources" on public.shared_resources;
 create policy "Users can update own shared resources" on public.shared_resources for update using ((select auth.uid()) = author_id);
+drop policy if exists "Users can delete own shared resources" on public.shared_resources;
+drop policy if exists "Users can delete own shared resources" on public.shared_resources;
 create policy "Users can delete own shared resources" on public.shared_resources for delete using ((select auth.uid()) = author_id);
 
+drop policy if exists "Users can manage push subscriptions" on public.push_subscriptions;
+drop policy if exists "Users can manage push subscriptions" on public.push_subscriptions;
 create policy "Users can manage push subscriptions" on public.push_subscriptions for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
+drop policy if exists "Allow public read access for feed_events" on public.feed_events;
+drop policy if exists "Allow public read access for feed_events" on public.feed_events;
 create policy "Allow public read access for feed_events" on public.feed_events for select using (true);
+drop policy if exists "Users can create own feed events" on public.feed_events;
+drop policy if exists "Users can create own feed events" on public.feed_events;
 create policy "Users can create own feed events" on public.feed_events for insert with check ((select auth.uid()) = user_id);
+drop policy if exists "Users can manage own feed events" on public.feed_events;
+drop policy if exists "Users can manage own feed events" on public.feed_events;
 create policy "Users can manage own feed events" on public.feed_events for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
 -- Squads: public read (invite preview + accountability counts), creator-admin writes.
 -- No client INSERT on squad_members: joins validate invite codes in POST /api/squads/join.
+drop policy if exists "Squads publicly readable" on public.squads;
+drop policy if exists "Squads publicly readable" on public.squads;
 create policy "Squads publicly readable" on public.squads for select using (true);
+drop policy if exists "Users can create squads" on public.squads;
+drop policy if exists "Users can create squads" on public.squads;
 create policy "Users can create squads" on public.squads for insert with check ((select auth.uid()) = created_by);
+drop policy if exists "Squad creator can update" on public.squads;
+drop policy if exists "Squad creator can update" on public.squads;
 create policy "Squad creator can update" on public.squads for update using ((select auth.uid()) = created_by) with check ((select auth.uid()) = created_by);
+drop policy if exists "Squad creator can delete" on public.squads;
+drop policy if exists "Squad creator can delete" on public.squads;
 create policy "Squad creator can delete" on public.squads for delete using ((select auth.uid()) = created_by);
 
+drop policy if exists "Squad members publicly readable" on public.squad_members;
+drop policy if exists "Squad members publicly readable" on public.squad_members;
 create policy "Squad members publicly readable" on public.squad_members for select using (true);
+drop policy if exists "Members can leave, creator can remove" on public.squad_members;
+drop policy if exists "Members can leave, creator can remove" on public.squad_members;
 create policy "Members can leave, creator can remove" on public.squad_members for delete
   using (
     (select auth.uid()) = user_id
     or exists (select 1 from public.squads where squads.id = squad_id and squads.created_by = (select auth.uid()))
   );
 
+drop policy if exists "Squad goals publicly readable" on public.squad_goals;
+drop policy if exists "Squad goals publicly readable" on public.squad_goals;
 create policy "Squad goals publicly readable" on public.squad_goals for select using (true);
+drop policy if exists "Squad members can create goals" on public.squad_goals;
+drop policy if exists "Squad members can create goals" on public.squad_goals;
 create policy "Squad members can create goals" on public.squad_goals for insert
   with check (exists (select 1 from public.squad_members where squad_members.squad_id = squad_id and squad_members.user_id = (select auth.uid())));
+drop policy if exists "Squad members can manage goals" on public.squad_goals;
+drop policy if exists "Squad members can manage goals" on public.squad_goals;
 create policy "Squad members can manage goals" on public.squad_goals for update
   using (exists (select 1 from public.squad_members where squad_members.squad_id = squad_id and squad_members.user_id = (select auth.uid())))
   with check (exists (select 1 from public.squad_members where squad_members.squad_id = squad_id and squad_members.user_id = (select auth.uid())));
+drop policy if exists "Squad members can delete goals" on public.squad_goals;
+drop policy if exists "Squad members can delete goals" on public.squad_goals;
 create policy "Squad members can delete goals" on public.squad_goals for delete
   using (exists (select 1 from public.squad_members where squad_members.squad_id = squad_id and squad_members.user_id = (select auth.uid())));
 
@@ -321,10 +397,16 @@ create index if not exists problem_events_slug_idx on public.problem_events (pro
 alter table public.battles enable row level security;
 alter table public.problem_events enable row level security;
 
+drop policy if exists "Users manage own battles" on public.battles;
+drop policy if exists "Users manage own battles" on public.battles;
 create policy "Users manage own battles" on public.battles
   for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+drop policy if exists "Users can append own problem events" on public.problem_events;
+drop policy if exists "Users can append own problem events" on public.problem_events;
 create policy "Users can append own problem events" on public.problem_events
   for insert with check ((select auth.uid()) = user_id);
+drop policy if exists "Problem events publicly readable" on public.problem_events;
+drop policy if exists "Problem events publicly readable" on public.problem_events;
 create policy "Problem events publicly readable" on public.problem_events
   for select using (true);
 
@@ -353,8 +435,12 @@ create index if not exists approaches_user_idx on public.approaches (user_id, cr
 
 alter table public.approaches enable row level security;
 
+drop policy if exists "Owners see own approaches" on public.approaches;
+drop policy if exists "Owners see own approaches" on public.approaches;
 create policy "Owners see own approaches" on public.approaches for select
   using ((select auth.uid()) = user_id);
+drop policy if exists "Squad members see squad approaches" on public.approaches;
+drop policy if exists "Squad members see squad approaches" on public.approaches;
 create policy "Squad members see squad approaches" on public.approaches for select
   using (
     visibility = 'squad' and squad_id is not null and exists (
@@ -363,13 +449,21 @@ create policy "Squad members see squad approaches" on public.approaches for sele
       and squad_members.user_id = (select auth.uid())
     )
   );
+drop policy if exists "Public approaches readable" on public.approaches;
+drop policy if exists "Public approaches readable" on public.approaches;
 create policy "Public approaches readable" on public.approaches for select
   using (visibility = 'public');
+drop policy if exists "Users can create approaches" on public.approaches;
+drop policy if exists "Users can create approaches" on public.approaches;
 create policy "Users can create approaches" on public.approaches for insert
   with check ((select auth.uid()) = user_id);
+drop policy if exists "Owners can update approaches" on public.approaches;
+drop policy if exists "Owners can update approaches" on public.approaches;
 create policy "Owners can update approaches" on public.approaches for update
   using ((select auth.uid()) = user_id)
   with check ((select auth.uid()) = user_id);
+drop policy if exists "Owners can delete approaches" on public.approaches;
+drop policy if exists "Owners can delete approaches" on public.approaches;
 create policy "Owners can delete approaches" on public.approaches for delete
   using ((select auth.uid()) = user_id);
 
@@ -394,7 +488,11 @@ create index if not exists primers_pattern_idx on public.primers (pattern);
 
 alter table public.primers enable row level security;
 
+drop policy if exists "Public primers readable" on public.primers;
+drop policy if exists "Public primers readable" on public.primers;
 create policy "Public primers readable" on public.primers for select using (visibility = 'public');
+drop policy if exists "Squad primers readable" on public.primers;
+drop policy if exists "Squad primers readable" on public.primers;
 create policy "Squad primers readable" on public.primers for select
   using (
     visibility = 'squad' and squad_id is not null and exists (
@@ -403,13 +501,21 @@ create policy "Squad primers readable" on public.primers for select
       and squad_members.user_id = (select auth.uid())
     )
   );
+drop policy if exists "Owners see own primers" on public.primers;
+drop policy if exists "Owners see own primers" on public.primers;
 create policy "Owners see own primers" on public.primers for select
   using ((select auth.uid()) = author_id);
+drop policy if exists "Users can create primers" on public.primers;
+drop policy if exists "Users can create primers" on public.primers;
 create policy "Users can create primers" on public.primers for insert
   with check ((select auth.uid()) = author_id);
+drop policy if exists "Owners can manage primers" on public.primers;
+drop policy if exists "Owners can manage primers" on public.primers;
 create policy "Owners can manage primers" on public.primers for update
   using ((select auth.uid()) = author_id)
   with check ((select auth.uid()) = author_id);
+drop policy if exists "Owners can delete primers" on public.primers;
+drop policy if exists "Owners can delete primers" on public.primers;
 create policy "Owners can delete primers" on public.primers for delete
   using ((select auth.uid()) = author_id);
 
@@ -444,10 +550,16 @@ create table if not exists public.note_shares (
 alter table public.notebook_notes enable row level security;
 alter table public.note_shares enable row level security;
 
+drop policy if exists "Owners see own notes" on public.notebook_notes;
+drop policy if exists "Owners see own notes" on public.notebook_notes;
 create policy "Owners see own notes" on public.notebook_notes for select
   using ((select auth.uid()) = owner_id);
+drop policy if exists "Public notes readable" on public.notebook_notes;
+drop policy if exists "Public notes readable" on public.notebook_notes;
 create policy "Public notes readable" on public.notebook_notes for select
   using (visibility = 'public');
+drop policy if exists "Squad notes readable" on public.notebook_notes;
+drop policy if exists "Squad notes readable" on public.notebook_notes;
 create policy "Squad notes readable" on public.notebook_notes for select
   using (
     visibility = 'squad' and squad_id is not null and exists (
@@ -456,12 +568,16 @@ create policy "Squad notes readable" on public.notebook_notes for select
       and squad_members.user_id = (select auth.uid())
     )
   );
+drop policy if exists "Shared notes readable" on public.notebook_notes;
+drop policy if exists "Shared notes readable" on public.notebook_notes;
 create policy "Shared notes readable" on public.notebook_notes for select
   using (exists (
     select 1 from public.note_shares
     where note_shares.note_id = notebook_notes.id
     and note_shares.shared_with = (select auth.uid())
   ));
+drop policy if exists "Users can create notes" on public.notebook_notes;
+drop policy if exists "Users can create notes" on public.notebook_notes;
 create policy "Users can create notes" on public.notebook_notes for insert
   with check (
     (select auth.uid()) = owner_id
@@ -474,6 +590,8 @@ create policy "Users can create notes" on public.notebook_notes for insert
       )
     ))
   );
+drop policy if exists "Owners and editors can update notes" on public.notebook_notes;
+drop policy if exists "Owners and editors can update notes" on public.notebook_notes;
 create policy "Owners and editors can update notes" on public.notebook_notes for update
   using (
     (select auth.uid()) = owner_id
@@ -493,9 +611,13 @@ create policy "Owners and editors can update notes" on public.notebook_notes for
       and note_shares.can_edit = true
     )
   );
+drop policy if exists "Owners can delete notes" on public.notebook_notes;
+drop policy if exists "Owners can delete notes" on public.notebook_notes;
 create policy "Owners can delete notes" on public.notebook_notes for delete
   using ((select auth.uid()) = owner_id);
 
+drop policy if exists "Owners manage shares" on public.note_shares;
+drop policy if exists "Owners manage shares" on public.note_shares;
 create policy "Owners manage shares" on public.note_shares for all
   using (exists (
     select 1 from public.notebook_notes
@@ -507,6 +629,8 @@ create policy "Owners manage shares" on public.note_shares for all
     where notebook_notes.id = note_shares.note_id
     and notebook_notes.owner_id = (select auth.uid())
   ));
+drop policy if exists "Recipients see own shares" on public.note_shares;
+drop policy if exists "Recipients see own shares" on public.note_shares;
 create policy "Recipients see own shares" on public.note_shares for select
   using ((select auth.uid()) = shared_with);
 
@@ -527,6 +651,8 @@ create index if not exists review_queue_user_open_idx
 
 alter table public.review_queue enable row level security;
 
+drop policy if exists "Users manage own review queue" on public.review_queue;
+drop policy if exists "Users manage own review queue" on public.review_queue;
 create policy "Users manage own review queue" on public.review_queue
   for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
@@ -692,6 +818,8 @@ create index if not exists problems_difficulty_idx on public.problems (difficult
 create index if not exists problems_topics_gin_idx on public.problems using gin (topics);
 
 alter table public.problems enable row level security;
+drop policy if exists "Allow public read access for problems" on public.problems;
+drop policy if exists "Allow public read access for problems" on public.problems;
 create policy "Allow public read access for problems" on public.problems for select using (true);
 -- Writes happen only via the service-role client / server routes (no public INSERT policy).
 
@@ -704,29 +832,79 @@ create table if not exists public.catalog_sync_state (
 insert into public.catalog_sync_state (id, total_count) values (1, 0) on conflict (id) do nothing;
 
 -- DB guard rails (mirrors migrations 20260916000001..03).
-alter table public.profiles add constraint profiles_stats_nonnegative
-  check (coalesce(contest_rating, 0) >= 0 and coalesce(streak, 0) >= 0
-    and coalesce(total_easy, 0) >= 0 and coalesce(total_medium, 0) >= 0
-    and coalesce(total_hard, 0) >= 0 and coalesce(contest_attended, 0) >= 0);
-alter table public.profiles add constraint profiles_rank_nonnegative
-  check (coalesce(global_rank, 0) >= 0 and coalesce(contest_global_rank, 0) >= 0
-    and coalesce(contest_top_percentage, 0) >= 0 and coalesce(contest_top_percentage, 0) <= 100);
-alter table public.profiles add constraint profiles_username_len
-  check (char_length(username) between 1 and 50);
-alter table public.profiles add constraint profiles_handle_len
-  check (leetcode_username is null or char_length(leetcode_username) between 1 and 50);
-alter table public.user_problem_status add constraint user_problem_status_slug_format
-  check (problem_slug ~ '^[a-z0-9-]{1,80}$');
-alter table public.user_problem_status add constraint user_problem_status_notes_cap
-  check (notes is null or octet_length(notes) <= 5000);
-alter table public.suggestions add constraint suggestions_slug_format
-  check (problem_slug ~ '^[a-z0-9-]{1,80}$');
-alter table public.suggestions add constraint suggestions_note_cap
-  check (note is null or octet_length(note) <= 2000);
-alter table public.list_problems add constraint list_problems_slug_format
-  check (title_slug ~ '^[a-z0-9-]{1,80}$');
-alter table public.custom_lists add constraint custom_lists_slug_format
-  check (slug ~ '^[a-z0-9-]{1,80}$');
+do $$ begin
+  if not exists (select 1 from pg_constraint
+                 where conname = 'profiles_stats_nonnegative' and conrelid = 'public.profiles'::regclass) then
+    alter table public.profiles add constraint profiles_stats_nonnegative
+check (coalesce(contest_rating, 0) >= 0 and coalesce(streak, 0) >= 0
+and coalesce(total_easy, 0) >= 0 and coalesce(total_medium, 0) >= 0
+and coalesce(total_hard, 0) >= 0 and coalesce(contest_attended, 0) >= 0);
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_constraint
+                 where conname = 'profiles_rank_nonnegative' and conrelid = 'public.profiles'::regclass) then
+    alter table public.profiles add constraint profiles_rank_nonnegative
+check (coalesce(global_rank, 0) >= 0 and coalesce(contest_global_rank, 0) >= 0
+and coalesce(contest_top_percentage, 0) >= 0 and coalesce(contest_top_percentage, 0) <= 100);
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_constraint
+                 where conname = 'profiles_username_len' and conrelid = 'public.profiles'::regclass) then
+    alter table public.profiles add constraint profiles_username_len
+check (char_length(username) between 1 and 50);
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_constraint
+                 where conname = 'profiles_handle_len' and conrelid = 'public.profiles'::regclass) then
+    alter table public.profiles add constraint profiles_handle_len
+check (leetcode_username is null or char_length(leetcode_username) between 1 and 50);
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_constraint
+                 where conname = 'user_problem_status_slug_format' and conrelid = 'public.user_problem_status'::regclass) then
+    alter table public.user_problem_status add constraint user_problem_status_slug_format
+check (problem_slug ~ '^[a-z0-9-]{1,80}$');
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_constraint
+                 where conname = 'user_problem_status_notes_cap' and conrelid = 'public.user_problem_status'::regclass) then
+    alter table public.user_problem_status add constraint user_problem_status_notes_cap
+check (notes is null or octet_length(notes) <= 5000);
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_constraint
+                 where conname = 'suggestions_slug_format' and conrelid = 'public.suggestions'::regclass) then
+    alter table public.suggestions add constraint suggestions_slug_format
+check (problem_slug ~ '^[a-z0-9-]{1,80}$');
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_constraint
+                 where conname = 'suggestions_note_cap' and conrelid = 'public.suggestions'::regclass) then
+    alter table public.suggestions add constraint suggestions_note_cap
+check (note is null or octet_length(note) <= 2000);
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_constraint
+                 where conname = 'list_problems_slug_format' and conrelid = 'public.list_problems'::regclass) then
+    alter table public.list_problems add constraint list_problems_slug_format
+check (title_slug ~ '^[a-z0-9-]{1,80}$');
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_constraint
+                 where conname = 'custom_lists_slug_format' and conrelid = 'public.custom_lists'::regclass) then
+    alter table public.custom_lists add constraint custom_lists_slug_format
+check (slug ~ '^[a-z0-9-]{1,80}$');
+  end if;
+end $$;
 
 create or replace function public.normalize_leetcode_username()
 returns trigger language plpgsql as $$
@@ -740,7 +918,7 @@ drop trigger if exists normalize_leetcode_username on public.profiles;
 create trigger normalize_leetcode_username
   before insert or update of leetcode_username on public.profiles
   for each row execute function public.normalize_leetcode_username();
-create unique index profiles_leetcode_username_lower_unique
+create unique index if not exists profiles_leetcode_username_lower_unique
   on public.profiles (lower(leetcode_username));
 
 -- Auto-mark solved from LeetCode: promotes attempted rows only, never retouches
@@ -935,16 +1113,24 @@ create table if not exists public.daily_battles (
 );
 alter table public.daily_battles enable row level security;
 drop policy if exists "Users read own daily battles" on public.daily_battles;
+drop policy if exists "Users read own daily battles" on public.daily_battles;
+drop policy if exists "Users read own daily battles" on public.daily_battles;
 create policy "Users read own daily battles" on public.daily_battles
   for select using ((select auth.uid()) = user_id);
 -- Own-row writes only. The row is keyed (user_id, battle_date), so a client can
 -- only touch today's pick for themselves and nobody else's.
 drop policy if exists "Users insert own daily battles" on public.daily_battles;
+drop policy if exists "Users insert own daily battles" on public.daily_battles;
+drop policy if exists "Users insert own daily battles" on public.daily_battles;
 create policy "Users insert own daily battles" on public.daily_battles
   for insert with check ((select auth.uid()) = user_id);
 drop policy if exists "Users update own daily battles" on public.daily_battles;
+drop policy if exists "Users update own daily battles" on public.daily_battles;
+drop policy if exists "Users update own daily battles" on public.daily_battles;
 create policy "Users update own daily battles" on public.daily_battles
   for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+drop policy if exists "Users delete own daily battles" on public.daily_battles;
+drop policy if exists "Users delete own daily battles" on public.daily_battles;
 drop policy if exists "Users delete own daily battles" on public.daily_battles;
 create policy "Users delete own daily battles" on public.daily_battles
   for delete using ((select auth.uid()) = user_id);
@@ -1029,6 +1215,8 @@ create index if not exists analytics_events_user_idx
   on public.analytics_events (user_id, occurred_at desc);
 alter table public.analytics_events enable row level security;
 drop policy if exists "Users append own analytics" on public.analytics_events;
+drop policy if exists "Users append own analytics" on public.analytics_events;
+drop policy if exists "Users append own analytics" on public.analytics_events;
 create policy "Users append own analytics" on public.analytics_events
   for insert with check ((select auth.uid()) = user_id);
 
@@ -1052,10 +1240,16 @@ create unique index if not exists notifications_dedupe_open_unique
   on public.notifications (user_id, kind, dedupe_key)
   where dedupe_key is not null and read_at is null;
 alter table public.notifications enable row level security;
+drop policy if exists "Users read own notifications" on public.notifications;
+drop policy if exists "Users read own notifications" on public.notifications;
 create policy "Users read own notifications" on public.notifications
   for select using ((select auth.uid()) = user_id);
+drop policy if exists "Users mark own notifications read" on public.notifications;
+drop policy if exists "Users mark own notifications read" on public.notifications;
 create policy "Users mark own notifications read" on public.notifications
   for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+drop policy if exists "Users delete own notifications" on public.notifications;
+drop policy if exists "Users delete own notifications" on public.notifications;
 create policy "Users delete own notifications" on public.notifications
   for delete using ((select auth.uid()) = user_id);
 
@@ -1071,3 +1265,232 @@ where ups.status = 'solved'
       and e.problem_slug = ups.problem_slug
       and e.kind = 'solved'
   );
+
+-- ============================================================================
+-- 22. STUCK LADDER (Phase 3 Step 18, Bible §12)
+-- Least help to continue thinking, not fastest answer. The level on the request
+-- is the contract: a helper may not answer above it. Generated from migrations
+-- 20261003000003 + 20261003000004 so this file cannot drift from what shipped.
+-- ============================================================================
+
+create table if not exists public.stuck_requests (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  problem_slug text not null check (problem_slug ~ '^[a-z0-9-]{1,80}$'),
+  battle_id uuid references public.battles(id) on delete set null,
+  -- How much help the asker actually wants.
+  level text check (level in ('nudge', 'pattern', 'direction', 'full'))
+    default 'nudge' not null,
+  -- anon = nobody can see who is stuck, only that somebody is.
+  visibility text check (visibility in ('squad', 'public', 'anon'))
+    default 'squad' not null,
+  squad_id uuid references public.squads(id) on delete set null,
+  status text check (status in ('open', 'helped', 'resolved'))
+    default 'open' not null,
+  last_reminded_at timestamp with time zone,
+  created_at timestamp with time zone default now() not null
+);
+
+create index if not exists stuck_requests_open_idx
+  on public.stuck_requests (created_at desc) where status = 'open';
+create index if not exists stuck_requests_user_idx
+  on public.stuck_requests (user_id, created_at desc);
+create index if not exists stuck_requests_problem_idx
+  on public.stuck_requests (problem_slug, created_at desc);
+
+create table if not exists public.stuck_replies (
+  id uuid primary key default gen_random_uuid(),
+  request_id uuid references public.stuck_requests(id) on delete cascade not null,
+  author_id uuid references public.profiles(id) on delete cascade not null,
+  -- A reply may not exceed the level that was asked for: answering a nudge
+  -- with a full solution is exactly the failure mode §12 warns about.
+  level text check (level in ('nudge', 'pattern', 'direction', 'full')) not null,
+  body_md text not null check (char_length(body_md) between 1 and 4000),
+  accepted boolean default false not null,
+  created_at timestamp with time zone default now() not null
+);
+
+create index if not exists stuck_replies_request_idx
+  on public.stuck_replies (request_id, created_at asc);
+
+alter table public.stuck_requests enable row level security;
+alter table public.stuck_replies enable row level security;
+
+-- ── Visibility ──────────────────────────────────────────────────────────────
+-- A request is readable by: its author, members of its squad, everyone when
+-- visibility='public', and everyone-but-the-author when visibility='anon'.
+drop policy if exists "Stuck requests readable by participants" on public.stuck_requests;
+create policy "Stuck requests readable by participants" on public.stuck_requests
+  for select using (
+    (select auth.uid()) = user_id
+    or visibility = 'public'
+    or visibility = 'anon'
+    or (
+      squad_id is not null and exists (
+        select 1 from public.squad_members
+        where squad_members.squad_id = stuck_requests.squad_id
+        and squad_members.user_id = (select auth.uid())
+      )
+    )
+  );
+
+drop policy if exists "Authors create own stuck requests" on public.stuck_requests;
+create policy "Authors create own stuck requests" on public.stuck_requests
+  for insert with check ((select auth.uid()) = user_id);
+
+-- Only the author may close their own request.
+drop policy if exists "Authors update own stuck requests" on public.stuck_requests;
+create policy "Authors update own stuck requests" on public.stuck_requests
+  for update
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+drop policy if exists "Authors delete own stuck requests" on public.stuck_requests;
+create policy "Authors delete own stuck requests" on public.stuck_requests
+  for delete using ((select auth.uid()) = user_id);
+
+-- A reply is readable by the asker, its author, and the asker's squad.
+drop policy if exists "Stuck replies readable by participants" on public.stuck_replies;
+create policy "Stuck replies readable by participants" on public.stuck_replies
+  for select using (
+    exists (
+      select 1 from public.stuck_requests r
+      where r.id = stuck_replies.request_id
+        and (
+          r.user_id = (select auth.uid())
+          or r.visibility in ('public', 'anon')
+          or (
+            r.squad_id is not null and exists (
+              select 1 from public.squad_members
+              where squad_members.squad_id = r.squad_id
+              and squad_members.user_id = (select auth.uid())
+            )
+          )
+        )
+    )
+    or (select auth.uid()) = author_id
+  );
+
+drop policy if exists "Authors create own stuck replies" on public.stuck_replies;
+create policy "Authors create own stuck replies" on public.stuck_replies
+  for insert with check ((select auth.uid()) = author_id);
+
+-- The asker accepts a reply; the author may edit their own.
+drop policy if exists "Participants manage stuck replies" on public.stuck_replies;
+create policy "Participants manage stuck replies" on public.stuck_replies
+  for update
+  using (
+    (select auth.uid()) = author_id
+    or exists (
+      select 1 from public.stuck_requests r
+      where r.id = stuck_replies.request_id and r.user_id = (select auth.uid())
+    )
+  )
+  with check (
+    (select auth.uid()) = author_id
+    or exists (
+      select 1 from public.stuck_requests r
+      where r.id = stuck_replies.request_id and r.user_id = (select auth.uid())
+    )
+  );
+
+drop policy if exists "Authors delete own stuck replies" on public.stuck_replies;
+create policy "Authors delete own stuck replies" on public.stuck_replies
+  for delete using ((select auth.uid()) = author_id);
+
+-- ── Abuse controls (§51: rate limits, not a moderation platform) ─────────────
+-- Max 3 open requests per user. Enforced here rather than in the client so it
+-- cannot be bypassed by calling the API directly.
+create or replace function public.enforce_stuck_request_limit()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  open_count int;
+begin
+  if new.status <> 'open' then
+    return new;
+  end if;
+  select count(*) into open_count
+  from public.stuck_requests
+  where user_id = new.user_id and status = 'open';
+  if open_count >= 3 then
+    raise exception 'You already have 3 open stuck requests. Close one before asking again.';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists stuck_request_limit on public.stuck_requests;
+create trigger stuck_request_limit
+  before insert on public.stuck_requests
+  for each row execute function public.enforce_stuck_request_limit();
+
+-- A reply cannot exceed the requested level. Enforced server-side because this
+-- is the whole point of the ladder.
+create or replace function public.enforce_stuck_reply_level()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  asked text;
+  rank int;
+  asked_rank int;
+begin
+  select level into asked from public.stuck_requests where id = new.request_id;
+  if asked is null then
+    raise exception 'Unknown stuck request';
+  end if;
+  rank := case new.level
+    when 'nudge' then 1 when 'pattern' then 2
+    when 'direction' then 3 else 4 end;
+  asked_rank := case asked
+    when 'nudge' then 1 when 'pattern' then 2
+    when 'direction' then 3 else 4 end;
+  if rank > asked_rank then
+    raise exception 'That reply gives more help than the asker requested (%)', asked;
+  end if;
+  -- First real reply moves the request to 'helped' so the queue stops nagging.
+  if new.accepted then
+    update public.stuck_requests set status = 'helped' where id = new.request_id;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists stuck_reply_level on public.stuck_replies;
+create trigger stuck_reply_level
+  before insert on public.stuck_replies
+  for each row execute function public.enforce_stuck_reply_level();
+
+-- Reminder throttle: one nudge per request per 24h.
+create or replace function public.stuck_reminder_allowed(p_request_id uuid, p_actor uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.stuck_requests r
+    where r.id = p_request_id
+      and r.user_id = p_actor
+      and r.status = 'open'
+      and (r.last_reminded_at is null or r.last_reminded_at < now() - interval '24 hours')
+  );
+$$;
+revoke all on function public.stuck_reminder_allowed(uuid, uuid) from anon, authenticated;
+
+-- Append-only timeline: a solved battle closes any request it answers.
+create or replace function public.resolve_stuck_on_solve()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  update public.stuck_requests
+     set status = 'resolved'
+   where user_id = new.user_id
+     and problem_slug = new.problem_slug
+     and status <> 'resolved'
+     and battle_id = new.id;
+  return new;
+end $$;
+
+drop trigger if exists resolve_stuck_on_solve on public.battles;
+create trigger resolve_stuck_on_solve
+  after update on public.battles
+  for each row
+  when (old.outcome is distinct from new.outcome and new.outcome = 'solved')
+  execute function public.resolve_stuck_on_solve();
