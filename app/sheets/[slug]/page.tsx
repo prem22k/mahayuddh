@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, Suspense } from "react";
+import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import {
   Search,
@@ -26,6 +27,8 @@ import { PageLoader } from "@/components/ui/PageLoader";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { ProblemStatusCell } from "@/components/matrix/ProblemStatusCell";
+import { logProblemEvent } from "@/lib/data/problemEvents";
+import { track } from "@/lib/analytics";
 import { CustomList, ListProblem, Problem, TriState } from "@/types/database";
 import confetti from "canvas-confetti";
 
@@ -101,6 +104,13 @@ function SheetContent() {
         else delete rolled[problemSlug];
         return rolled;
       });
+    } else if (next === "solved" || next === "attempted") {
+      // Roadmap toggles are self-reported proof; the timeline records them.
+      // Re-solving an already-solved row is a revisit, not a fresh solve.
+      const kind = next === "solved" && prev === "solved" ? "revisited" : next;
+      logProblemEvent({ problemSlug, kind }).catch(() => {});
+      if (next === "solved") track("battle_solved", { problem_slug: problemSlug, via: "roadmap" });
+      if (kind === "revisited") track("revisit_done", { problem_slug: problemSlug, via: "roadmap" });
     }
     return ok;
   };
@@ -123,6 +133,22 @@ function SheetContent() {
       setStatuses(snapshot);
       return;
     }
+
+    // Bulk writes must still land on the timeline: problem_events is the
+    // history source of truth (§48), and a batch toggle used to leave zero
+    // history rows — so a "solved" mark from the roadmap was invisible to the
+    // Daily Battle signals and the problem timeline.
+    const kinds = slugs.map((slug) => ({
+      problemSlug: slug,
+      kind: (next === "solved" && snapshot[slug] === "solved"
+        ? "revisited"
+        : next) as "solved" | "attempted" | "revisited",
+    }));
+    await Promise.all(kinds.map((k) => logProblemEvent(k).catch(() => {})));
+    if (next === "solved") {
+      track("battle_solved", { via: "roadmap_batch", count: slugs.length });
+    }
+
     // Celebrate only persisted solves.
     if (next === "solved") {
       confetti({
@@ -431,6 +457,7 @@ function SheetContent() {
                               status={currentStatus}
                               onToggle={(next) => handleToggle(problem.title_slug, next)}
                               size="md"
+                              slug={problem.title_slug}
                             />
                           </div>
 
@@ -484,6 +511,14 @@ function SheetContent() {
                               title={`Open ${problem.title} on LeetCode`}
                               className="p-1.5 rounded-lg hover:bg-white/[0.06]"
                             />
+                            {/* History + approaches */}
+                            <Link
+                              href={`/practice/${problem.title_slug}`}
+                              title={`History and approaches for ${problem.title}`}
+                              className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors text-[11px] font-bold font-mono"
+                            >
+                              →
+                            </Link>
                           </div>
                         </div>
                       );

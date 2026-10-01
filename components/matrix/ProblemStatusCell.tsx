@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { Check, Clock, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { TriState } from "@/types/database";
+import { TriState, ProblemEvent } from "@/types/database";
 import confetti from "canvas-confetti";
 
 interface ProblemStatusCellProps {
@@ -12,6 +12,8 @@ interface ProblemStatusCellProps {
   onToggle: (next: TriState) => void | Promise<boolean>;
   size?: "sm" | "md" | "lg";
   showLabel?: boolean;
+  /** Enables the lazy timeline preview on hover (plan Step 8). */
+  slug?: string;
 }
 
 export function ProblemStatusCell({
@@ -19,8 +21,23 @@ export function ProblemStatusCell({
   onToggle,
   size = "md",
   showLabel = false,
+  slug,
 }: ProblemStatusCellProps) {
   const [animating, setAnimating] = useState(false);
+  const [preview, setPreview] = useState<{ events: ProblemEvent[] } | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  // History is fetched per-cell on first hover, never for the whole matrix: a
+  // 350-row sheet must not fire 350 timeline queries (Bible §65).
+  const loadPreview = async () => {
+    if (!slug || preview) return;
+    try {
+      const { getOwnProblemTimeline } = await import("@/lib/data/problemEvents");
+      setPreview({ events: await getOwnProblemTimeline(slug, 5) });
+    } catch {
+      setPreview({ events: [] });
+    }
+  };
 
   const handleClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -53,8 +70,17 @@ export function ProblemStatusCell({
 
   const isSolved = status === "solved";
   const isAttempted = status === "attempted";
+  const hasHistory = (preview?.events.length ?? 0) > 0;
 
   return (
+    <span
+      className="relative inline-flex"
+      onMouseEnter={() => {
+        setPreviewOpen(true);
+        void loadPreview();
+      }}
+      onMouseLeave={() => setPreviewOpen(false)}
+    >
     <button
       type="button"
       onClick={handleClick}
@@ -102,5 +128,57 @@ export function ProblemStatusCell({
         )}
       </div>
     </button>
+
+      {/* ── Lazy timeline preview (plan Step 8: matrix cell becomes a preview) ── */}
+      {slug && previewOpen && preview && (
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-56 rounded-2xl bg-[#1c1c1e]/95 backdrop-blur-2xl border border-white/[0.1] shadow-[0_12px_40px_rgba(0,0,0,0.5)] p-3 text-left pointer-events-none">
+          {!hasHistory ? (
+            <span className="block text-[11px] text-white/35">
+              No history yet. First solve starts the timeline.
+            </span>
+          ) : (
+            <>
+              <span className="block text-[10px] font-bold text-white/40 uppercase tracking-wider mb-1.5">
+                Your history
+              </span>
+              <span className="flex flex-col gap-1">
+                {preview.events.map((e) => (
+                  <span key={e.id} className="block text-[10px] text-white/60 leading-tight">
+                    <span className="text-white/35 font-mono">
+                      {new Date(e.created_at).toLocaleDateString()}
+                    </span>{" "}
+                    {EVENT_LABEL[e.kind] ?? e.kind}
+                    {e.duration_sec != null && (
+                      <span className="text-white/35 font-mono">
+                        {" "}
+                        · {formatSeconds(e.duration_sec)}
+                      </span>
+                    )}
+                  </span>
+                ))}
+              </span>
+              <span className="block text-[10px] text-[#0a84ff] mt-1.5">
+                Open problem for the full timeline →
+              </span>
+            </>
+          )}
+        </span>
+      )}
+    </span>
   );
+}
+
+const EVENT_LABEL: Record<string, string> = {
+  attempted: "Attempted",
+  solved: "Solved",
+  explained: "Explained",
+  revisited: "Revisited",
+  challenge_completed: "Challenge completed",
+  failed: "Failed",
+  stuck: "Stuck",
+};
+
+function formatSeconds(total: number): string {
+  const s = Math.trunc(total);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
