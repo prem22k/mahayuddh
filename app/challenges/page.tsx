@@ -1,17 +1,33 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
   Plus,
   Play,
   CheckCircle2,
   ArrowRight,
   Clock,
+  Link2,
+  Check,
+  Forward,
+  BellRing,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { cn } from "@/lib/utils";
 import { slugifyTitle } from "@/lib/slug";
-import { getSuggestions, createSuggestion, markSuggestionCompleted } from "@/lib/data/suggestions";
+import { copyText } from "@/lib/clipboard";
+import {
+  getSuggestions,
+  createSuggestion,
+  markSuggestionCompleted,
+  dismissSuggestion,
+  acceptSuggestion,
+  remindSuggestion,
+} from "@/lib/data/suggestions";
+import { getLatestBattle } from "@/lib/data/battles";
+import { logFeedEvent } from "@/lib/data/feed";
+import { notify } from "@/lib/data/notifications";
 import { getSquadProfiles } from "@/lib/data/profiles";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
@@ -20,9 +36,10 @@ import { ProblemLink } from "@/components/ui/ProblemLink";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { Suggestion, Profile, Difficulty } from "@/types/database";
+import { track } from "@/lib/analytics";
 
 export default function SuggestionsPage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { startSolving } = useSolving();
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -31,6 +48,7 @@ export default function SuggestionsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Form State
   const [targetUserId, setTargetUserId] = useState("");
@@ -38,9 +56,30 @@ export default function SuggestionsPage() {
   const [problemSlug, setProblemSlug] = useState("");
   const [difficulty, setDifficulty] = useState<Difficulty>("Medium");
   const [note, setNote] = useState("");
+  const [beatTime, setBeatTime] = useState(false);
+  const [myTime, setMyTime] = useState("");
+  const [deadline, setDeadline] = useState("");
+  // Off by default (Bible §12: least help first). Explicit opt-in only.
+  const [spoiler, setSpoiler] = useState(false);
+  const [passParent, setPassParent] = useState<Suggestion | null>(null);
+  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+  const [remindId, setRemindId] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+
+  function parseMmSs(v: string): number | null {
+    const m = v.trim().match(/^(?:(\d+):)?([0-5]?\d)$/);
+    if (!m) return null;
+    const mins = m[1] ? parseInt(m[1], 10) : 0;
+    return mins * 60 + parseInt(m[2], 10);
+  }
+
+  function fmtTime(sec: number): string {
+    return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+  }
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [suggestionsData, profilesData] = await Promise.all([
         getSuggestions(),
@@ -56,6 +95,7 @@ export default function SuggestionsPage() {
       }
     } catch (err) {
       console.error("Error loading suggestions:", err);
+      setLoadError("Couldn't load challenges. Check your connection and retry.");
     } finally {
       setLoading(false);
     }
@@ -65,15 +105,31 @@ export default function SuggestionsPage() {
     loadData();
   }, [loadData]);
 
-  // Honor ?to=<user_id> from the leaderboard "Challenge" action.
+  // Honor ?to=<user_id> (leaderboard) and ?problem=&title=&difficulty=&time=
+  // (post-solve "Challenge someone" on Today's Battle) — the prefill path
+  // exists so no next action is ever a dead form.
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const to = new URLSearchParams(window.location.search).get("to");
-      if (to) {
-        setTargetUserId(to);
-        setIsModalOpen(true);
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const to = params.get("to");
+    if (to) setTargetUserId(to);
+
+    const slug = params.get("problem");
+    const title = params.get("title");
+    if (slug && title) {
+      setProblemSlug(slug);
+      setProblemTitle(title);
+      const d = params.get("difficulty");
+      if (d === "Easy" || d === "Medium" || d === "Hard") setDifficulty(d);
+      // Prefill the beat-my-time target from the solve we just finished.
+      const time = params.get("time");
+      const secs = time ? Number.parseInt(time, 10) : NaN;
+      if (Number.isFinite(secs) && secs >= 0) {
+        setBeatTime(true);
+        setMyTime(`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`);
       }
     }
+    if (to || (slug && title)) setIsModalOpen(true);
   }, []);
 
   const handleSendChallenge = async (e: React.FormEvent) => {
@@ -94,21 +150,58 @@ export default function SuggestionsPage() {
     setCreateError(null);
     try {
       const slug = (problemSlug.trim().toLowerCase() || slugifyTitle(problemTitle)).slice(0, 80);
+      const senderSecs = beatTime ? parseMmSs(myTime) : null;
+      if (beatTime && senderSecs == null) {
+        setCreateError("Enter your solve time as m:ss (or uncheck “beat my time”).");
+        setSubmitting(false);
+        return;
+      }
       const res = await createSuggestion({
         fromUser: user.id,
         toUser: targetUserId,
         problemTitle: problemTitle.trim(),
         problemSlug: slug,
         difficulty,
-        note: note.trim(),
+        message: note.trim(),
+        senderTimeSec: senderSecs,
+        beatTime,
+        deadlineAt: deadline ? new Date(deadline + "T23:59:59").toISOString() : null,
+        parentId: passParent?.id ?? null,
+        // Off by default: a challenge is an invitation to think, not to copy.
+        spoiler,
       });
 
       if (res.ok) {
+        track("challenge_sent", { problem_slug: slug, beat_time: beatTime, pass: !!passParent });
+        // The recipient is owed an answer — this is Loop A's return mechanism.
+        notify({
+          userId: targetUserId,
+          kind: "challenge",
+          title: `${profile ? `@${profile.username}` : "A squad mate"} challenged you`,
+          body: `${problemTitle.trim()} · ${difficulty}`,
+          deepLink: `/c/${res.suggestion.id}`,
+          actorId: user.id,
+          urgent: true,
+        }).catch(() => {});
+        logFeedEvent({
+          eventType: "challenge",
+          squadId: profile?.active_squad_id ?? null,
+          problemTitle: problemTitle.trim(),
+          problemSlug: slug,
+          difficulty,
+          objectId: res.suggestion.id,
+          metadata: passParent ? { parent_id: passParent.id } : {},
+        }).catch(() => {});
         setSuggestions([res.suggestion, ...suggestions]);
         setIsModalOpen(false);
         setProblemTitle("");
         setProblemSlug("");
         setNote("");
+        setBeatTime(false);
+        setMyTime("");
+        setDeadline("");
+        setSpoiler(false);
+        setPassParent(null);
         setCreateError(null);
 
         confetti({
@@ -132,14 +225,75 @@ export default function SuggestionsPage() {
     }
   };
 
-  const handleStartSolvingChallenge = (item: Suggestion) => {
+  const handleStartSolvingChallenge = async (item: Suggestion) => {
+    // Persist the accept so the sender sees it in progress and the battle can be
+    // attached to the challenge (plan Step 10).
+    try {
+      await acceptSuggestion(item.id, user?.id ?? "");
+    } catch {
+      // Not fatal: the battle still starts, accept state retries on next attempt.
+    }
+    track("challenge_accepted", { suggestion_id: item.id });
     startSolving({
       id: 1,
       title: item.problem_title,
       slug: item.problem_slug,
       difficulty: item.difficulty,
       category: "Squad Challenge",
+      challengeId: item.id,
     });
+  };
+
+  const handleRemind = async (item: Suggestion) => {
+    setRemindId(item.id);
+    try {
+      const res = await remindSuggestion(item.id, user?.id ?? "");
+      if (!res.ok && res.reason === "throttled") {
+        setActionNotice("You already nudged about this challenge in the last 24 hours.");
+      } else if (res.ok) {
+        setActionNotice("Reminder sent.");
+      }
+      // Server stamped reminded_at, so reload to reflect the throttle state.
+      await loadData();
+    } catch {
+      setActionNotice("Couldn't send that reminder. Try again.");
+    } finally {
+      setRemindId(null);
+    }
+  };
+
+  const handleDecline = async (item: Suggestion) => {
+    const ok = await dismissSuggestion(item.id);
+    if (ok) setSuggestions((prev) => prev.filter((s) => s.id !== item.id));
+  };
+
+  const handleCopyLink = async (item: Suggestion) => {
+    if (await copyText(`${window.location.origin}/c/${item.id}`)) {
+      setCopiedLinkId(item.id);
+      setTimeout(() => setCopiedLinkId(null), 2000);
+    }
+  };
+
+  const handlePass = (item: Suggestion) => {
+    // Pass the challenge along: prefill problem, link chain via parent_id.
+    setPassParent(item);
+    setProblemTitle(item.problem_title);
+    setProblemSlug(item.problem_slug);
+    setDifficulty(item.difficulty);
+    setNote("");
+    setBeatTime(false);
+    setMyTime("");
+    setDeadline("");
+    setSpoiler(false);
+    setCreateError(null);
+    setIsModalOpen(true);
+  };
+
+  const fillLatestTime = async () => {
+    const slug = (problemSlug.trim().toLowerCase() || slugifyTitle(problemTitle)).slice(0, 80);
+    if (!slug) return;
+    const latest = await getLatestBattle(slug).catch(() => null);
+    if (latest?.duration_sec != null) setMyTime(fmtTime(latest.duration_sec));
   };
 
   const [completeError, setCompleteError] = useState<string | null>(null);
@@ -149,6 +303,15 @@ export default function SuggestionsPage() {
     setCompleteError(null);
     const res = await markSuggestionCompleted(item.id, user.id);
     if (res.ok) {
+      track("challenge_completed", { suggestion_id: item.id });
+      logFeedEvent({
+        eventType: "complete",
+        squadId: profile?.active_squad_id ?? null,
+        problemTitle: item.problem_title,
+        problemSlug: item.problem_slug,
+        difficulty: item.difficulty,
+        objectId: item.id,
+      }).catch(() => {});
       setSuggestions((prev) =>
         prev.map((s) => (s.id === item.id ? { ...s, status: "completed", completed_at: new Date().toISOString() } : s))
       );
@@ -159,7 +322,7 @@ export default function SuggestionsPage() {
         colors: ["#30d158", "#ffffff"],
       });
     } else if (res.reason === "not_solved") {
-      setCompleteError("Solve it on LeetCode first — press Sync, then mark complete.");
+      setCompleteError("Mark the problem solved first (battle dock or roadmap), then mark complete. LeetCode sync only adds an evidence badge.");
     } else {
       setCompleteError("Only the challenged member can complete this.");
     }
@@ -195,6 +358,7 @@ export default function SuggestionsPage() {
         <button
           onClick={() => {
             setCreateError(null);
+            setPassParent(null);
             setIsModalOpen(true);
           }}
           className="px-4 py-2 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white font-semibold text-xs flex items-center gap-1.5 shadow-[0_0_20px_rgba(250,88,106,0.35)] self-start md:self-auto transition-all cursor-pointer"
@@ -203,6 +367,18 @@ export default function SuggestionsPage() {
           <span>Challenge a Friend</span>
         </button>
       </div>
+
+      {loadError && (
+        <div role="alert" className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-5 py-4 rounded-2xl bg-[#ff453a]/10 border border-[#ff453a]/30">
+          <span className="text-xs text-[#ff453a] font-medium">{loadError}</span>
+          <button
+            onClick={loadData}
+            className="px-4 py-1.5 rounded-full bg-[#ff453a]/15 hover:bg-[#ff453a]/25 border border-[#ff453a]/30 text-[#ff453a] text-xs font-bold transition-all cursor-pointer shrink-0"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* ── Tab Filter ── */}
       <div className="flex items-center gap-2 p-1 bg-white/[0.04] rounded-full border border-white/[0.06] w-fit flex-wrap">
@@ -265,13 +441,25 @@ export default function SuggestionsPage() {
           {completeError}
         </div>
       )}
+      {actionNotice && (
+        <div role="status" className="px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/60 text-xs">
+          {actionNotice}
+        </div>
+      )}
       {loading ? (
         <PageLoader label="Loading challenges..." className="h-60" />
       ) : filteredList.length === 0 ? (
-        <div className="p-12 text-center text-white/40 text-xs bg-[#1c1c1e]/60 rounded-2xl border border-white/[0.06]">
-          {activeTab === "for_you"
-            ? "No incoming challenges for you right now. You are all caught up!"
-            : "No suggestions found in this view. Click 'Challenge a Friend' above."}
+        <div className="p-12 text-center space-y-3 bg-[#1c1c1e]/60 rounded-2xl border border-white/[0.06]">
+          <p className="text-white/40 text-xs">
+            {activeTab === "for_you"
+              ? "No challenges yet. Solve a battle and challenge a friend — theirs will land here."
+              : suggestions.length === 0
+                ? "No challenges yet. Solve a battle and challenge a friend to start your squad loop."
+                : "Nothing in this view. Try another tab."}
+          </p>
+          <Link href="/" className="inline-block px-4 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-white text-xs font-bold transition-all">
+            Start a battle
+          </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -319,20 +507,40 @@ export default function SuggestionsPage() {
                     )}
                   </div>
 
-                  <div className="mt-3 flex items-center gap-2">
+                  <div className="mt-3 flex items-center gap-2 flex-wrap">
                     <h3 className="text-base font-bold text-white">{item.problem_title}</h3>
                     <DifficultyBadge difficulty={item.difficulty} />
+                    {item.sender_time_sec != null && (
+                      <span className="px-2 py-0.5 rounded-full bg-[#0a84ff]/15 text-[#0a84ff] border border-[#0a84ff]/30 text-[10px] font-bold font-mono">
+                        {item.beat_time ? `Beat ${fmtTime(item.sender_time_sec)}` : `Solved in ${fmtTime(item.sender_time_sec)}`}
+                      </span>
+                    )}
+                    {item.deadline_at && item.status === "pending" && (
+                      <span className="text-[10px] text-white/40 font-mono">
+                        due {new Date(item.deadline_at).toLocaleDateString()}
+                      </span>
+                    )}
                   </div>
 
-                  {item.note && (
+                  {item.note && !(item.spoiler && !isTarget && !isCompleted) && (
                     <div className="mt-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] text-xs text-white/70 italic">
                       &ldquo;{item.note}&rdquo;
                     </div>
                   )}
+                  {item.spoiler && !isTarget && !isCompleted && (
+                    <div className="mt-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] text-xs text-white/30 italic">
+                      Hidden hint — reveals when accepted.
+                    </div>
+                  )}
+                  {item.parent_id && (
+                    <Link href={`/c/${item.id}`} className="mt-2 inline-block text-[11px] text-[#bf5af2] font-semibold hover:underline">
+                      View challenge chain →
+                    </Link>
+                  )}
                 </div>
 
-                <div className="flex items-center justify-between pt-3 border-t border-white/[0.04] text-xs gap-2">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between pt-3 border-t border-white/[0.04] text-xs gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {/* Start Solving in Dock */}
                     <button
                       onClick={() => handleStartSolvingChallenge(item)}
@@ -340,19 +548,64 @@ export default function SuggestionsPage() {
                       title="Load into Player Dock"
                     >
                       <Play className="w-3 h-3 fill-current" />
-                      <span>Solve in Dock</span>
+                      <span>{isTarget && !isCompleted ? "Accept + Solve" : "Solve in Dock"}</span>
                     </button>
 
                     {/* Only the challenged member can complete (enforced server-side too). */}
-                    {isTarget && !isCompleted && (
+                    {isTarget && !isCompleted && item.status === "pending" && (
+                      <>
+                        <button
+                          onClick={() => handleMarkCompleted(item)}
+                          className="px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#30d158]/15 hover:text-[#30d158] hover:border-[#30d158]/30 border border-white/[0.08] text-white/60 font-semibold flex items-center gap-1.5 transition-colors text-[11px] cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Mark Solved</span>
+                        </button>
+                        <button
+                          onClick={() => handleDecline(item)}
+                          className="px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/40 hover:text-white font-semibold transition-colors text-[11px] cursor-pointer"
+                        >
+                          Decline
+                        </button>
+                      </>
+                    )}
+
+                    {/* Remind — throttled to 1 per 24h server-side (low noise). */}
+                    {item.status === "pending" && (
                       <button
-                        onClick={() => handleMarkCompleted(item)}
-                        className="px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#30d158]/15 hover:text-[#30d158] hover:border-[#30d158]/30 border border-white/[0.08] text-white/60 font-semibold flex items-center gap-1.5 transition-colors text-[11px] cursor-pointer"
+                        onClick={() => handleRemind(item)}
+                        disabled={remindId === item.id}
+                        className="px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#ff9f0a]/15 hover:text-[#ff9f0a] hover:border-[#ff9f0a]/30 border border-white/[0.08] text-white/60 font-semibold flex items-center gap-1.5 transition-colors text-[11px] cursor-pointer disabled:opacity-40"
+                        title={
+                          item.reminded_at
+                            ? `Last nudged ${new Date(item.reminded_at).toLocaleDateString()} — one nudge per 24h`
+                            : "Nudge them (once per 24h)"
+                        }
                       >
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span>Mark Solved</span>
+                        <BellRing className="w-3 h-3" />
+                        <span>{remindId === item.id ? "…" : "Remind"}</span>
                       </button>
                     )}
+
+                    {/* Pass it on — anyone holding a challenge can forward it (chains). */}
+                    {item.status === "pending" && (
+                      <button
+                        onClick={() => handlePass(item)}
+                        className="px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#bf5af2]/15 hover:text-[#bf5af2] hover:border-[#bf5af2]/30 border border-white/[0.08] text-white/60 font-semibold flex items-center gap-1.5 transition-colors text-[11px] cursor-pointer"
+                        title="Forward to another squad mate"
+                      >
+                        <Forward className="w-3 h-3" />
+                        <span>Pass</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => handleCopyLink(item)}
+                      className="p-1.5 rounded-full text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
+                      title="Copy challenge link (nudge them on WhatsApp)"
+                    >
+                      {copiedLinkId === item.id ? <Check className="w-3.5 h-3.5 text-[#30d158]" /> : <Link2 className="w-3.5 h-3.5" />}
+                    </button>
                   </div>
 
                   <ProblemLink slug={item.problem_slug} variant="pill" />
@@ -370,9 +623,11 @@ export default function SuggestionsPage() {
           onClose={() => { setCreateError(null); setIsModalOpen(false); }}
           panelClassName="shadow-modal p-6"
         >
-            <h2 className="text-xl font-bold text-white mb-1">Challenge a Friend</h2>
+            <h2 className="text-xl font-bold text-white mb-1">{passParent ? "Pass the Challenge" : "Challenge a Friend"}</h2>
             <p className="text-xs text-white/40 mb-5">
-              Send a targeted algorithmic challenge with your custom intuition notes.
+              {passParent
+                ? `Forwarding @${passParent.from_profile?.username || "a squad mate"}'s ${passParent.problem_title} challenge — the chain grows.`
+                : "I solved X → I challenge you to solve X. Async by default; no spoiler unless you say so."}
             </p>
 
             {createError && (
@@ -456,10 +711,60 @@ export default function SuggestionsPage() {
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1 cursor-pointer">
+                    <input type="checkbox" checked={beatTime} onChange={(e) => setBeatTime(e.target.checked)} className="accent-[#fa586a]" />
+                    <span>Beat my time</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={myTime}
+                      onChange={(e) => setMyTime(e.target.value)}
+                      placeholder="21:43"
+                      disabled={!beatTime}
+                      className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl p-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 font-mono disabled:opacity-40"
+                    />
+                    {beatTime && (
+                      <button type="button" onClick={fillLatestTime} className="text-[11px] text-[#fa586a] font-semibold hover:underline shrink-0 cursor-pointer">
+                        My latest
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
+                    Deadline (Optional)
+                  </label>
+                  <input
+                    type="date"
+                    value={deadline}
+                    onChange={(e) => setDeadline(e.target.value)}
+                    className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-[#fa586a]/60"
+                  />
+                </div>
+              </div>
+
+              <label className="flex items-start gap-2.5 text-[11px] text-white/40 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={spoiler}
+                  onChange={(e) => setSpoiler(e.target.checked)}
+                  className="accent-[#fa586a] mt-0.5"
+                />
+                <span>
+                  <span className="text-white/60 font-semibold">Mark as a spoiler</span>
+                  <br />
+                  Off by default. When on, your note stays hidden until the challenge is
+                  accepted — a challenge should invite thinking, not copy an answer.
+                </span>
+              </label>
+
               <div className="flex justify-end gap-2 pt-3 border-t border-white/[0.06]">
                 <button
                   type="button"
-                  onClick={() => { setCreateError(null); setIsModalOpen(false); }}
+                  onClick={() => { setCreateError(null); setPassParent(null); setIsModalOpen(false); }}
                   className="px-4 py-2 rounded-full bg-white/[0.04] text-white/50 hover:text-white text-xs font-semibold transition-colors cursor-pointer"
                 >
                   Cancel

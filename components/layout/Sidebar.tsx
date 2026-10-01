@@ -12,6 +12,10 @@ import {
   LogOut,
   ChevronRight,
   Plus,
+  Play,
+  Shield,
+  Sparkles,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -51,11 +55,16 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
     router.push(`/sheets/${newSlug}`);
   };
 
+  // Phase 0 IA (Bible §52): nav maps to intent, not DB tables.
   const coreNav = [
-    { name: "Arena", href: "/", icon: LayoutGrid },
+    { name: "Home", href: "/home", icon: LayoutGrid },
+    { name: "Practice", href: "/practice", icon: Play },
+    { name: "Squad", href: "/squad", icon: Shield },
+    { name: "Feed", href: "/feed", icon: Sparkles },
+    { name: "Notebook", href: "/notebook", icon: Bookmark },
+    { name: "Challenges", href: "/challenges", icon: MessageSquare },
     { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
-    { name: "Suggestions", href: "/suggestions", icon: MessageSquare },
-    { name: "Vault", href: "/vault", icon: Bookmark },
+    { name: "Profile", href: "/profile", icon: User },
   ];
 
   const curatedRoadmaps = lists.filter((l) => l.is_curated);
@@ -113,7 +122,15 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
             <div className="nav-section-label">Main</div>
             <nav className="space-y-0.5">
               {coreNav.map((item) => {
-                const isActive = pathname === item.href;
+                // Legacy paths stay highlighted: /vault now renders the Notebook
+                // Vault tab, / is the Home alias.
+                const aliases: Record<string, string[]> = {
+                  "/home": ["/"],
+                  "/challenges": ["/suggestions"],
+                  "/notebook": ["/vault"],
+                };
+                const isActive =
+                  pathname === item.href || (aliases[item.href] || []).includes(pathname || "");
                 const Icon = item.icon;
                 return (
                   <Link
