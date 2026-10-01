@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { normalizeSlugList } from "@/lib/slug";
 import { Problem, TriState } from "@/types/database";
+import { DataError } from "@/lib/data/errors";
 
 // PostgREST caps .in() lists and default selects at ~1000 rows; chunk / paginate
 // explicitly so the ~3.4k-row catalog never silently truncates.
@@ -17,7 +18,14 @@ export async function getCatalogBySlugs(slugs: string[]): Promise<Problem[]> {
   for (let i = 0; i < unique.length; i += IN_CHUNK) {
     const slice = unique.slice(i, i + IN_CHUNK);
     const { data, error } = await supabase.from("problems").select("*").in("title_slug", slice);
-    if (error || !data) continue;
+    // A failed chunk would silently drop 200 problems from the result. Throw so
+    // callers surface a retry instead of rendering an incomplete list (Step 0).
+    if (error) {
+      throw new DataError("catalog", "Couldn't load those problems. Retry.", { cause: error });
+    }
+    if (!data) {
+      throw new DataError("catalog", "Couldn't load those problems. Retry.");
+    }
     rows.push(...(data as Problem[]));
   }
   return rows;
@@ -48,7 +56,12 @@ export async function searchCatalogProblems(query: string, limit = 50): Promise<
 
   const { data, error } = await supabase.from("problems").select("*").or(filters.join(",")).limit(safeLimit);
 
-  if (error || !data) return [];
+  if (error) {
+    throw new DataError("catalog", "Search failed. Retry.", { cause: error });
+  }
+  if (!data) {
+    throw new DataError("catalog", "Search failed. Retry.");
+  }
   return data as Problem[];
 }
 
@@ -131,8 +144,30 @@ export async function getCatalogCount(): Promise<number> {
   if (!error && typeof count === "number" && count > 0) {
     return count;
   }
+  // A hard failure here is worth surfacing: a wrong "0 problems" count reads as
+  // "you have solved everything".
+  if (error) {
+    throw new DataError("catalog", "Couldn't count the catalog. Retry.", { cause: error });
+  }
 
-  // Fallback count from unique curated problems
+  // Catalog genuinely empty (sync hasn't run): fall back to curated sheets.
   const unique = new Set(CURATED_SHEETS.flatMap((s) => s.problems.map((p) => p.title_slug)));
   return unique.size;
+}
+
+/** Problems tagged with a topic (pattern hub starters + approach scoping). */
+export async function getCatalogByTopic(topic: string, limit = 50): Promise<Problem[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("problems")
+    .select("*")
+    .contains("topics", [topic])
+    .limit(Math.min(Math.max(limit, 1), 100));
+  if (error) {
+    throw new DataError("catalog", "Couldn't load that pattern's problems. Retry.", { cause: error });
+  }
+  if (!data) {
+    throw new DataError("catalog", "Couldn't load that pattern's problems. Retry.");
+  }
+  return data as Problem[];
 }
