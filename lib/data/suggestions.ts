@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { normalizeSlug } from "@/lib/slug";
 import { Suggestion, Difficulty } from "@/types/database";
+import { DataError } from "@/lib/data/errors";
 
 export async function getSuggestions(): Promise<Suggestion[]> {
   const supabase = createClient();
@@ -13,7 +14,12 @@ export async function getSuggestions(): Promise<Suggestion[]> {
     `)
     .order("created_at", { ascending: false });
 
-  if (error || !data) return [];
+  if (error) {
+    throw new DataError("suggestions", "Couldn't load challenges. Check your connection and retry.", { cause: error });
+  }
+  if (!data) {
+    throw new DataError("suggestions", "Couldn't load challenges. Check your connection and retry.");
+  }
   return data as Suggestion[];
 }
 
@@ -24,8 +30,59 @@ export async function getPendingSuggestionCount(): Promise<number> {
     .select("*", { count: "exact", head: true })
     .eq("status", "pending");
 
-  if (error) return 0;
+  if (error) throw new DataError("suggestions", "Couldn't count challenges. Retry.", { cause: error });
   return count ?? 0;
+}
+
+/** Challenges addressed to the caller and still awaiting them (Home inbox). */
+export async function getIncomingSuggestionCount(userId: string): Promise<number> {
+  const supabase = createClient();
+  const { count, error } = await supabase
+    .from("suggestions")
+    .select("*", { count: "exact", head: true })
+    .eq("to_user", userId)
+    .eq("status", "pending");
+  if (error) {
+    throw new DataError("suggestions", "Couldn't count your challenges. Retry.", { cause: error });
+  }
+  return count ?? 0;
+}
+
+export async function getSuggestionById(id: string): Promise<Suggestion | null> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("suggestions")
+    .select(`
+      *,
+      from_profile:from_user (id, username, leetcode_username, avatar_url),
+      to_profile:to_user (id, username, leetcode_username, avatar_url)
+    `)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) {
+    throw new DataError("suggestions", "Couldn't load this challenge. Retry.", { cause: error });
+  }
+  if (!data) return null;
+  return data as Suggestion;
+}
+
+/** Walk parent links up (max 10) → oldest-first chain for the Chain ritual (§10). */
+export async function getChallengeChain(leafId: string): Promise<Suggestion[]> {
+  const supabase = createClient();
+  const chain: Suggestion[] = [];
+  let current: string | null = leafId;
+  for (let i = 0; i < 10 && current; i++) {
+    const { data } = await supabase
+      .from("suggestions")
+      .select("*, from_profile:from_user (id, username, avatar_url), to_profile:to_user (id, username, avatar_url)")
+      .eq("id", current)
+      .maybeSingle();
+    if (!data) break;
+    const row = data as Suggestion;
+    chain.unshift(row);
+    current = row.parent_id;
+  }
+  return chain;
 }
 
 export type CreateSuggestionResult =
@@ -38,18 +95,26 @@ export async function createSuggestion(params: {
   problemSlug: string;
   problemTitle: string;
   difficulty: Difficulty;
-  note?: string;
+  message?: string;
+  senderTimeSec?: number | null;
+  beatTime?: boolean;
+  deadlineAt?: string | null;
+  parentId?: string | null;
+  spoiler?: boolean;
 }): Promise<CreateSuggestionResult> {
   const supabase = createClient();
   const slug = normalizeSlug(params.problemSlug);
   const title = params.problemTitle.trim();
-  const note = params.note?.trim() || null;
+  const message = params.message?.trim() || null;
   // Mirror DB guards client-side so junk never round-trips: slug format,
-  // title presence, note cap (suggestions_note_cap = 2000 bytes).
-  if (!title || !slug || (note && note.length > 2000)) {
+  // title presence, message cap (suggestions_note_cap = 2000 bytes).
+  if (!title || !slug || (message && message.length > 2000)) {
     return { ok: false, reason: "invalid" };
   }
   if (params.fromUser === params.toUser) {
+    return { ok: false, reason: "invalid" };
+  }
+  if (params.senderTimeSec != null && (!Number.isFinite(params.senderTimeSec) || params.senderTimeSec < 0)) {
     return { ok: false, reason: "invalid" };
   }
   const { data, error } = await supabase
@@ -60,8 +125,15 @@ export async function createSuggestion(params: {
       problem_slug: slug,
       problem_title: title,
       difficulty: params.difficulty,
-      note,
+      // `message` is the v2 column; `note` is the legacy name kept for the
+      // migration backfill and stays in sync via the trigger below.
+      message,
       status: "pending",
+      sender_time_sec: params.senderTimeSec ?? null,
+      beat_time: params.beatTime ?? false,
+      deadline_at: params.deadlineAt ?? null,
+      parent_id: params.parentId ?? null,
+      spoiler: params.spoiler ?? false,
     })
     .select(`
       *,
@@ -79,9 +151,117 @@ export async function createSuggestion(params: {
   return { ok: true, suggestion: data as Suggestion };
 }
 
-// Manual completion is assignee-only and requires LeetCode proof: the problem
-// must be solved in the caller's own status map (written only via the verified
-// RPC/session paths), never on a bare button press.
+/** Pending challenges for a slug involving the caller (problem page wiring). */
+export async function getChallengesForSlug(problemSlug: string): Promise<Suggestion[]> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data } = await supabase
+    .from("suggestions")
+    .select("*, from_profile:from_user (id, username, avatar_url), to_profile:to_user (id, username, avatar_url)")
+    .eq("problem_slug", problemSlug.toLowerCase())
+    .eq("status", "pending")
+    .or(`from_user.eq.${user.id},to_user.eq.${user.id}`)
+    .order("created_at", { ascending: false })
+    .limit(10);
+  return (data ?? []) as Suggestion[];
+}
+
+// Dismiss is recipient-or-sender; completed history stays.
+export async function dismissSuggestion(suggestionId: string): Promise<boolean> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("suggestions")
+    .update({ status: "dismissed", completed_at: new Date().toISOString() })
+    .eq("id", suggestionId);
+  if (error) {
+    throw new DataError("suggestions", "Couldn't dismiss that challenge. Try again.", { cause: error });
+  }
+  return true;
+}
+
+/**
+ * Accept: persists that the recipient took the challenge on, so the sender can
+ * see it is in progress and the battle can be attached to it (plan Step 10).
+ */
+export async function acceptSuggestion(
+  suggestionId: string,
+  callerUserId: string
+): Promise<{ ok: boolean; reason?: "not_recipient" | "not_pending" }> {
+  const supabase = createClient();
+  const { data: row } = await supabase
+    .from("suggestions")
+    .select("id, to_user, status")
+    .eq("id", suggestionId)
+    .maybeSingle();
+
+  if (!row || row.to_user !== callerUserId) return { ok: false, reason: "not_recipient" };
+  if (row.status !== "pending") return { ok: false, reason: "not_pending" };
+
+  const { error } = await supabase
+    .from("suggestions")
+    .update({ accepted_at: new Date().toISOString() })
+    .eq("id", suggestionId);
+  if (error) {
+    throw new DataError("suggestions", "Couldn't accept that challenge. Try again.", { cause: error });
+  }
+  return { ok: true };
+}
+
+/**
+ * Remind the other party at most once per 24h (plan Step 10). Low-noise: this
+ * is the only "nudge" primitive, and the throttle is enforced server-side.
+ */
+export async function remindSuggestion(
+  suggestionId: string,
+  callerUserId: string
+): Promise<{ ok: boolean; reason?: "not_party" | "throttled" | "not_pending" }> {
+  const supabase = createClient();
+  const { data: row } = await supabase
+    .from("suggestions")
+    .select("id, from_user, to_user, status, reminded_at")
+    .eq("id", suggestionId)
+    .maybeSingle();
+
+  if (!row) return { ok: false, reason: "not_party" };
+  if (row.from_user !== callerUserId && row.to_user !== callerUserId) {
+    return { ok: false, reason: "not_party" };
+  }
+  if (row.status !== "pending") return { ok: false, reason: "not_pending" };
+  if (row.reminded_at && Date.now() - new Date(row.reminded_at).getTime() < 86_400_000) {
+    return { ok: false, reason: "throttled" };
+  }
+
+  const { error } = await supabase
+    .from("suggestions")
+    .update({ reminded_at: new Date().toISOString() })
+    .eq("id", suggestionId);
+  if (error) {
+    throw new DataError("suggestions", "Couldn't send that reminder. Try again.", { cause: error });
+  }
+
+  // Tell the other party, if they are a real user with notifications on.
+  const recipient = row.from_user === callerUserId ? row.to_user : row.from_user;
+  try {
+    const { notify } = await import("@/lib/data/notifications");
+    await notify({
+      userId: recipient,
+      kind: "challenge",
+      title: "Challenge reminder",
+      body: `Someone nudged you about a pending challenge.`,
+      deepLink: `/c/${suggestionId}`,
+      actorId: callerUserId,
+    });
+  } catch {
+    // Notification is best-effort; the reminder is already recorded.
+  }
+  return { ok: true };
+}
+
+// caller's own status map (dock/sheet self-report counts; LeetCode sync merely
+// adds an evidence badge). Never completes on a bare button press.
+// Manual completion is assignee-only and requires the problem solved in the
+// caller's own status map. Never completes on a bare button press.
 export async function markSuggestionCompleted(
   suggestionId: string,
   callerUserId: string
@@ -89,7 +269,7 @@ export async function markSuggestionCompleted(
   const supabase = createClient();
   const { data: suggestion } = await supabase
     .from("suggestions")
-    .select("id, to_user, problem_slug, status")
+    .select("id, from_user, to_user, problem_slug, problem_title, status")
     .eq("id", suggestionId)
     .maybeSingle();
 
@@ -116,5 +296,24 @@ export async function markSuggestionCompleted(
     })
     .eq("id", suggestionId);
 
-  return error ? { ok: false, reason: "not_assignee" } : { ok: true };
+  if (error) return { ok: false, reason: "not_assignee" };
+  const { logProblemEvent } = await import("@/lib/data/problemEvents");
+  await logProblemEvent({ problemSlug: suggestion.problem_slug, kind: "challenge_completed" }).catch(() => {});
+
+  // The sender is owed an answer: this is the return reason for the ritual (§10).
+  try {
+    const { notify } = await import("@/lib/data/notifications");
+    await notify({
+      userId: suggestion.from_user,
+      kind: "challenge_completed",
+      title: "Challenge completed",
+      body: `@${callerUserId.slice(0, 8)} solved ${suggestion.problem_title}.`,
+      deepLink: `/c/${suggestionId}`,
+      actorId: callerUserId,
+    });
+  } catch {
+    // Best-effort: never block the completion itself.
+  }
+
+  return { ok: true };
 }

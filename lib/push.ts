@@ -51,7 +51,63 @@ export async function sendPushNotification(
 
     return { success: true, statusCode: response.statusCode };
   } catch (error) {
-    console.error("Error sending push notification:", error);
-    return { success: false, error };
+    // 404/410 mean the browser dropped the subscription: retire it rather than
+    // retrying a dead endpoint forever.
+    const status = (error as { statusCode?: number })?.statusCode;
+    return {
+      success: false,
+      gone: status === 404 || status === 410,
+      error,
+    };
   }
+}
+
+/**
+ * Fan a payload out to every live subscription a user holds. Server-only
+ * (imports the service client) — never call from a client component.
+ */
+export async function sendPushToUser(
+  userId: string,
+  payload: { title: string; body?: string; url?: string }
+): Promise<{ sent: number; retired: number }> {
+  if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+    return { sent: 0, retired: 0 };
+  }
+
+  const { getServiceClient } = await import("@/lib/supabase/service");
+  const supabase = getServiceClient();
+  if (!supabase) return { sent: 0, retired: 0 };
+
+  const { data: subs, error } = await supabase
+    .from("push_subscriptions")
+    .select("id, endpoint, p256dh, auth")
+    .eq("user_id", userId);
+  if (error || !subs || subs.length === 0) return { sent: 0, retired: 0 };
+
+  const wire: PushNotificationPayload = {
+    title: payload.title,
+    body: payload.body ?? "",
+    data: payload.url ? { url: payload.url } : undefined,
+  };
+
+  let sent = 0;
+  let retired = 0;
+  for (const sub of subs as {
+    id: string;
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+  }[]) {
+    const result = await sendPushNotification(
+      { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
+      wire
+    );
+    if (result.success) sent++;
+    else if (result.gone) {
+      await supabase.from("push_subscriptions").delete().eq("id", sub.id);
+      retired++;
+    }
+  }
+
+  return { sent, retired };
 }
