@@ -1,31 +1,84 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Spinner } from "@/components/ui/Spinner";
+import { PageLoader } from "@/components/ui/PageLoader";
+import { track } from "@/lib/analytics";
+import { safeNext } from "@/lib/safeNext";
 import { cn } from "@/lib/utils";
 
+// Objectives shape the Daily Battle "why" copy and the primer surface. They are
+// an intent signal, not a skill assessment (plan Step 3: max 5 fields, no test).
+const OBJECTIVES = [
+  { value: "internship", label: "Internship prep" },
+  { value: "fulltime", label: "Full-time roles" },
+  { value: "consistency", label: "Daily consistency" },
+] as const;
+
+type Objective = (typeof OBJECTIVES)[number]["value"];
+
+/**
+ * Suspense wrapper: LoginForm reads ?next= via useSearchParams, which opts the
+ * subtree into client rendering. Without this boundary `next build` cannot
+ * prerender /login.
+ */
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<PageLoader label="Loading..." />}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const supabase = createClient();
   const { user, loading: authLoading } = useAuth();
+  const searchParams = useSearchParams();
+
+  // Where to land after auth. Middleware sets ?next= from the attempted route,
+  // so a logged-out challenge-link visitor resumes at the battle (Bible §42).
+  const nextPath = useMemo(
+    () => safeNext(searchParams.get("next")) ?? "/home",
+    [searchParams]
+  );
+  const isChallengeSignup = useMemo(
+    () => nextPath.startsWith("/c/") || nextPath.startsWith("/squad/join/"),
+    [nextPath]
+  );
 
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [leetcodeUsername, setLeetcodeUsername] = useState("");
+  const [objective, setObjective] = useState<Objective | "">("");
+  // Squad choice at signup is one tap, never a wizard step. "" = continue solo.
+  const [squadName, setSquadName] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // If user is already logged in, redirect to home immediately
+  // If user is already logged in, redirect to the intended destination
   useEffect(() => {
     if (!authLoading && user) {
-      window.location.replace("/");
+      window.location.replace(nextPath);
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, nextPath]);
+
+  // Fire the deep-link signup event the plan asks for (Step 2/Step 26 Loop A).
+  const trackSignupFromChallenge = useCallback(
+    (via: string) => {
+      if (isChallengeSignup) {
+        track("signup_from_challenge", { via, next: nextPath });
+      }
+      track("signup_completed", { via, next: nextPath });
+    },
+    [isChallengeSignup, nextPath]
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,16 +100,18 @@ export default function LoginPage() {
         }
 
         if (data.session) {
-          window.location.replace("/");
+          trackSignupFromChallenge("password_signin");
+          window.location.replace(nextPath);
           return;
         }
       } else {
         // Sign Up — hoist field values so edits mid-flight can't swap handles.
+        // LeetCode handle is OPTIONAL (Bible §43): the app must work without it.
         const squadName = username.trim();
         const lcHandle = leetcodeUsername.trim();
         const emailAddr = email.trim();
-        if (!squadName || !lcHandle) {
-          setErrorMsg("Please provide both Squad username and LeetCode handle.");
+        if (!squadName) {
+          setErrorMsg("Please provide a squad username.");
           setLoading(false);
           return;
         }
@@ -95,21 +150,64 @@ export default function LoginPage() {
                 setLoading(false);
                 return;
               }
-              const syncRes = await fetch("/api/sync/leetcode", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${authData.session.access_token}`,
-                },
-                body: JSON.stringify({ username: lcHandle }),
-              });
-              if (!syncRes.ok) {
-                console.warn("Post-signup LeetCode sync failed; background sync will retry.");
+              // Optional handle: only sync when provided. Skipping never blocks entry.
+              if (lcHandle) {
+                const syncRes = await fetch("/api/sync/leetcode", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${authData.session.access_token}`,
+                  },
+                  body: JSON.stringify({ username: lcHandle }),
+                });
+                if (!syncRes.ok) {
+                  console.warn("Post-signup LeetCode sync failed; background sync will retry.");
+                }
               }
             } catch (syncErr) {
               console.warn("Post-signup sync failed; background sync will retry:", syncErr);
             }
-            window.location.replace("/");
+
+            // Optional squad creation. Failure must never block the first battle:
+            // the user can create or join a squad later from /squad.
+            let squadCreated = false;
+            if (squadName) {
+              try {
+                const squadRes = await fetch("/api/squads", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${authData.session.access_token}`,
+                  },
+                  body: JSON.stringify({ name: squadName }),
+                });
+                squadCreated = squadRes.ok;
+                if (!squadRes.ok) {
+                  console.warn("Squad creation failed; user can create one later from /squad.");
+                }
+              } catch (squadErr) {
+                console.warn("Squad creation failed; user can create one later:", squadErr);
+              }
+            }
+
+            trackSignupFromChallenge(squadCreated ? "password_signup_squad" : "password_signup");
+
+            // Plan Step 3: land on the first battle, never on a profile wall.
+            if (objective) {
+              try {
+                await fetch("/api/auth/profile", {
+                  method: "PATCH",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${authData.session.access_token}`,
+                  },
+                  body: JSON.stringify({ objective }),
+                });
+              } catch (objErr) {
+                console.warn("Objective save failed; non-blocking:", objErr);
+              }
+            }
+            window.location.replace(nextPath);
             return;
           } else {
             setSuccessMsg("Account created! Check your email to confirm your account. Your squad profile and LeetCode stats sync on first sign-in.");
@@ -159,6 +257,9 @@ export default function LoginPage() {
           </div>
           <p className="text-[11px] text-white/40 tracking-[0.22em] uppercase font-medium mt-3">
             Developer Squad Arena
+          </p>
+          <p className="text-xs text-white/50 mt-3 max-w-xs mx-auto leading-relaxed">
+            Practice DSA with your people. Learn how they think. Challenge them. Get better together.
           </p>
         </div>
 
@@ -231,18 +332,54 @@ export default function LoginPage() {
 
                 <div>
                   <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
-                    LeetCode Username
+                    What are you here for? <span className="text-white/25 normal-case font-normal">(optional)</span>
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {OBJECTIVES.map((o) => (
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => setObjective(objective === o.value ? "" : o.value)}
+                        aria-pressed={objective === o.value}
+                        className={cn(
+                          "px-2 py-2 rounded-xl border text-[11px] font-semibold transition-all cursor-pointer",
+                          objective === o.value
+                            ? "bg-[#fa586a]/20 border-[#fa586a]/60 text-white"
+                            : "bg-white/[0.04] hover:bg-white/[0.06] border-white/[0.08] text-white/50 hover:text-white/80"
+                        )}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
+                    Start a squad <span className="text-white/25 normal-case font-normal">(optional — you can also join later)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={squadName}
+                    onChange={(e) => setSquadName(e.target.value)}
+                    placeholder="e.g. College DSA crew — leave blank to go solo"
+                    className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-[#fa586a]/30 transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
+                    LeetCode Username <span className="text-white/25 normal-case font-normal">(optional)</span>
                   </label>
                   <input
                     type="text"
                     value={leetcodeUsername}
                     onChange={(e) => setLeetcodeUsername(e.target.value)}
-                    placeholder="e.g. rahul_dev"
+                    placeholder="e.g. rahul_dev — connect later if you skip"
                     className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-[#fa586a]/30 transition-all font-mono"
-                    required
                   />
                   <span className="text-[10px] text-white/30 mt-1.5 pl-1 block">
-                    Used to synchronize contest rating, streaks, and problem submissions.
+                    Optional. Adds contest rating + LeetCode evidence badges. Everything else works without it — connect anytime from the Arena.
                   </span>
                 </div>
               </>
@@ -285,7 +422,7 @@ export default function LoginPage() {
               {loading ? (
                 <Spinner size="md" tone="inverse" className="border-white/20" />
               ) : (
-                <span>{mode === "signin" ? "Enter Arena" : "Create Account & Sync"}</span>
+                <span>{mode === "signin" ? "Enter Arena" : "Create Account"}</span>
               )}
             </button>
           </form>
@@ -293,7 +430,7 @@ export default function LoginPage() {
 
         {/* ── Subtitle Footer ── */}
         <div className="mt-8 text-center text-[11px] text-white/30 tracking-wider">
-          Squad LeetCode Leaderboard & Roadmaps
+          No LeetCode account needed to start. Solve your first battle in under 2 minutes.
         </div>
       </div>
     </div>
