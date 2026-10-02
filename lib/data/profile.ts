@@ -37,7 +37,12 @@ export async function toggleFollow(followedId: string, follow: boolean): Promise
   } = await supabase.auth.getUser();
   if (!user) throw new DataError("feed", "Log in to follow.");
   if (follow) {
-    const { error } = await supabase.from("follows").insert({ followed_id: followedId });
+    // follower_id must be sent: the insert policy is
+    // `with check ((select auth.uid()) = follower_id)`. Omitting it made every
+    // Follow fail, which is why the Following tab appeared empty.
+    const { error } = await supabase
+      .from("follows")
+      .insert({ follower_id: user.id, followed_id: followedId });
     // 23505 = already following. Treat it as success: the desired state holds.
     if (error && error.code !== "23505") {
       throw new DataError("feed", "Couldn't follow.", { cause: error });

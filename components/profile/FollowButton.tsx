@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { UserPlus, UserCheck } from "lucide-react";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { isFollowing, toggleFollow } from "@/lib/data/profile";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
@@ -11,19 +12,29 @@ import { track } from "@/lib/analytics";
  *
  * Reads its state on mount rather than taking it as a prop, so a profile page
  * that loads its data in one call does not need a second round trip just to get
- * this right. Following yourself is not offered: the table refuses it, and a
- * button that always fails is worse than no button.
+ * this right.
+ *
+ * Renders nothing on your own profile. `follows` has
+ * `check (follower_id <> followed_id)`, so a self-follow button is a button
+ * that always fails — and on a pattern page where you are the only person who
+ * teaches that pattern, it was the only button there was.
  */
 export function FollowButton({ userId, username }: { userId: string; username: string }) {
+  const { user } = useAuth();
   const [following, setFollowing] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isSelf = user?.id === userId;
+
   useEffect(() => {
+    if (isSelf) return;
     void isFollowing(userId)
       .then(setFollowing)
       .catch(() => setFollowing(false));
-  }, [userId]);
+  }, [userId, isSelf]);
+
+  if (isSelf) return null;
 
   const toggle = async () => {
     setBusy(true);

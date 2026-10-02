@@ -282,7 +282,14 @@ export async function reportFeedEvent(
   detail?: string
 ): Promise<void> {
   const supabase = createClient();
+  // reporter_id must be sent: the insert policy is
+  // `with check ((select auth.uid()) = reporter_id)` and no trigger fills it.
+  // Omitting it made every Report fail.
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new DataError("feed", "Log in to report.");
+
   const { error } = await supabase.from("feed_reports").insert({
+    reporter_id: user.id,
     event_id: eventId,
     reason,
     detail: detail ?? null,
@@ -292,7 +299,12 @@ export async function reportFeedEvent(
 
 export async function blockUser(blockedId: string): Promise<void> {
   const supabase = createClient();
-  const { error } = await supabase.from("user_blocks").insert({ blocked_id: blockedId });
+  // blocker_id, same reason as reporter_id above.
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new DataError("feed", "Log in to block.");
+  const { error } = await supabase
+    .from("user_blocks")
+    .insert({ blocker_id: user.id, blocked_id: blockedId });
   if (error) throw new DataError("feed", "Couldn't block that person.", { cause: error });
 }
 

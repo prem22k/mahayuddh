@@ -90,9 +90,21 @@ export async function createStuckRequest(params: {
   const supabase = createClient();
   const visibility = params.visibility ?? "squad";
 
+  // user_id has to be sent explicitly. The insert policy is
+  // `with check ((select auth.uid()) = user_id)` and no trigger fills it in, so
+  // omitting it fails with a not-null violation for every caller.
+  //
+  // This was broken from Step 18 until a browser test drove the Ask-help tile
+  // and surfaced "Couldn't post that request. The integration suite missed it
+  // because it inserted through the service role, which bypasses RLS and was
+  // given a user_id by the test itself.
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Log in to ask for help." };
+
   const { data, error } = await supabase
     .from("stuck_requests")
     .insert({
+      user_id: user.id,
       problem_slug: params.problemSlug.toLowerCase(),
       level: params.level,
       visibility,
@@ -150,8 +162,16 @@ export async function replyToStuckRequest(params: {
   if (body.length > 4000) return { ok: false, error: "Keep it under 4000 characters." };
 
   const supabase = createClient();
+  // author_id has to be sent: the insert policy is
+  // `with check ((select auth.uid()) = author_id)` with no trigger filling it.
+  // Same class of bug as createStuckRequest above, and it meant the whole
+  // respond-to-a-stuck-mate path failed for everyone.
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Log in to reply." };
+
   const { error } = await supabase.from("stuck_replies").insert({
     request_id: params.requestId,
+    author_id: user.id,
     level: params.level,
     body_md: body,
   });
