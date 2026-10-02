@@ -1,4 +1,4 @@
-# Step 27 — Making the gates answerable (`4a7c1f2`)
+# Step 27 — Making the gates answerable (`31017ca`)
 
 Bible §58, §59, §60, §76.
 
