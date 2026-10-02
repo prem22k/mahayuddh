@@ -3,6 +3,7 @@ import Link from "next/link";
 export const metadata = { title: "Practice | Mahayuddh" };
 
 import { PracticeHub } from "@/components/practice/PracticeHub";
+import { NextBattle } from "@/components/recommend/NextBattle";
 
 // Practice hub (Bible §52, §23, §25): Review due / Weak patterns / Continue / New.
 export default function PracticePage() {
@@ -15,6 +16,9 @@ export default function PracticePage() {
         <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">Practice</h1>
         <p className="text-xs text-white/40 mt-1">Revisit what&apos;s fading. Attack weak patterns. Then go new.</p>
       </div>
+      {/* Step 24: "Next battle" with truthful why, on the practice hub (§24). */}
+      <NextBattle surface="practice_hub" />
+
       <PracticeHub />
       <Link href="/" className="inline-block text-xs text-[#fa586a] font-semibold hover:underline">
         ← Today&apos;s battle on the Arena

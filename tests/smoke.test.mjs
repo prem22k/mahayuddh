@@ -43,6 +43,19 @@ import { RITUALS } from "../lib/rituals.ts";
 import { buildJourney, journeyWindow, median } from "../lib/journey.ts";
 import { withVia, viaSlug, artifactPath, shareTargets } from "../lib/share.ts";
 import {
+  recommendNextBattle,
+  isPlateau,
+  buildSignalsFromEvents,
+  recommendationHeadline,
+  PLATEAU_ATTEMPTS,
+} from "../lib/recommend.ts";
+import {
+  canonicalPattern,
+  prereqsFor,
+  prereqStatus,
+  PATTERN_PREREQS,
+} from "../lib/patternPrereqs.ts";
+import {
   reputationDimensions,
   oftenTeaches,
   NO_SINGLE_REPUTATION_SCORE,
@@ -1596,5 +1609,277 @@ describe("oftenTeaches", () => {
 
   it("copes with nothing to say", () => {
     assert.deepEqual(oftenTeaches([]), []);
+  });
+});
+
+// ── Step 24: recommendation engine (Bible §24) ───────────────────────────────
+
+const REC_NOW = new Date("2026-10-30T12:00:00Z").getTime();
+const DAY = 86_400_000;
+
+function cand(slug, patterns, difficulty = "Medium") {
+  return { titleSlug: slug, title: slug.replace(/-/g, " "), difficulty, patterns };
+}
+
+function psig(over = {}) {
+  return { pattern: "", attempted: 0, solved: 0, failed: 0, lastTouchedAt: null, ...over };
+}
+
+function probSig(over = {}) {
+  return { slug: "x", attempts: 0, failures: 0, solves: 0, durations: [], lastTouchedAt: null, ...over };
+}
+
+describe("canonicalPattern", () => {
+  it("folds both vocabularies this app has onto one name", () => {
+    // Measured from the live catalog: topics say "Array", sheets say
+    // "Arrays & Hashing", categories say "Stack and Queue".
+    assert.equal(canonicalPattern("array"), "Arrays");
+    assert.equal(canonicalPattern("Arrays & Hashing"), "Arrays");
+    assert.equal(canonicalPattern("stack and queue"), "Stack");
+    assert.equal(canonicalPattern("heap (priority queue)"), "Heap");
+    assert.equal(canonicalPattern("1-D Dynamic Programming"), "1-D Dynamic Programming");
+  });
+
+  it("folds case-insensitively against its own keys", () => {
+    // Regression: "graphs" is not in the alias table, and returning it raw made
+    // prereqsFor("graphs") empty for a pattern this file does know.
+    assert.equal(canonicalPattern("graphs"), "Graphs");
+    assert.equal(canonicalPattern("sliding window"), "Sliding Window");
+  });
+
+  it("returns an unknown pattern unchanged so nothing blocks on a guess", () => {
+    assert.equal(canonicalPattern("Some New Topic"), "Some New Topic");
+    assert.deepEqual(prereqsFor("Some New Topic"), []);
+  });
+});
+
+describe("prereqStatus", () => {
+  it("names the prerequisites it found, so the claim can be checked", () => {
+    const v = prereqStatus("Sliding Window", new Map([["Arrays", 9], ["Hash Table", 4]]));
+    assert.deepEqual(v.met, ["Arrays", "Hash Table"]);
+    assert.deepEqual(v.unmet, ["Two Pointers"]);
+    assert.equal(v.ready, false);
+  });
+
+  it("is ready when every prerequisite has exposure", () => {
+    const v = prereqStatus("Sliding Window", new Map([["Arrays", 9], ["Hash Table", 4], ["Two Pointers", 2]]));
+    assert.equal(v.ready, true);
+  });
+
+  it("treats a pattern with no prerequisites as ready", () => {
+    assert.equal(prereqStatus("Arrays", new Map()).ready, true);
+  });
+});
+
+describe("isPlateau", () => {
+  it("needs attempts AND at least two timed solves", () => {
+    assert.equal(isPlateau(probSig({ attempts: 5, durations: [] })), false);
+    assert.equal(isPlateau(probSig({ attempts: 1, durations: [900, 300] })), false);
+  });
+
+  it("is true when the most recent is no better than the first", () => {
+    assert.equal(isPlateau(probSig({ attempts: 4, durations: [300, 600, 500] })), true);
+  });
+
+  it("is false when they are actually getting faster", () => {
+    assert.equal(isPlateau(probSig({ attempts: 4, durations: [900, 600, 300] })), false);
+  });
+
+  it("counts a bare event as nothing", () => {
+    assert.equal(isPlateau(undefined), false);
+  });
+});
+
+describe("recommendNextBattle", () => {
+  it("returns null when it has no real reason — no filler bullet", () => {
+    const rec = recommendNextBattle({
+      candidates: [cand("solved-one", ["Arrays"])],
+      patterns: new Map([["Arrays", psig({ attempted: 10, solved: 10 })]]),
+      problems: new Map(),
+      now: REC_NOW,
+    });
+    assert.equal(rec, null);
+  });
+
+  it("only recommends a problem it can justify", () => {
+    const rec = recommendNextBattle({
+      candidates: [
+        cand("known-good", ["Sliding Window"]),
+        cand("known-bad", ["Arrays"]),
+      ],
+      patterns: new Map([
+        ["Sliding Window", psig({ attempted: 1 })],
+        ["Arrays", psig({ attempted: 40, solved: 40 })],
+      ]),
+      problems: new Map(),
+      now: REC_NOW,
+    });
+    assert.equal(rec.problem.titleSlug, "known-good");
+    assert.equal(rec.reasonCount, rec.why.length);
+    assert.ok(rec.why.length >= 1);
+  });
+
+  it("cites the prerequisites by name when it uses that signal", () => {
+    const rec = recommendNextBattle({
+      candidates: [cand("window", ["Sliding Window"])],
+      patterns: new Map([
+        ["Sliding Window", psig({ attempted: 1 })],
+        ["Arrays", psig({ attempted: 9 })],
+        ["Hash Table", psig({ attempted: 5 })],
+      ]),
+      problems: new Map(),
+      now: REC_NOW,
+    });
+    assert.ok(rec.why.some((w) => w.includes("prereq met")), rec.why.join(" | "));
+    assert.ok(rec.why.some((w) => w.includes("Arrays")));
+  });
+
+  it("demotes a problem whose prerequisites are not met", () => {
+    const rec = recommendNextBattle({
+      candidates: [
+        cand("dp-too-early", ["Dynamic Programming"]),
+        cand("arrays-fresh", ["Arrays"]),
+      ],
+      patterns: new Map([
+        ["Dynamic Programming", psig({ attempted: 1 })],
+        ["Arrays", psig({ attempted: 1 })],
+      ]),
+      problems: new Map(),
+      now: REC_NOW,
+    });
+    assert.equal(rec.problem.titleSlug, "arrays-fresh");
+  });
+
+  it("reports unmet prerequisites instead of hiding the problem", () => {
+    const rec = recommendNextBattle({
+      candidates: [cand("dp", ["Dynamic Programming"])],
+      patterns: new Map([["Dynamic Programming", psig({ attempted: 2 })]]),
+      problems: new Map(),
+      now: REC_NOW,
+    });
+    assert.deepEqual(rec.blockedBy.sort(), ["Arrays", "Hash Table", "Recursion"]);
+  });
+
+  it("counts the real gap in days", () => {
+    const rec = recommendNextBattle({
+      candidates: [cand("graphs", ["Graphs"])],
+      patterns: new Map([
+        ["Graphs", psig({ attempted: 2, lastTouchedAt: REC_NOW - 30 * DAY })],
+        ["Arrays", psig({ attempted: 9 })],
+        ["Hash Table", psig({ attempted: 9 })],
+        ["Recursion", psig({ attempted: 9 })],
+      ]),
+      problems: new Map(),
+      now: REC_NOW,
+    });
+    assert.ok(rec.why.some((w) => w.includes("30 days")), rec.why.join(" | "));
+  });
+
+  it("ranks a plateau above an equal-count fresh problem", () => {
+    const rec = recommendNextBattle({
+      candidates: [
+        cand("plateau-problem", ["Arrays"]),
+        cand("fresh-problem", ["Arrays"]),
+      ],
+      patterns: new Map([["Arrays", psig({ attempted: 4 })]]),
+      problems: new Map([
+        ["plateau-problem", probSig({ attempts: 5, durations: [300, 700, 600] })],
+      ]),
+      now: REC_NOW,
+    });
+    assert.equal(rec.problem.titleSlug, "plateau-problem");
+    assert.ok(rec.why.some((w) => w.includes("not getting faster")), rec.why.join(" | "));
+  });
+
+  it("is deterministic — the same inputs give the same answer", () => {
+    const input = {
+      candidates: [cand("a", ["Arrays"]), cand("b", ["Arrays"]), cand("c", ["Arrays"])],
+      patterns: new Map([["Arrays", psig({ attempted: 1 })]]),
+      problems: new Map(),
+      now: REC_NOW,
+    };
+    const first = recommendNextBattle(input).problem.titleSlug;
+    for (let i = 0; i < 5; i++) {
+      assert.equal(recommendNextBattle(input).problem.titleSlug, first);
+    }
+  });
+
+  it("gives a thin recommendation one bullet, not a padded list", () => {
+    // The only real signal here is the plateau. Adding "Unsolved in your
+    // sheets" or a vague "recommended for you" would make a weak case look
+    // strong, and reasonCount exists so the UI can show how thin it is.
+    const rec = recommendNextBattle({
+      candidates: [cand("plateau-only", ["Arrays"])],
+      patterns: new Map([["Arrays", psig({ attempted: 9 })]]),
+      problems: new Map([
+        ["plateau-only", probSig({ attempts: 5, durations: [300, 700] })],
+      ]),
+      now: REC_NOW,
+    });
+    assert.ok(rec);
+    assert.equal(rec.why.length, 1);
+    assert.equal(rec.reasonCount, 1);
+    assert.ok(rec.why[0].includes("not getting faster"));
+  });
+});
+
+describe("recommendationHeadline", () => {
+  it("matches the shape §24 specifies", () => {
+    const rec = recommendNextBattle({
+      candidates: [cand("number-of-islands", ["Graphs"])],
+      patterns: new Map([
+        ["Graphs", psig({ attempted: 1, lastTouchedAt: REC_NOW - 12 * DAY })],
+        ["Arrays", psig({ attempted: 9 })],
+        ["Hash Table", psig({ attempted: 9 })],
+        ["Recursion", psig({ attempted: 9 })],
+      ]),
+      problems: new Map(),
+      now: REC_NOW,
+    });
+    const h = recommendationHeadline(rec);
+    assert.match(h, /^Next battle: number of islands — Why: /);
+    assert.ok(h.includes("prereq met"));
+  });
+});
+
+describe("buildSignalsFromEvents", () => {
+  it("orders durations chronologically, or plateau detection lies", () => {
+    const patternsBySlug = new Map([["p", ["Arrays"]]]);
+    const { problems, patterns } = buildSignalsFromEvents([
+      { problem_slug: "p", kind: "solved", created_at: "2026-10-20T00:00:00Z", duration_sec: 900, patternsBySlug },
+      { problem_slug: "p", kind: "revisited", created_at: "2026-10-25T00:00:00Z", duration_sec: 300, patternsBySlug },
+    ]);
+    assert.deepEqual(problems.get("p").durations, [900, 300]);
+    assert.equal(isPlateau({ ...problems.get("p"), attempts: 5 }), false);
+    assert.equal(patterns.get("Arrays").solved, 2);
+  });
+
+  it("does not count an 'explained' event as touching the problem", () => {
+    const patternsBySlug = new Map([["p", ["Arrays"]]]);
+    const { problems } = buildSignalsFromEvents([
+      { problem_slug: "p", kind: "solved", created_at: "2026-10-20T00:00:00Z", duration_sec: 900, patternsBySlug },
+      { problem_slug: "p", kind: "explained", created_at: "2026-10-28T00:00:00Z", duration_sec: null, patternsBySlug },
+    ]);
+    assert.equal(problems.get("p").attempts, 1);
+  });
+});
+
+describe("PATTERN_PREREQS", () => {
+  it("has no duplicate keys that silently overwrite each other", () => {
+    // A duplicate object key is legal JS and invisible in review: the second
+    // one just wins. Asserted by checking every prereq list resolves.
+    for (const [pattern, prereqs] of Object.entries(PATTERN_PREREQS)) {
+      assert.ok(Array.isArray(prereqs), `${pattern} has a malformed prereq list`);
+      for (const p of prereqs) {
+        assert.equal(typeof p, "string");
+      }
+    }
+    assert.ok(PATTERN_PREREQS["Matrix"].includes("Arrays"));
+  });
+
+  it("never lists a pattern as its own prerequisite", () => {
+    for (const [pattern, prereqs] of Object.entries(PATTERN_PREREQS)) {
+      assert.equal(prereqs.includes(pattern), false, `${pattern} requires itself`);
+    }
   });
 });

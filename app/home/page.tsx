@@ -26,6 +26,7 @@ import { getPendingSuggestionCount } from "@/lib/data/suggestions";
 import { getCatalogTopicsSummary, getCatalogCount } from "@/lib/data/problems";
 import { getActiveGoalPattern, getSquadMemberIds } from "@/lib/data/squads";
 import { TodaysBattle } from "@/components/battle/TodaysBattle";
+import { NextBattle } from "@/components/recommend/NextBattle";
 import { HomeSquadPanels } from "@/components/battle/HomeSquadPanels";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ConnectLeetCodeModal } from "@/components/modals/ConnectLeetCodeModal";
@@ -238,6 +239,11 @@ export default function ArenaPage() {
             squadMemberIds={squadMemberIds}
             goalPattern={goalPattern}
           />
+
+          {/* ── Next battle (Step 24 engine, §24) ──
+              Below Today's Battle on purpose: the daily pick is the day's
+              assignment, this is the suggestion for what comes after. */}
+          <NextBattle surface="home" goalPattern={goalPattern} />
 
           {/* ── Card 2: Streak Guardian ── */}
           <Link

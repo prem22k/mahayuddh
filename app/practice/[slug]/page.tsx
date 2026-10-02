@@ -9,6 +9,7 @@ import { copyText } from "@/lib/clipboard";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { PageLoader } from "@/components/ui/PageLoader";
+import { NextBattle } from "@/components/recommend/NextBattle";
 import { difficultyBadgeClass } from "@/components/ui/DifficultyBadge";
 import { ProblemLink } from "@/components/ui/ProblemLink";
 import { getCatalogBySlugs } from "@/lib/data/problems";
@@ -504,6 +505,12 @@ export default function ProblemPage() {
           ))}
         </section>
       )}
+
+      {/* ── What next? (Step 24, §24) ──
+          On the problem page because that is where somebody has just decided
+          this one is behind them, which is exactly when a "next" suggestion is
+          useful rather than noise. */}
+      <NextBattle surface="problem" />
 
       {/* ── Open challenges on this problem ── */}
       {challenges.length > 0 && (

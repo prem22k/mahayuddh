@@ -42,6 +42,11 @@ export const ANALYTICS_EVENTS = [
   "approach_copied",
   "compare_viewed",
   "recap_generated",
+  // Recommendation engine (Step 24). The accept rate is §24's metric, and it
+  // needs the decision to be recorded independently of recommendation_log so
+  // the funnel query does not have to read somebody's own rows.
+  "recommendation_shown",
+  "recommendation_decided",
   // Feed (Step 21, Bible §19/§51). Useful-action rate per feed view is the
   // Step 21 metric, so the denominators and the actions are both named.
   // feed_view is the DENOMINATOR (a feed was looked at); feed_action is the
