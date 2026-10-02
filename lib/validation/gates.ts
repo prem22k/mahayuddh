@@ -50,7 +50,11 @@ export interface RawGateRow {
 const CANNOT_TELL: Record<GateId, string> = {
   activation:
     "Battles started. It cannot show that anybody understood why, only that a button got pressed.",
-  social: "Nothing in the product instructs sending a challenge, so these are unprompted. It cannot show intent, and it cannot show a challenge that stayed in a DM.",
+  // Checked against the product, not assumed from the shape of the code: the
+  // product says "challenge someone" in at least six places, including a button
+  // after every solve. So this counts prompted behaviour, and it does not answer
+  // §58's "without being manually instructed" — the §59 log does.
+  social: "These are PROMPTED, not unprompted — a 'Challenge someone' button follows every solve, and there are four more prompts besides. It also cannot show a challenge that stayed in a DM.",
   learning:
     "Approaches written and things copied. Reading is not measurable from rows at all — a primer opened and closed leaves nothing behind.",
   retention:
@@ -152,7 +156,7 @@ export const REVIEW_QUESTIONS: ReviewQuestion[] = [
     id: "interact",
     question: "Are squads interacting?",
     gate: "social",
-    note: "The challenge loop is Loop A. If it is not firing unprompted, everything built for it is early.",
+    note: "Loop A. Counts prompted challenges, and the product prompts six ways — so this is weaker evidence than it looks. Whether anyone challenges anyone naturally is §59's day-3 question, not a query.",
   },
   {
     id: "learn",

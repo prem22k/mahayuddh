@@ -43,7 +43,7 @@ the SQL half directly.
 | Gate | Measured | What it cannot tell you |
 |---|---|---|
 | Activation | Battles started, median hours to first | That anybody understood *why* |
-| Social | Challenges sent & completed | Intent, or a challenge that stayed in a DM |
+| Social | Challenges sent & completed | **These are prompted** — the product says "challenge someone" in six places, so the count is not §58's "without being instructed" |
 | Learning | Approaches written, primers, things copied | **Reading at all** — a primer opened and closed leaves no row |
 | Retention | Distinct weeks with a solve in 21 days | A member returning vs. one background job |
 | Organic | Accounts joined via an attributed invite | An invite that went somewhere else entirely |
@@ -84,6 +84,37 @@ The nav maps to intent (§52), and this is not a member intent. §77 asks whethe
 thing makes someone more likely to practise, learn, challenge, teach, improve or
 return — a validation dashboard does not. It lives at `/validation`, out of the way,
 and that is the correct amount of prominence for a research tool.
+
+## Three more bugs, found by asking whether this was any good
+
+**The social gate claimed to measure something it does not.** Its detail line read
+*"No surface in the product instructs sending a challenge, so these are unprompted."*
+That was written from the shape of the code rather than from the product, and it is
+false in six places: post-solve "Challenge someone", "Solved — now explain it,
+challenge someone", "Challenge a Friend", two empty states, a leaderboard prompt and
+a home prompt. So the number measures prompt-following while claiming to measure
+spontaneity — which makes it weaker evidence than it looks, and §59's actual day-3
+question ("has someone *naturally* challenged someone") is not answerable from SQL at
+all. Corrected in `00032`.
+
+**"Save decision" silently threw a non-admin's work away.** `decideTriage` checked
+`error` only, and PostgREST returns *no error* for an RLS-filtered UPDATE — zero rows,
+no exception. So a non-admin typed all nine §60 fields, clicked Save, saw a success,
+and the notes were gone. The form now checks the row count and says so explicitly.
+This is the same PostgREST behaviour my own test caught; I fixed the test and left the
+shipped data layer broken.
+
+**Nobody but an admin could propose a feature.** One `for all` policy made the whole
+queue admin-only, so the researcher collecting requests during the two-week test
+could not file the request they heard three times in one afternoon. §60 says *every*
+proposed feature gets a label — proposals come from whoever notices something, the
+label is the commitment. `00033` opens INSERT to any signed-in user, and adds a
+trigger so the label cannot be smuggled in on insert, because the insert policy cannot
+check it and the rule belongs in the database rather than in the client that happens
+to be polite.
+
+All three were found by driving the forms, not by reading them. I had verified the
+page *rendered* and no console errors appeared, and treated that as verification.
 
 ## Four bugs, and one of them was in the test itself
 
@@ -150,9 +181,22 @@ Three real defects surfaced only because it was installed rather than read:
 
 ## Gates
 
-220 unit tests. **209 live-database checks across nine suites**, 25 of them new here.
+221 unit tests. **200 live-database checks across nine suites**, 27 of them new here.
 `tsc`, lint, static RLS audit and production build all clean. The page was driven in
-Chromium with zero console errors.
+Chromium with zero console errors — including submitting an observation, proposing a
+feature as a non-admin, being correctly refused a label, and switching squad scope.
+
+## Honest accounting of what "verified" means here
+
+| Verified | Not verified |
+|---|---|
+| Every gate's SQL against a live DB and an empty one | Whether any gate has ever returned a *meaningful* verdict — no real squad exists, so the board currently reads test-account data |
+| RLS on both tables, as a non-admin, by effect not by error message | The admin path through the UI — no non-admin can be blocked, which is also a failure mode I never exercised the other way |
+| 15 RPCs and 43 tables install from `schema.sql` | Migrations 10–31 replayed *on top of* `schema.sql`; README says "schema plus migrations" and I only tested the schema alone |
+| 3 of 22 triggers observed firing | The other 19, which exist and are wired identically |
+| Zero console errors on one page | Mobile breakpoints, keyboard navigation, screen readers, Core Web Vitals — none measured |
+| All AI gates refusing honestly | Any AI feature actually working: 4 of 5 have no provider behind them |
+| — | Push delivery against a real FCM endpoint |
 
 ## What is left
 

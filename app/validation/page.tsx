@@ -463,6 +463,11 @@ function TriageSection({
         testing · FUTURE waits for core validation · KILL adds cost without user value ·
         DUPLICATE is already solved.
       </p>
+      <p className="text-xs text-slate-500">
+        Anyone signed in can propose a feature. Assigning the label and the nine fields is
+        admin-only, and the save will tell you so rather than appearing to work — a label is
+        a commitment, and it is kept in the database so it cannot be skipped around the app.
+      </p>
 
       <form onSubmit={add} className="flex flex-wrap items-end gap-3">
         <label className="block flex-1 text-sm">

@@ -69,8 +69,8 @@ export interface NewObservation {
  */
 export async function recordObservation(input: NewObservation): Promise<void> {
   const supabase = createClient();
-  const { data } = await supabase.auth.getSession();
-  const userId = data.session?.user?.id;
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData.session?.user?.id;
   if (!userId) throw new DataError("observations", "Sign in to record an observation.");
 
   const text = input.observation.trim();
@@ -148,11 +148,11 @@ export async function addTriageFeature(feature: string): Promise<void> {
 /** Save the nine §60 fields and the label together. */
 export async function decideTriage(entry: TriageEntry): Promise<void> {
   const supabase = createClient();
-  const { data } = await supabase.auth.getSession();
-  const userId = data.session?.user?.id;
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData.session?.user?.id;
   if (!userId) throw new DataError("triage", "Sign in to record a decision.");
 
-  const { error } = await supabase
+  const { data: saved, error } = await supabase
     .from("feature_triage")
     .update({
       label: entry.label,
@@ -168,8 +168,23 @@ export async function decideTriage(entry: TriageEntry): Promise<void> {
       decided_by: userId,
       decided_at: new Date().toISOString(),
     })
-    .eq("feature", entry.feature);
+    .eq("feature", entry.feature)
+    .select("feature");
+
   if (error) throw new DataError("triage", "Couldn't save that decision. Retry.", { cause: error });
+
+  // A row count, not an error. Labels are admin-writable, and PostgREST returns
+  // NO error for an UPDATE that RLS filtered out — just zero rows. So the first
+  // version of this function checked `error` only, and every non-admin clicking
+  // "Save decision" was shown a success that had silently thrown their work
+  // away. §60 exists so a decision gets recorded; a form that reports success and
+  // records nothing is worse than a form that refuses.
+  if (!saved || saved.length === 0) {
+    throw new DataError(
+      "triage",
+      "Nothing was saved — labelling a feature is admin-only, and your notes were not kept. Copy them somewhere before closing this."
+    );
+  }
 }
 
 export type { Gate, TriageLabel };

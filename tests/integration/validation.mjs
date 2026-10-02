@@ -227,14 +227,32 @@ async function main() {
   const feature = `${tag}-proposal`;
   made.triage.push(feature);
 
-  await check("a non-admin cannot add to the triage queue", async () => {
+  await check("a signed-in member CAN propose a feature", async () => {
+    // §60: "Every proposed feature gets one of these labels." Proposals come
+    // from whoever noticed something. It was admin-only until 00033, which meant
+    // the researcher collecting requests could not file one.
     const c = await asUser(observer.email);
     const { error } = await c.from("feature_triage").insert({ feature });
-    assert(error, "a non-admin wrote to the triage queue");
+    assert(!error, `a signed-in member could not propose a feature: ${error?.message}`);
+  });
+
+  await check("an anonymous visitor cannot propose a feature", async () => {
+    const anon = createClient(env.NEXT_PUBLIC_SUPABASE_URL, anonKey, { auth: { persistSession: false } });
+    const { error } = await anon.from("feature_triage").insert({ feature: `${feature}-anon` });
+    assert(error, "RLS allowed an anonymous proposal");
+    const { error: claim } = await anon.from("feature_triage").insert({ feature: `${feature}-anon2`, label: "CORE" });
+    assert(claim, "RLS allowed an anonymous labelled proposal");
+  });
+
+  await check("a member cannot smuggle a label in with the proposal", async () => {
+    // The insert policy cannot check the label, so the trigger does: a label is a
+    // commitment and the rule belongs in the database, not in the client.
+    const c = await asUser(observer.email);
+    const { error } = await c.from("feature_triage").insert({ feature: `${feature}-sneaky`, label: "CORE" });
+    assert(error, "a non-admin attached a label at insert time");
   });
 
   await check("a non-admin cannot label a feature", async () => {
-    await service.from("feature_triage").insert({ feature });
     const c = await asUser(observer.email);
     // Asserted on the EFFECT, not on `error`. PostgREST returns no error and
     // zero rows for an UPDATE that RLS filtered out, so a test asserting

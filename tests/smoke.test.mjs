@@ -2263,6 +2263,15 @@ describe("buildGates", () => {
     }
   });
 
+  it("does not claim the challenge count is unprompted", () => {
+    // The product says "challenge someone" in six places. A gate that called its
+    // own count "unprompted" would be measuring prompt-following while claiming
+    // to measure §58's "without being manually instructed".
+    const social = buildGates(RAW).find((g) => g.id === "social");
+    assert.doesNotMatch(social.cannotTell, /these are unprompted/i);
+    assert.match(social.cannotTell, /PROMPTED/);
+  });
+
   it("never lets reading pass for learning", () => {
     const learning = buildGates(RAW).find((g) => g.id === "learning");
     assert.match(learning.cannotTell, /Reading is not measurable/i);
