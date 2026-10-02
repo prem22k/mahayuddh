@@ -2,10 +2,13 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { Suspense } from "react";
 import { useParams } from "next/navigation";
 import { Play, ArrowLeft, Copy, Check } from "lucide-react";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { PageLoader } from "@/components/ui/PageLoader";
+import { ShareRow } from "@/components/ui/ShareRow";
+import { TrackVisit } from "@/components/ui/TrackVisit";
 import { getPrimer } from "@/lib/data/primers";
 import { getCatalogBySlugs } from "@/lib/data/problems";
 import { copyPrimerToNotebook } from "@/lib/data/notebook";
@@ -71,6 +74,9 @@ export default function PrimerPage() {
 
   return (
     <div className="space-y-6 select-none max-w-2xl">
+      <Suspense fallback={null}>
+        <TrackVisit artifact={`primer:${primer.slug}`} />
+      </Suspense>
       <Link href="/primers" className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white transition-colors">
         <ArrowLeft className="w-3.5 h-3.5" />
         <span>All primers</span>
@@ -162,6 +168,25 @@ export default function PrimerPage() {
           {copied ? <Check className="w-3.5 h-3.5 text-[#30d158]" /> : <Copy className="w-3.5 h-3.5" />}
           <span>{copyMsg ?? "Copy to my notebook"}</span>
         </button>
+
+        {/* A primer is shareable only when it is already public. Sending a
+            squad member's writing to a WhatsApp group is publishing it, and
+            the squad chose not to publish it. The link is also the whole
+            share: the text carries the pattern and title, never the body. */}
+        {primer.visibility === "public" ? (
+          <div className="flex justify-center pt-1">
+            <ShareRow
+              path={`/primers/${primer.slug}`}
+              artifact={{ kind: "primer", id: primer.slug }}
+              text={`${primer.pattern} primer on Mahayuddh: ${primer.title}`}
+              label="Share"
+            />
+          </div>
+        ) : (
+          <p className="text-center text-[10px] text-white/25 pt-1">
+            Squad primer — the link only opens for members.
+          </p>
+        )}
       </section>
     </div>
   );

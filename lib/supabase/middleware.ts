@@ -61,13 +61,21 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/u/") ||
     request.nextUrl.pathname.startsWith("/squad/join/");
 
+  // A single public primer is a share surface. The layout already generates
+  // real per-primer metadata for public primers (Bible §14), so blocking the
+  // route meant a share preview could never exist. RLS keeps squad primers out
+  // of a logged-out request's reach: `getPrimer` returns null and the page says
+  // not found, so this allowlist cannot leak a private primer. The list at
+  // /primers stays authenticated.
+  const isPublicPrimerPath = /^\/primers\/[^/]+$/.test(request.nextUrl.pathname);
+
   // One frozen recap is public (Step 20) so a shared week renders for a
   // logged-out visitor. Matched precisely: the *list* at /squad/[id]/recaps
   // still requires auth, because it offers the generate button.
   const isPublicRecapPath = /^\/squad\/[^/]+\/recaps\/[^/]+$/.test(
     request.nextUrl.pathname
   );
-  const isPublicSharePath = isInvitePath || isPublicRecapPath;
+  const isPublicSharePath = isInvitePath || isPublicRecapPath || isPublicPrimerPath;
 
   // Fast-path: Check if any Supabase auth cookies exist in request
   const allCookies = request.cookies.getAll();

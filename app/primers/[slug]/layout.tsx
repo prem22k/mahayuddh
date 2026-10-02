@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { getServiceClient } from "@/lib/supabase/service";
 
 // The primer page itself is a client component (it starts battles from the
@@ -48,6 +49,45 @@ function humanize(slug: string): string {
     .join(" ");
 }
 
-export default function PrimerLayout({ children }: { children: React.ReactNode }) {
+/**
+ * A primer slug that does not exist is a real 404, not a 200 with a spinner.
+ *
+ * The page is a client component so it can only say "not found" after
+ * hydration — fine for a member mid-session, but these routes are public and
+ * indexable, and a soft 404 is how a crawler ends up indexing every guessed
+ * URL under /primers/.
+ *
+ * Only genuinely missing rows 404 here. A squad primer must still render for
+ * its members, so existence is checked without the visibility filter; RLS
+ * decides what a logged-out visitor can actually read.
+ */
+export default async function PrimerLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  let missing = false;
+  try {
+    const supabase = getServiceClient();
+    if (supabase) {
+      const { data } = await supabase
+        .from("primers")
+        .select("id")
+        .eq("slug", slug.toLowerCase())
+        .maybeSingle();
+      missing = !data;
+    }
+  } catch {
+    // A lookup failure must not 404 a page that may well exist, so this leaves
+    // `missing` false and renders normally.
+  }
+
+  // Outside the try, deliberately: notFound() signals by throwing, and the
+  // catch above would swallow that throw and turn the 404 back into a 200.
+  if (missing) notFound();
+
   return children;
 }
