@@ -12,6 +12,7 @@
     "test:integration:wall": "node tests/integration/wallMilestones.mjs",
     "test:integration:feed": "node tests/integration/feedSurfaces.mjs",
     "test:integration:teacher": "node tests/integration/teacherStats.mjs",
+    "test:integration:notify": "node tests/integration/notifications.mjs",
     "sync:sheets": "node scripts/sync.mjs --sheets",
     "sync:catalog": "node scripts/sync.mjs --catalog",
     "sync:all": "node scripts/sync.mjs --all"

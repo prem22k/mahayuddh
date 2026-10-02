@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import React, { useState, useEffect, useMemo } from "react";
 import { ExternalLink, RefreshCw, ArrowRight, Link2, Shield, ArrowUp, ArrowDown, ArrowUpDown, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { GlobalLeaderboard } from "@/components/leaderboard/GlobalLeaderboard";
 import { syncErrorMessage } from "@/lib/syncError";
 import { getSquadProfiles, syncUserProfileStats } from "@/lib/data/profiles";
 import { createClient } from "@/lib/supabase/client";
@@ -584,15 +586,21 @@ export default function LeaderboardPage() {
                       : "No squad members match this filter. Clear the search or show unlinked members."}
                 </p>
                 {tab === "squad" ? (
-                  <a href="/squad" className="inline-block px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold hover:bg-[#fa586a]/90 transition-all">
+                  <Link href="/squad" className="inline-block px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold hover:bg-[#fa586a]/90 transition-all">
                     Go to squad
-                  </a>
+                  </Link>
                 ) : profiles.length === 0 ? (
                   <a href="/challenges" className="inline-block px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold hover:bg-[#fa586a]/90 transition-all">
                     Challenge a friend to start
                   </a>
                 ) : null}
               </div>
+            ) : tab === "global" ? (
+              /* §34: the global tab is segmented. Sorting every profile by
+                 lifetime solves in the browser put somebody with 2,000 solves
+                 in row 1 for every visitor, which is the exact feeling the
+                 section is about. */
+              <GlobalLeaderboard />
             ) : (
               <div className="divide-y divide-white/[0.04]">
                 {visibleMembers.map((member) => {

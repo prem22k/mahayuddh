@@ -7,6 +7,7 @@ import { Header } from "./Header";
 import { NowSolvingBar } from "./NowSolvingBar";
 import { SearchModal } from "../modals/SearchModal";
 import { LeetCodeAutoSync } from "@/components/providers/LeetCodeAutoSync";
+import { NotificationBell } from "./NotificationBell";
 import { useAuth } from "@/components/providers/AuthProvider";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -40,6 +41,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-surface-base text-txt-primary">
+      {/* Notification bell, top-right. §37 low-noise by default: it only
+          exists because the triggers write rows somebody can act on. */}
+      <div className="fixed top-4 right-4 z-[150] md:right-6">
+        <NotificationBell />
+      </div>
+
       {/* ── Floating Sidebar (desktop) ──────────────────── */}
       <div className="hidden md:flex floating-sidebar">
         <Sidebar onSearchOpen={() => setIsSearchOpen(true)} />
