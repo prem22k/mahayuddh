@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:smoke": "node --no-warnings --test tests/smoke.test.mjs",
+    "test:integration:wall": "node tests/integration/wallMilestones.mjs",
     "sync:sheets": "node scripts/sync.mjs --sheets",
     "sync:catalog": "node scripts/sync.mjs --catalog",
     "sync:all": "node scripts/sync.mjs --all"
