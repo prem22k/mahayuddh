@@ -13,6 +13,7 @@ import {
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
 import type { Recommendation } from "@/lib/recommend";
+import { RecommendationStats } from "./RecommendationStats";
 
 /**
  * "Next battle" (Step 24, Bible §24).
@@ -109,7 +110,8 @@ export function NextBattle({
   // "Nothing to recommend" is a real answer. Saying it beats padding the card.
   if (!rec || dismissed) {
     return (
-      <div className={`rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5 ${className}`}>
+      <div className={`space-y-3 ${className}`}>
+        <div className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5">
         <div className="text-[10px] uppercase tracking-widest text-white/25">Next battle</div>
         <p className="text-xs text-white/40 mt-1">
           {dismissed
@@ -134,6 +136,18 @@ export function NextBattle({
           >
             Ask again
           </button>
+        )}
+        </div>
+
+        {/* §24: once somebody has dismissed a suggestion there is something to
+            read back. Before that the card would be an empty promise. */}
+        {dismissed && (
+          <div className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-2">
+            <div className="text-[10px] uppercase tracking-widest text-white/25">
+              Is this helping you?
+            </div>
+            <RecommendationStats />
+          </div>
         )}
       </div>
     );

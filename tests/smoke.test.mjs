@@ -43,6 +43,12 @@ import { RITUALS } from "../lib/rituals.ts";
 import { buildJourney, journeyWindow, median } from "../lib/journey.ts";
 import { withVia, viaSlug, artifactPath, shareTargets } from "../lib/share.ts";
 import {
+  acceptRate,
+  signalBreakdown,
+  explainRates,
+  label as signalLabel,
+} from "../lib/recommendationLog.ts";
+import {
   recommendNextBattle,
   isPlateau,
   buildSignalsFromEvents,
@@ -1881,5 +1887,124 @@ describe("PATTERN_PREREQS", () => {
     for (const [pattern, prereqs] of Object.entries(PATTERN_PREREQS)) {
       assert.equal(prereqs.includes(pattern), false, `${pattern} requires itself`);
     }
+  });
+});
+
+// ── Step 24: reading the log back (§24) ──────────────────────────────────────
+
+function logged(decision, signalIds) {
+  return {
+    decision,
+    signal_ids: signalIds,
+    surface: "home",
+    problem_slug: "p",
+    created_at: "2026-10-20T00:00:00Z",
+  };
+}
+
+describe("acceptRate", () => {
+  it("returns null rather than 0% when nothing was ever shown", () => {
+    // "0% accept rate" after zero recommendations is a factually wrong thing
+    // to show a person.
+    assert.equal(acceptRate([]), null);
+  });
+
+  it("counts a presentation once, not twice", () => {
+    // Regression: shown and accepted used to be two rows, so 3 shown + 1
+    // accepted read as 1/4 = 25% instead of the true 1/3.
+    const r = acceptRate([
+      logged("shown", ["plateau"]),
+      logged("shown", ["prereq_ready"]),
+      logged("shown", ["long_gap"]),
+      logged("accepted", ["prereq_ready"]),
+    ]);
+    assert.equal(r.shown, 4);
+    assert.equal(r.accepted, 1);
+    assert.equal(r.rate, 0.25);
+  });
+
+  it("treats a dismissed recommendation as not accepted", () => {
+    const r = acceptRate([logged("accepted", ["plateau"]), logged("dismissed", ["plateau"])]);
+    assert.equal(r.shown, 2);
+    assert.equal(r.dismissed, 1);
+    assert.equal(r.rate, 0.5);
+  });
+});
+
+describe("signalBreakdown", () => {
+  it("attributes a reason only to the presentations that carried it", () => {
+    const rows = [
+      logged("accepted", ["prereq_ready", "long_gap"]),
+      logged("dismissed", ["prereq_ready"]),
+      logged("dismissed", ["plateau"]),
+      logged("dismissed", ["plateau"]),
+    ];
+    const byId = Object.fromEntries(signalBreakdown(rows).map((s) => [s.signal, s]));
+    assert.deepEqual(
+      { presented: byId.prereq_ready.presented, accepted: byId.prereq_ready.accepted },
+      { presented: 2, accepted: 1 }
+    );
+    assert.deepEqual(
+      { presented: byId.plateau.presented, accepted: byId.plateau.accepted },
+      { presented: 2, accepted: 0 }
+    );
+    assert.equal(byId.long_gap.presented, 1);
+  });
+
+  it("excludes 'rejected', which was logged for a different reason", () => {
+    const rows = [logged("accepted", ["plateau"]), logged("rejected", ["plateau"])];
+    const byId = Object.fromEntries(signalBreakdown(rows).map((s) => [s.signal, s]));
+    assert.equal(byId.plateau.presented, 1);
+  });
+
+  it("orders strongest evidence first", () => {
+    const rows = [
+      logged("accepted", ["plateau"]),
+      logged("dismissed", ["plateau"]),
+      logged("accepted", ["goal"]),
+      logged("accepted", ["goal"]),
+      logged("dismissed", ["goal"]),
+    ];
+    const order = signalBreakdown(rows).map((s) => s.signal);
+    assert.equal(order[0], "goal");
+  });
+
+  it("survives a row with no signal ids", () => {
+    const rows = [{ ...logged("accepted", []), signal_ids: null }];
+    assert.deepEqual(signalBreakdown(rows), []);
+  });
+});
+
+describe("explainRates", () => {
+  it("stays quiet below the evidence threshold", () => {
+    const rows = [logged("accepted", ["prereq_ready"])];
+    const text = explainRates(acceptRate(rows), signalBreakdown(rows));
+    // "prerequisites met at 100%" off one recommendation is noise, not a finding.
+    assert.match(text, /Too few/);
+  });
+
+  it("names the strongest reason once there is evidence", () => {
+    const rows = [
+      ...Array.from({ length: 6 }, () => logged("accepted", ["prereq_ready"])),
+      ...Array.from({ length: 6 }, () => logged("dismissed", ["plateau"])),
+    ];
+    const text = explainRates(acceptRate(rows), signalBreakdown(rows));
+    assert.match(text, /started \(/);
+    assert.match(text, /Strongest reason: prerequisites met at 100%/);
+  });
+
+  it("says so when nothing has been shown at all", () => {
+    assert.match(explainRates(null, []), /No recommendations have been shown/);
+  });
+});
+
+describe("signalLabel", () => {
+  it("never shows a raw enum to a person", () => {
+    assert.equal(signalLabel("prereq_missing"), "prerequisites unmet");
+    assert.notEqual(signalLabel("plateau"), "plateau_signal_id");
+  });
+
+  it("passes an unknown id through rather than rendering undefined", () => {
+    assert.equal(signalLabel("something_new"), "something_new");
   });
 });

@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { DiscussComposer } from "@/components/feed/DiscussComposer";
+import { FeedComposer } from "@/components/feed/FeedComposer";
 import {
   blockUser,
   createDiscussionReply,
@@ -281,6 +282,7 @@ export default function FeedPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [discussOpen, setDiscussOpen] = useState(false);
   // Loaded once and only when the composer is opened: it is a count, and it is
   // the gate's number (logged solves), not the LeetCode sync total.
   const [solveCount, setSolveCount] = useState(0);
@@ -351,36 +353,21 @@ export default function FeedPage() {
       <p className="text-[11px] text-white/30 -mt-3">{SCOPE_PURPOSE[tab]}</p>
 
       {/* Composer: six structured tiles (§18), not a blank box. Five of them
-          create an object that already exists; Discuss is the only one that
-          takes prose, and it is gated. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-        {[
-          { label: "Share solve", href: "/home", hint: "from your battles" },
-          { label: "Teach", href: "/notebook", hint: "link an approach" },
-          { label: "Challenge", href: "/challenges", hint: "problem + time" },
-          { label: "Ask help", href: "/stuck", hint: "a nudge, not a spoiler" },
-          { label: "Share resource", href: "/vault", hint: "vault item" },
-        ].map((a) => (
-          <Link
-            key={a.label}
-            href={a.href}
-            className="p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] text-center transition-all"
-          >
-            <div className="text-[11px] font-bold text-white/70 hover:text-white">{a.label}</div>
-            <div className="text-[10px] text-white/30 mt-0.5">{a.hint}</div>
-          </Link>
-        ))}
-        <button
-          onClick={() => {
-            void getMyLoggedSolveCount().then(setSolveCount).catch(() => setSolveCount(0));
-            setComposerOpen(true);
-          }}
-          className="p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] text-center transition-all cursor-pointer"
-        >
-          <div className="text-[11px] font-bold text-white/70 hover:text-white">Discuss</div>
-          <div className="text-[10px] text-white/30 mt-0.5">problem-linked</div>
-        </button>
-      </div>
+          create the object they name — Challenge really sends a challenge,
+          Ask help really raises a stuck request — and Discuss is the one tile
+          that takes prose, behind the §51 gates. */}
+      <button
+        onClick={() => {
+          track("composer_opened", { surface: "feed" });
+          setComposerOpen(true);
+        }}
+        className="w-full p-4 rounded-3xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] text-left transition-all cursor-pointer"
+      >
+        <span className="text-xs font-bold text-white/80">Post something</span>
+        <span className="text-[11px] text-white/30 ml-2">
+          Share a solve · Teach · Challenge · Ask help · Share resource · Discuss
+        </span>
+      </button>
 
       {loadError && (
         <div role="alert" className="flex items-center justify-between gap-3 px-5 py-4 rounded-2xl bg-[#ff453a]/10 border border-[#ff453a]/30">
@@ -519,14 +506,27 @@ export default function FeedPage() {
         </div>
       )}
 
-      {/* The composer gets no `key` on purpose. The solve count arrives
+      {/* Five tiles create their object; Discuss hands off to its own modal. */}
+      {composerOpen && (
+        <FeedComposer
+          onClose={() => setComposerOpen(false)}
+          onPosted={() => void load()}
+          onDiscuss={() => {
+            void getMyLoggedSolveCount().then(setSolveCount).catch(() => setSolveCount(0));
+            setComposerOpen(false);
+            setDiscussOpen(true);
+          }}
+        />
+      )}
+
+      {/* The discuss composer gets no `key` on purpose. The solve count arrives
           asynchronously, and remounting on it would wipe a draft already in
           progress. */}
-      {composerOpen && (
+      {discussOpen && (
         <DiscussComposer
           squadId={squadId}
           solveCount={solveCount}
-          onClose={() => setComposerOpen(false)}
+          onClose={() => setDiscussOpen(false)}
           onPosted={() => {
             track("discuss_posted", { visibility: "squad" });
             void load();

@@ -1,6 +1,14 @@
 import { createClient } from "@/lib/supabase/client";
 import { DataError } from "@/lib/data/errors";
 import {
+  acceptRate,
+  explainRates,
+  signalBreakdown,
+  type AcceptRate,
+  type LoggedRecommendation,
+  type SignalBreakdown,
+} from "@/lib/recommendationLog";
+import {
   buildSignalsFromEvents,
   recommendNextBattle,
   type ProblemSignal,
@@ -176,34 +184,42 @@ export async function getRecommendation(
 }
 
 // ── Logging (§24: store recommendation + accepted/rejected) ──────────────────
+//
+// One presentation is ONE ROW. `shown` is updated to `accepted` or `dismissed`
+// rather than joined by a second insert. The first version inserted both, so
+// three shown and one accepted read as 1/4 instead of 1/3 — a metric that is
+// wrong by construction cannot validate a weight, which was the whole reason
+// for having a log.
 
 /**
- * Record that a recommendation was shown. Fire-and-forget by contract: a
- * failure to log must never break the surface that was showing it.
+ * Record that a recommendation was shown. Never awaited by the caller: logging
+ * is best-effort and must not delay or fail the surface showing it.
  */
 export async function logRecommendationShown(
   rec: Recommendation,
   surface: RecSurface
 ): Promise<void> {
   const supabase = createClient();
-  await supabase.from("recommendation_log").insert({
+  const { error } = await supabase.from("recommendation_log").insert({
     problem_slug: rec.problem.titleSlug.toLowerCase(),
     problem_title: rec.problem.title,
     difficulty: rec.problem.difficulty,
     pattern: rec.problem.patterns[0] ?? null,
     why_json: rec.why,
+    signal_ids: rec.signals.map((s) => s.id),
     decision: "shown",
     surface,
   });
+  if (error) console.warn("logRecommendationShown failed:", error.message);
 }
 
 /**
- * Record the decision.
+ * Record the decision against the presentation it refers to.
  *
- * Accepted means the person started this problem from the recommendation, which
- * is the accept rate §24 asks to be able to measure. Dismissed is "I am not
- * doing this one" and is deliberately distinct from rejected, so a weak signal
- * can be told apart from a wrong problem.
+ * Updates the most recent still-'shown' row for this problem and surface, and
+ * falls back to inserting if none is found — which happens if the page was
+ * reloaded between being shown the card and pressing the button, and losing
+ * that decision would silently skew the rate.
  */
 export async function logRecommendationDecision(
   rec: Recommendation,
@@ -211,43 +227,68 @@ export async function logRecommendationDecision(
   decision: "accepted" | "rejected" | "dismissed"
 ): Promise<void> {
   const supabase = createClient();
-  await supabase.from("recommendation_log").insert({
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const { data: existing } = await supabase
+    .from("recommendation_log")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("problem_slug", rec.problem.titleSlug.toLowerCase())
+    .eq("surface", surface)
+    .eq("decision", "shown")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existing?.id) {
+    const { error } = await supabase
+      .from("recommendation_log")
+      .update({ decision, updated_at: new Date().toISOString() })
+      .eq("id", existing.id);
+    if (error) console.warn("logRecommendationDecision failed:", error.message);
+    return;
+  }
+
+  const { error } = await supabase.from("recommendation_log").insert({
     problem_slug: rec.problem.titleSlug.toLowerCase(),
     problem_title: rec.problem.title,
     difficulty: rec.problem.difficulty,
     pattern: rec.problem.patterns[0] ?? null,
     why_json: rec.why,
+    signal_ids: rec.signals.map((s) => s.id),
     decision,
     surface,
   });
+  if (error) console.warn("logRecommendationDecision insert failed:", error.message);
 }
 
-/** The caller's own accept rate, for the "is this helping you?" readout. */
-export async function getRecommendationAcceptRate(): Promise<{
-  shown: number;
-  accepted: number;
-  rate: number | null;
-} | null> {
+/**
+ * What the log says so far, so the weights can be checked instead of argued
+ * about (§24).
+ */
+export async function getRecommendationStats(): Promise<{
+  overall: AcceptRate | null;
+  perSignal: SignalBreakdown[];
+  summary: string;
+}> {
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) return { overall: null, perSignal: [], summary: "Log in to see this." };
 
   const { data } = await supabase
     .from("recommendation_log")
-    .select("decision")
+    .select("decision,signal_ids,surface,problem_slug,created_at")
     .eq("user_id", user.id)
-    .in("decision", ["shown", "accepted"]);
-  const rows = (data ?? []) as { decision: string }[];
-  const shown = rows.filter((r) => r.decision === "shown").length;
-  const accepted = rows.filter((r) => r.decision === "accepted").length;
-  if (shown === 0 && accepted === 0) return null;
-  return {
-    shown: shown + accepted,
-    accepted,
-    // Null rather than 0 when nothing was ever shown: "0% accept rate" after
-    // zero recommendations would be a factually wrong thing to show somebody.
-    rate: shown + accepted === 0 ? null : accepted / (shown + accepted),
-  };
+    .order("created_at", { ascending: false })
+    .limit(500);
+
+  const rows = (data ?? []) as LoggedRecommendation[];
+  const overall = acceptRate(rows);
+  const perSignal = signalBreakdown(rows);
+  return { overall, perSignal, summary: explainRates(overall, perSignal) };
 }

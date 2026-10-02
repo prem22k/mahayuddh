@@ -47,6 +47,10 @@ export const ANALYTICS_EVENTS = [
   // the funnel query does not have to read somebody's own rows.
   "recommendation_shown",
   "recommendation_decided",
+  // Composer (Step 21). Which tile somebody uses is the only signal that says
+  // whether the structured composer is worth having at all.
+  "composer_opened",
+  "composer_posted",
   // Notifications (Step 23, Bible §37). §37's metric is CTR by kind, so the
   // three events that make a rate computable are named separately: delivered,
   // opened, clicked.
