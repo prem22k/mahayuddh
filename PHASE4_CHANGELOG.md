@@ -16,6 +16,7 @@ Phase 3 is covered in `PHASE3_CHANGELOG.md`. Phase 0–2 is the 19 earlier commi
 | 22 Reputation | `fb1ad8a` | `teacher_stats` as five dimensions with no total, follows, teacher discovery |
 | 24 Recommendation | `416b03d` | Hand-weighted engine, prerequisite map, plateau detection, recommendation log |
 | 23 Notifications | `f1dd8db` | Trigger-written notifications, contests ritual, segmented leaderboard |
+| Loops closed | `0bbc94b` | Contest ingest, recommendation-log read-out, composer that creates instead of navigating |
 
 ---
 
@@ -173,6 +174,9 @@ npm run test:integration:wall           # 5/5    live database
 npm run test:integration:feed           # 23/23  live database
 npm run test:integration:teacher        # 14/14  live database
 npm run test:integration:notify         # 28/28  live database
+npm run test:integration:composer       # 30/30  live database
+
+npm run sync:contests -- --dry-run      # validate the calendar, write nothing
 ```
 
 The four `tests/integration/*` suites run against the **linked** Supabase project. Each creates throwaway auth users and deletes every row it made, including on failure. They are deliberately not part of `test:smoke`, which stays pure and hermetic.
@@ -186,20 +190,59 @@ The four `tests/integration/*` suites run against the **linked** Supabase projec
 - **§51:** a blocked author's event never leaves the database.
 - **Ordering:** two solves sharing one timestamp make no improvement claim.
 - **Determinism:** the recommendation engine returns the same pick across repeated calls, and the leaderboard suite passes on three consecutive runs.
+- **Composer:** a foreign battle cannot be shared; an unsolved battle cannot be shared; a private approach is refused; a stuck level outside the ladder is refused by the database.
+- **Contests:** a duplicate inside the calendar file is reported rather than silently kept; re-ingesting adds no rows; a non-`https` URL is rejected.
+- **Recommendation log:** a decision updates its presentation row instead of adding a second one.
 
 ---
 
 ## Test count
 
-118 → 164 unit tests across Phase 4, plus 70 live-database checks in four suites. Every new number is a behaviour the plan forbids or requires.
+118 → 176 unit tests across Phase 4, plus 100 live-database checks in five suites. Every new number is a behaviour the plan forbids or requires.
+
+---
+
+## Loops closed after the first pass (`0bbc94b`)
+
+Three things were listed below as unfinished. All three are now built and tested.
+
+### Contest ingest
+
+`contests` and the reminder function existed, but nothing populated the table — so the reminder could not fire. The function was correct and unreachable.
+
+- `data/contests.json` — the calendar, checked into the repository. Manual, per the plan's "no scraping".
+- `scripts/sync-contests.mjs` — validates every entry (date parseable, known platform, `https` URL, within a horizon) and upserts on the `(starts_at, platform)` unique index. `--dry-run` available.
+- `POST /api/sync/contests` — ingests and then fires reminders, in that order, because they must happen together.
+
+Verified against a running server: 401 without the cron secret, 401 with the wrong one, 6 contests ingested, table unchanged on re-run. With a synthetic contest 5h out: **3 reminders sent, 0 on the second call**, body reading *"In 4 hours. Compete, then compare approaches."*
+
+### Recommendation-log read-out
+
+§24 gives the log's purpose as "to validate signal weights before any AI". It was written and never read, so the weights had never been checked.
+
+Two problems, both invisible without running it:
+
+- **Accounting was wrong.** `shown` inserted a row and `accepted` inserted a second one, so three shown and one accepted read as 1/4 = 25% rather than 1/3. A metric wrong by construction cannot validate a weight. Decisions now `UPDATE` the presentation row, with an insert fallback for the reload-between-show-and-click case.
+- **`why_json` was prose.** "prereq met: Arrays, Hash Table." cannot be attributed to a signal, so `signal_ids` was added (`20261003000022`) alongside it. Nothing was backfilled — guessing a signal id from prose is the invented attribution this project keeps refusing.
+
+`lib/recommendationLog.ts` holds the arithmetic as pure functions. Below five presentations the readout says it has too little data rather than reporting "prerequisites met: 100%".
+
+### Composer that creates
+
+Five tiles linked to wherever the object gets created, which asks the reader to remember the shape of five different screens. Now Challenge sends a challenge, Ask help raises a stuck request with its level, Share solve shares a battle, Teach publishes a public approach, Share resource posts a vault item.
+
+Two rules the pickers follow:
+
+- Nothing is offered that would be published without consent. The Teach picker lists only `visibility = 'public'`; Challenge lists only problems you have solved; Share resource only your own.
+- **Ownership is re-checked at write time**, because the id arrives from the client. Tested: a foreign battle cannot be shared, an unsolved battle cannot be shared, a private approach is refused with a reason.
 
 ---
 
 ## Known follow-ups
 
 - **Step 25 (AI, gated)** is not started. Its guardrails in the plan are the right shape — no auto-posting, no mass primer generation, spoiler gates, cost caps — and `ai_enabled` does not exist yet.
-- **Step 27** (two-week real-user test and its gates) requires actual users and cannot be completed from here. This is the only Phase 4 item that is blocked on something other than code.
-- **Contest ingest** has no script yet — the table and the reminder function are ready, but nothing populates `contests`. Until it does, no contest reminder can ever fire.
-- **Notification push** has never been exercised against a real FCM endpoint. The delivery route and the subscribe route exist; the browser-side service worker registration path is untested end to end.
-- **The composer is navigation, not creation.** Five of the six tiles link to where the object gets created rather than creating it in place. The plan's wording ("each creates correct underlying object + feed event") is met by the underlying create paths, not by the tile itself. In-place creation would be the honest fulfilment.
-- **`recommendation_log` is written but never read.** The accept rate exists as a function and is not yet shown in the UI or queried, so the weights have not actually been validated against behaviour — which is the whole point of logging them.
+- **Step 27** (two-week real-user test and its gates) requires actual users and cannot be completed from here.
+- **Notification push is unproven end to end.** The delivery and subscribe routes exist and the route's guard rails are tested, but nothing has been delivered to a real FCM endpoint and the browser-side service worker path is untested.
+- **The composer UI has not been driven by a browser.** The data paths are covered by 30 live-database checks that replicate the exact ownership queries, but no automated run clicks through the modals. Auth-gated routes were confirmed to redirect correctly and public routes to render.
+- **The recommendation weights are still unvalidated.** The readout exists and the log is correct, but no real recommendations have been shown to a real person, so `signal_breakdown` has never run against organic behaviour.
+- **`recommendation_log` accumulates and is never pruned.** Fine at this volume; it will want a retention window before it is worth indexing.
