@@ -42,6 +42,22 @@ import {
 import { RITUALS } from "../lib/rituals.ts";
 import { buildJourney, journeyWindow, median } from "../lib/journey.ts";
 import { withVia, viaSlug, artifactPath, shareTargets } from "../lib/share.ts";
+// Imported from policy.ts, not gate.ts: gate.ts reaches the database through
+// "@/" aliases, which the plain node test runner cannot resolve. All the logic
+// worth unit testing therefore lives in the alias-free policy module.
+import {
+  decideStuckAssistant,
+  clampAnswerLevel,
+  stripCodeBlocks,
+  sanitizeAnswer,
+  practiceNextFromRecommendation,
+  isProviderConfigured,
+  AI_FEATURES,
+  AI_CALLS_PER_HOUR,
+  FORBIDDEN_ASK,
+  SYSTEM_PREAMBLE,
+  LADDER_LEVELS,
+} from "../lib/ai/policy.ts";
 import {
   acceptRate,
   signalBreakdown,
@@ -2006,5 +2022,197 @@ describe("signalLabel", () => {
 
   it("passes an unknown id through rather than rendering undefined", () => {
     assert.equal(signalLabel("something_new"), "something_new");
+  });
+});
+
+// ── Step 25: AI policy (Bible §45) ───────────────────────────────────────────
+//
+// §45's objective: "Use AI to increase thinking, not eliminate thinking."
+// Every assertion below is one of the ways this codebase could drift into
+// eliminating thinking instead.
+
+const baseGate = {
+  aiEnabled: true,
+  remainingBudget: 10,
+  providerConfigured: true,
+};
+
+describe("decideStuckAssistant", () => {
+  it("allows a permitted call and sets the ceiling to what was asked for", () => {
+    const d = decideStuckAssistant({ ...baseGate, requestedLevel: "nudge" });
+    assert.equal(d.allowed, true);
+    assert.equal(d.ceiling, "nudge");
+  });
+
+  it("is off by default — §45 calls this an experiment, not a feature", () => {
+    const d = decideStuckAssistant({ ...baseGate, aiEnabled: false, requestedLevel: "full" });
+    assert.equal(d.allowed, false);
+    assert.equal(d.outcome, "disabled");
+    // Points at the human alternative rather than just saying no.
+    assert.match(d.message, /squad-mate/i);
+  });
+
+  it("refuses once the hourly budget is gone", () => {
+    const d = decideStuckAssistant({ ...baseGate, remainingBudget: 0, requestedLevel: "nudge" });
+    assert.equal(d.allowed, false);
+    assert.equal(d.outcome, "rate_limited");
+  });
+
+  it("says 'no provider' rather than inventing an answer", () => {
+    const d = decideStuckAssistant({
+      ...baseGate, providerConfigured: false, requestedLevel: "nudge",
+    });
+    assert.equal(d.allowed, false);
+    assert.equal(d.outcome, "no_provider");
+    assert.match(d.message, /no AI provider is configured/i);
+  });
+
+  it("refuses solution vending — §45's first named bad use", () => {
+    for (const phrase of FORBIDDEN_ASK) {
+      const d = decideStuckAssistant({ ...baseGate, requestedLevel: "nudge", request: phrase });
+      assert.equal(d.allowed, false, `allowed: "${phrase}"`);
+      assert.equal(d.outcome, "refused");
+    }
+  });
+
+  it("still refuses vending when the asker requested the full level", () => {
+    // Requesting 'full' authorises an answer to the ladder, not a bypass. The
+    // product's whole ladder is meaningless if asking for full turns the
+    // assistant into an answer vending machine.
+    const d = decideStuckAssistant({ ...baseGate, requestedLevel: "full", request: "just give me the solution" });
+    assert.equal(d.allowed, false);
+  });
+
+  it("allows a genuine question at the nudge level", () => {
+    const d = decideStuckAssistant({
+      ...baseGate, requestedLevel: "nudge", request: "why does my two-pointer loop stall on all-duplicates?",
+    });
+    assert.equal(d.allowed, true);
+  });
+
+  it("checks the gate before the wording, so a disabled squad is not lectured", () => {
+    const d = decideStuckAssistant({
+      aiEnabled: false, remainingBudget: 0, providerConfigured: false,
+      requestedLevel: "nudge", request: "just give me the solution",
+    });
+    assert.equal(d.outcome, "disabled");
+  });
+});
+
+describe("clampAnswerLevel", () => {
+  it("never lets an answer exceed the requested level", () => {
+    assert.deepEqual(clampAnswerLevel("nudge", "full"), { level: "nudge", pulledDown: true });
+    assert.deepEqual(clampAnswerLevel("pattern", "direction"), { level: "pattern", pulledDown: true });
+    assert.deepEqual(clampAnswerLevel("full", "pattern"), { level: "pattern", pulledDown: false });
+    assert.deepEqual(clampAnswerLevel("direction", "direction"), { level: "direction", pulledDown: false });
+  });
+
+  it("holds for every requested/answered pair", () => {
+    const order = ["nudge", "pattern", "direction", "full"];
+    for (const requested of order) {
+      for (const answered of order) {
+        const { level } = clampAnswerLevel(requested, answered);
+        assert.ok(
+          order.indexOf(level) <= order.indexOf(requested),
+          `asked ${requested}, answered ${answered}, got ${level}`
+        );
+      }
+    }
+  });
+});
+
+describe("stripCodeBlocks", () => {
+  it("removes a fenced code block", () => {
+    const r = stripCodeBlocks("Try this.\n```python\ndef f(): ...\n```\n");
+    assert.equal(r.stripped, true);
+    assert.ok(!r.text.includes("def f()"));
+  });
+
+  it("removes the 'here is the code' preamble", () => {
+    const r = stripCodeBlocks("Here's the code: just do this");
+    assert.equal(r.stripped, true);
+    assert.ok(!/here's the code/i.test(r.text));
+  });
+
+  it("leaves an honest hint alone", () => {
+    const hint = "What happens if you try a second pointer from the end instead?";
+    const r = stripCodeBlocks(hint);
+    assert.equal(r.stripped, false);
+    assert.equal(r.text, hint);
+  });
+});
+
+describe("sanitizeAnswer", () => {
+  it("clamps the level and strips code in one path", () => {
+    const r = sanitizeAnswer("nudge", {
+      level: "full",
+      text: "Here's the code:\n```js\nreturn 42;\n```",
+    });
+    assert.equal(r.level, "nudge");
+    assert.equal(r.pulledDown, true);
+    assert.equal(r.stripped, true);
+    assert.ok(!r.text.includes("return 42"));
+  });
+
+  it("keeps a compliant answer intact", () => {
+    const r = sanitizeAnswer("pattern", { level: "pattern", text: "Think about which structure tracks what you have seen." });
+    assert.equal(r.pulledDown, false);
+    assert.equal(r.stripped, false);
+    assert.match(r.text, /which structure/);
+  });
+});
+
+describe("AI_FEATURES", () => {
+  it("names the bad use each feature is at risk of becoming", () => {
+    for (const f of AI_FEATURES) {
+      assert.notEqual(f.neverBecomes, "", `${f.id} has no stated failure mode`);
+      assert.notEqual(f.purpose, "");
+    }
+  });
+
+  it("has exactly the five uses §45 names", () => {
+    assert.equal(AI_FEATURES.length, 5);
+    assert.deepEqual(
+      AI_FEATURES.map((f) => f.id).sort(),
+      ["explain_back", "explain_mistake", "interview_sim", "practice_next", "stuck_assistant"]
+    );
+  });
+
+  it("only practice_next is model-free today", () => {
+    const free = AI_FEATURES.filter((f) => !f.needsModel).map((f) => f.id);
+    assert.deepEqual(free, ["practice_next"]);
+  });
+});
+
+describe("the seam is honest", () => {
+  it("no provider is configured in this repository", () => {
+    assert.equal(isProviderConfigured(), false);
+  });
+
+  it("the system preamble forbids giving the answer", () => {
+    assert.match(SYSTEM_PREAMBLE, /Never give a complete solution/i);
+    assert.match(SYSTEM_PREAMBLE, /increasing thinking|not finishing their work/i);
+  });
+
+  it("the ladder is ordered nudge -> full, nothing else", () => {
+    assert.deepEqual([...LADDER_LEVELS], ["nudge", "pattern", "direction", "full"]);
+  });
+
+  it("the hourly cap is a positive number", () => {
+    assert.equal(AI_CALLS_PER_HOUR, 30);
+  });
+});
+
+describe("practiceNextFromRecommendation", () => {
+  it("cites the engine's why-bullets rather than inventing its own reasons", () => {
+    const r = practiceNextFromRecommendation(3);
+    assert.equal(r.citesWhy, true);
+    assert.match(r.summary, /your own logged history/i);
+  });
+
+  it("says nothing rather than something, with no reasons to give", () => {
+    const r = practiceNextFromRecommendation(0);
+    assert.equal(r.citesWhy, false);
+    assert.match(r.summary, /Nothing to suggest/i);
   });
 });

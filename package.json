@@ -15,6 +15,7 @@
     "test:integration:teacher": "node tests/integration/teacherStats.mjs",
     "test:integration:notify": "node tests/integration/notifications.mjs",
     "test:integration:composer": "node --no-warnings --experimental-strip-types tests/integration/composer.mjs",
+    "test:integration:ai": "node tests/integration/aiGates.mjs",
     "sync:contests": "node scripts/sync-contests.mjs",
     "sync:sheets": "node scripts/sync.mjs --sheets",
     "sync:catalog": "node scripts/sync.mjs --catalog",

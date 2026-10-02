@@ -351,7 +351,7 @@ export function FeedComposer({
     }
 
     return null;
-  }, [tile, battles, teaching, people, problems, resources, level, pickedBattle, pickedTeach, pickedPerson, pickedProblem, pickedResource]);
+  }, [tile, battles, teaching, people, problems, resources, level, pickedBattle, pickedTeach, pickedPerson, pickedProblem, pickedResource, myTimeSec]);
 
   const canSubmit =
     (tile === "solve" && pickedBattle !== "") ||

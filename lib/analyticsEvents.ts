@@ -47,6 +47,11 @@ export const ANALYTICS_EVENTS = [
   // the funnel query does not have to read somebody's own rows.
   "recommendation_shown",
   "recommendation_decided",
+  // AI (Step 25, Bible §45). outcome is the interesting property: a rising
+  // refused/rate_limited count means the guardrails are holding, not that
+  // something broke.
+  "ai_assistant_asked",
+  "ai_feature_refused",
   // Composer (Step 21). Which tile somebody uses is the only signal that says
   // whether the structured composer is worth having at all.
   "composer_opened",

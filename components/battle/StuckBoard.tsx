@@ -15,6 +15,8 @@ import {
 } from "@/lib/data/stuck";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { StuckAssistant } from "@/components/ai/StuckAssistant";
 import {
   LEVEL_LABEL,
   LEVEL_CLASS,
@@ -34,6 +36,8 @@ import type { StuckRequest, StuckReply, StuckLevel, Problem } from "@/types/data
  * the UI and enforced again by the database — a client that lies is rejected.
  */
 export function StuckBoard() {
+  const { profile } = useAuth();
+  const activeSquadId = profile?.active_squad_id ?? null;
   const [tab, setTab] = useState<"open" | "mine">("open");
   const [open, setOpen] = useState<StuckRequest[]>([]);
   const [mine, setMine] = useState<StuckRequest[]>([]);
@@ -148,6 +152,7 @@ export function StuckBoard() {
               title={titles.get(r.problem_slug)?.title ?? r.problem_slug}
               mine={tab === "mine"}
               busy={false}
+              squadId={activeSquadId}
               onRefresh={load}
               onNotice={setNotice}
             />
@@ -163,6 +168,7 @@ function RequestCard({
   title,
   mine,
   busy,
+  squadId,
   onRefresh,
   onNotice,
 }: {
@@ -170,6 +176,7 @@ function RequestCard({
   title: string;
   mine: boolean;
   busy: boolean;
+  squadId: string | null;
   onRefresh: () => Promise<void>;
   onNotice: (s: string) => void;
 }) {
@@ -287,6 +294,19 @@ function RequestCard({
       )}
 
       {error && <p className="text-[11px] text-[#ff453a]">{error}</p>}
+
+      {/* The AI assistant sits on the asker's own request only, and is capped
+          at the level that request asked for. §45's stuck assistant is "the
+          same ladder as Step 18, never jumps to full" — so it cannot be offered
+          on somebody else's request, where the ladder would be somebody else's
+          contract to set. */}
+      {mine && request.status !== "resolved" && (
+        <StuckAssistant
+          squadId={squadId}
+          problemSlug={request.problem_slug}
+          requestedLevel={request.level}
+        />
+      )}
 
       {mine ? (
         request.status !== "resolved" && (
