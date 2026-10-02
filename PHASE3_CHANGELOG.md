@@ -1,6 +1,6 @@
 # Phase 3 Changelog — Steps 16–20
 
-**Branch:** `phase-0-2-gap-closure` (27 commits ahead of `main`, unpushed)
+**Branch:** `phase-0-2-gap-closure`, unpushed. Phase 3 is the last 8 commits; `git log main..HEAD` covers the full branch.
 **Scope:** Phase 3 of `MAHAYUDDH_EXECUTION_PLAN.md` — Steps 16 through 20.
 **Bible refs:** §14 (primers), §31 (squad recaps), §32 (squad wall), §33/§34 (no winner framing), §38 (shareable artifacts), §40 (WhatsApp/Discord distribution), §42 (challenge deep link), §49 (personal journey), §56 (Loop B share attribution), §63 (projections are not tables), §64 (feed stores no blobs).
 
