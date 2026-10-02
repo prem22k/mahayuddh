@@ -1,5 +1,6 @@
 "use client";
 
+import { decodePathSegment } from "@/lib/pathSegment";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -18,7 +19,7 @@ import { Primer, Problem, Approach, SharedResource } from "@/types/database";
 // mistakes + vault picks + teachers. All projections over existing tables.
 export default function PatternPage() {
   const params = useParams<{ topic: string }>();
-  const topic = decodeURIComponent(params.topic || "");
+  const topic = decodePathSegment(params.topic);
   const { startSolving } = useSolving();
 
   const [primer, setPrimer] = useState<Primer | null>(null);

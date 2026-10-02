@@ -1,6 +1,8 @@
+import { profileHref } from "@/lib/profiles/username";
 import Link from "next/link";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
+import { decodePathSegment } from "@/lib/pathSegment";
 import type { Metadata } from "next";
 import { getPublicJourney } from "@/lib/data/journey";
 import { getPublicProfile } from "@/lib/data/profilePublic";
@@ -38,7 +40,8 @@ export async function generateMetadata({
 }: {
   params: Promise<{ username: string }>;
 }): Promise<Metadata> {
-  const { username } = await params;
+  const { username: raw } = await params;
+  const username = decodePathSegment(raw);
   const found = await load(username);
   if (!found) return { title: `${username} | Mahayuddh`, robots: { index: false } };
   const teaches = found.profile.stats?.frequent_patterns ?? [];
@@ -55,7 +58,11 @@ export default async function PublicProfilePage({
 }: {
   params: Promise<{ username: string }>;
 }) {
-  const { username } = await params;
+  const { username: raw } = await params;
+  // Next hands the segment over still encoded: "/u/Prem%20Sai" arrives as
+  // "Prem%20Sai". Looked up as-is it finds nothing and the page 404s for any
+  // handle with a space, a percent, a plus or any non-ASCII character.
+  const username = decodePathSegment(raw);
   const found = await load(username);
   if (!found) notFound();
   const { profile, journey } = found;
@@ -104,7 +111,7 @@ export default async function PublicProfilePage({
           <div className="flex items-center gap-2 flex-wrap pt-1">
             <FollowButton userId={profile.userId} username={handle} />
             <ShareRow
-              path={`/u/${handle}`}
+              path={profileHref(handle)}
               artifact={{ kind: "journey", id: handle }}
               text={journey?.summary ?? `Follow @${handle} on Mahayuddh.`}
               label="Share profile"

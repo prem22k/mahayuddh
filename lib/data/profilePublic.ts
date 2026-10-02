@@ -1,4 +1,5 @@
 import { getServiceClient } from "@/lib/supabase/service";
+import { findProfileByUsername } from "@/lib/profiles/username";
 import type { TeacherStats } from "@/lib/reputation";
 import type { Approach, Primer } from "@/types/database";
 
@@ -35,14 +36,10 @@ export async function getPublicProfile(username: string): Promise<{
   const supabase = getServiceClient();
   if (!supabase) return null;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, username")
-    .eq("username", username.toLowerCase())
-    .maybeSingle();
+  const profile = await findProfileByUsername(supabase, username);
   if (!profile) return null;
 
-  const userId = profile.id as string;
+  const userId = profile.id;
 
   const [statsRes, approachesRes, primersRes] = await Promise.all([
     supabase.from("teacher_stats").select("*").eq("user_id", userId).maybeSingle(),

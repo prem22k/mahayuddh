@@ -1,5 +1,6 @@
 "use client";
 
+import { profileHref } from "@/lib/profiles/username";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getTeachersForPattern, type Teacher } from "@/lib/data/profile";
@@ -71,7 +72,7 @@ export function TeacherList({ pattern }: { pattern: string }) {
             </div>
             <div className="flex-1 min-w-0">
               <Link
-                href={`/u/${t.username}`}
+                href={profileHref(t.username)}
                 className="text-xs font-bold text-white hover:text-[#fa586a] transition-colors"
               >
                 @{t.username}

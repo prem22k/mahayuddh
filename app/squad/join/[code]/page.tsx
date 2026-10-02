@@ -1,5 +1,6 @@
 "use client";
 
+import { profileHref } from "@/lib/profiles/username";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -101,7 +102,7 @@ export default function SquadJoinPage() {
           {preview.squad.description && <p className="text-xs text-white/50">{preview.squad.description}</p>}
           {preview.invited_by && (
             <p className="text-xs text-[#fa586a]">
-              <Link href={`/u/${preview.invited_by}`} className="font-bold hover:underline">
+              <Link href={profileHref(preview.invited_by)} className="font-bold hover:underline">
                 @{preview.invited_by}
               </Link>{" "}
               invited you to this squad.

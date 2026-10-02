@@ -1,3 +1,4 @@
+import { profileHref } from "@/lib/profiles/username";
 import Link from "next/link";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
@@ -111,7 +112,7 @@ export default async function SeasonResultPage({
             <ul className="space-y-1">
               {result.members.map((m) => (
                 <li key={m.username} className="flex items-center justify-between gap-3 text-xs">
-                  <Link href={`/u/${m.username}`} className="font-bold text-white/80 hover:text-white">
+                  <Link href={profileHref(m.username)} className="font-bold text-white/80 hover:text-white">
                     @{m.username}
                   </Link>
                   <span className="font-mono text-white/50">{m.solves}</span>

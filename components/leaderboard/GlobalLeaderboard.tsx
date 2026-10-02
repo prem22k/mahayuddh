@@ -1,5 +1,6 @@
 "use client";
 
+import { profileHref } from "@/lib/profiles/username";
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
@@ -155,7 +156,7 @@ export function GlobalLeaderboard() {
               </div>
               <div className="flex-1 min-w-0">
                 <Link
-                  href={`/u/${r.username}`}
+                  href={profileHref(r.username)}
                   className="text-xs font-bold text-white hover:text-[#fa586a] transition-colors"
                 >
                   @{r.username}

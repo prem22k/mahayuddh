@@ -58,6 +58,8 @@ import {
   SYSTEM_PREAMBLE,
   LADDER_LEVELS,
 } from "../lib/ai/policy.ts";
+import { decodePathSegment } from "../lib/pathSegment.ts";
+import { profileHref } from "../lib/profiles/username.ts";
 import {
   buildGates,
   gateBoard,
@@ -2420,5 +2422,73 @@ describe("testStatus", () => {
     assert.equal(st.members, 7);
     assert.equal(st.observations, 2);
     assert.equal(st.squads, 3);
+  });
+});
+
+// ── Dynamic route segments arrive percent-encoded ─────────────────────────────
+
+describe("decodePathSegment", () => {
+  // Next hands a dynamic segment to the page still encoded. Verified against the
+  // live app with an isolated route: /dbgseg/abc%20def -> param "abc%20def".
+  it("decodes a space, which is what broke every public profile", () => {
+    assert.equal(decodePathSegment("Prem%20Sai"), "Prem Sai");
+  });
+
+  it("leaves a plain segment alone", () => {
+    assert.equal(decodePathSegment("prajwal"), "prajwal");
+  });
+
+  it("does not turn + into a space; in a path it is a literal plus", () => {
+    assert.equal(decodePathSegment("abc%2Bdef"), "abc+def");
+    assert.equal(decodePathSegment("abc+def"), "abc+def");
+  });
+
+  it("decodes non-ASCII, which is a whole class of handle", () => {
+    assert.equal(decodePathSegment("%E0%A4%95"), "\u0915");
+  });
+
+  it("survives a malformed escape instead of throwing", () => {
+    // A bare decodeURIComponent turns /u/100% into a 500. A junk URL must not
+    // be able to take a page down.
+    assert.doesNotThrow(() => decodePathSegment("100%"));
+    assert.equal(decodePathSegment("100%"), "100%");
+    assert.equal(decodePathSegment("%zz"), "%zz");
+  });
+
+  it("decodes exactly once, so %2520 becomes the literal text %20, not a space", () => {
+    // A second pass is what would turn this into a space. One pass is correct,
+    // and it is also what makes a handle containing a literal % round-trip.
+    assert.equal(decodePathSegment("%2520"), "%20");
+    assert.notEqual(decodePathSegment("%2520"), " ");
+  });
+
+  it("refuses an encoded slash rather than inventing a path", () => {
+    assert.equal(decodePathSegment("a%2Fb"), "a%2Fb");
+  });
+
+  it("treats empty and non-string input as empty", () => {
+    assert.equal(decodePathSegment(""), "");
+    assert.equal(decodePathSegment(undefined), "");
+    assert.equal(decodePathSegment(null), "");
+  });
+});
+
+describe("profileHref", () => {
+  it("encodes a handle with a space", () => {
+    assert.equal(profileHref("Prem Sai"), "/u/Prem%20Sai");
+  });
+
+  it("round-trips through decodePathSegment", () => {
+    for (const h of ["prajwal", "Prem Sai", "a+b", "caf\u00e9", "100%_ok"]) {
+      assert.equal(decodePathSegment(profileHref(h).slice(3)), h.trim());
+    }
+  });
+
+  it("leaves an ordinary handle untouched", () => {
+    assert.equal(profileHref("prajwal"), "/u/prajwal");
+  });
+
+  it("trims, so a stray space is not baked into the URL", () => {
+    assert.equal(profileHref("  prajwal  "), "/u/prajwal");
   });
 });

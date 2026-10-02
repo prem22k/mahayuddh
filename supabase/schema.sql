@@ -97,6 +97,29 @@ end $$;
 ALTER FUNCTION "public"."assert_referral_referrer_is_member"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."assert_triage_label_needs_admin"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+begin
+  if new.label is not null and not exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.is_product_admin
+  ) then
+    raise exception 'Only a product admin can label a feature. Propose it and leave it undecided.'
+      using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."assert_triage_label_needs_admin"() OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."assert_triage_label_needs_admin"() IS 'Keeps §60''s "a label is a commitment" true against a direct API call, not just against the app.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."attribute_join"("p_referral_token" "text", "p_squad_id" "uuid", "p_user_id" "uuid") RETURNS TABLE("referrer_id" "uuid", "referrer_username" "text", "already_member" boolean)
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -665,8 +688,8 @@ CREATE OR REPLACE FUNCTION "public"."gate_social"("p_squad_id" "uuid" DEFAULT NU
   select 'social', c.n_sent > 0,
     c.n_sent::text || ' challenges sent, ' || c.n_done::text || ' completed',
     case when c.n_sent = 0
-      then 'Nobody has sent a challenge. §59 asks whether one happens naturally by day 3, and that is an observation, not something this query can see.'
-      else 'No surface in the product instructs sending a challenge, so these are unprompted. It cannot show intent.'
+      then 'Nobody has sent a challenge. Whether one happens naturally by day 3 is §59''s question, and it is an observation — this count cannot see it.'
+      else 'These are PROMPTED, not unprompted: the product says "challenge someone" in at least six places, including a button after every solve. §58 asks about challenges sent without being instructed, so this number does not answer that. Read the §59 log for it.'
     end
   from (
     select
@@ -687,7 +710,7 @@ $$;
 ALTER FUNCTION "public"."gate_social"("p_squad_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."gate_social"("p_squad_id" "uuid") IS '§58 social activation. Returns no row when the scope has no members, so an empty squad reads as unknown rather than as a failure.';
+COMMENT ON FUNCTION "public"."gate_social"("p_squad_id" "uuid") IS '§58 social activation, counting challenges sent. The product prompts this in six places, so the count is prompted behaviour and does NOT answer §58''s "without being manually instructed" — that comes from the §59 observation log.';
 
 
 
@@ -1096,6 +1119,65 @@ end $$;
 ALTER FUNCTION "public"."normalize_leetcode_username"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."normalize_username_case"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+begin
+  if exists (
+    select 1 from public.profiles p
+    where p.id <> new.id and lower(p.username) = lower(new.username)
+  ) then
+    raise exception 'That username is taken: %', new.username using errcode = '23505';
+  end if;
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."normalize_username_case"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean DEFAULT false) RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  select exists (
+    select 1 from public.note_shares s
+    where s.note_id = p_note_id
+      and s.shared_with = (select auth.uid())
+      and (not p_need_edit or s.can_edit)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean) IS 'Definer, for the same reason. p_need_edit = false means any share; true requires can_edit.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_user" "uuid", "p_need_edit" boolean DEFAULT false) RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  select exists (
+    select 1 from public.note_shares s
+    where s.note_id = p_note_id
+      and s.shared_with = p_user
+      and (not p_need_edit or s.can_edit)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_user" "uuid", "p_need_edit" boolean) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_user" "uuid", "p_need_edit" boolean) IS 'Security definer for the same reason. p_need_edit = false means any share; true requires can_edit.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."notify_challenge_completed"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -1297,6 +1379,42 @@ end $$;
 
 
 ALTER FUNCTION "public"."notify_recap_ready"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."owns_note"("p_note_id" "uuid") RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  select exists (
+    select 1 from public.notebook_notes n
+    where n.id = p_note_id and n.owner_id = (select auth.uid())
+  );
+$$;
+
+
+ALTER FUNCTION "public"."owns_note"("p_note_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."owns_note"("p_note_id" "uuid") IS 'Definer so note_shares policies do not re-enter notebook_notes RLS (that was an infinite loop). Takes no user argument on purpose: it answers only about the caller.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."owns_note"("p_note_id" "uuid", "p_user" "uuid") RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  select exists (
+    select 1 from public.notebook_notes n
+    where n.id = p_note_id and n.owner_id = p_user
+  );
+$$;
+
+
+ALTER FUNCTION "public"."owns_note"("p_note_id" "uuid", "p_user" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."owns_note"("p_note_id" "uuid", "p_user" "uuid") IS 'Security definer so note_shares policy checks do not re-enter notebook_notes RLS, which was an infinite loop.';
+
 
 
 CREATE OR REPLACE FUNCTION "public"."preserve_attempted_on_manual_import"() RETURNS "trigger"
@@ -1789,6 +1907,30 @@ $$;
 ALTER FUNCTION "public"."validation_squads"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."validation_test_status"("p_squad_id" "uuid" DEFAULT NULL::"uuid") RETURNS TABLE("member_count" bigint, "observation_count" bigint, "squad_count" bigint)
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  select
+    (select count(*) from public.squad_members m
+      where p_squad_id is null or m.squad_id = p_squad_id),
+    -- RLS applies to validation_observations, and this function is security
+    -- definer, so an observer's own rows are visible to the caller through it.
+    -- Deliberately: the count is the researcher's own tally.
+    (select count(*) from public.validation_observations o
+      where p_squad_id is null or o.squad_id = p_squad_id),
+    (select count(distinct m.squad_id) from public.squad_members m
+      where p_squad_id is null or m.squad_id = p_squad_id)
+$$;
+
+
+ALTER FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") IS 'Member and observation counts for the scope. observation_count is the honest answer to "has the two-week test started?" — gates alone never are.';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."ai_calls" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "squad_id" "uuid",
@@ -1991,6 +2133,7 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "is_product_admin" boolean DEFAULT false NOT NULL,
     "invited_by" "uuid",
     "joined_via_referral" "uuid",
+    "username_lower" "text" GENERATED ALWAYS AS ("lower"("username")) STORED,
     CONSTRAINT "profiles_objective_check" CHECK ((("objective" IS NULL) OR ("objective" = ANY (ARRAY['internship'::"text", 'fulltime'::"text", 'consistency'::"text"])))),
     CONSTRAINT "profiles_stats_nonnegative" CHECK (((COALESCE("contest_rating", (0)::double precision) >= (0)::double precision) AND (COALESCE("streak", 0) >= 0) AND (COALESCE("total_easy", 0) >= 0) AND (COALESCE("total_medium", 0) >= 0) AND (COALESCE("total_hard", 0) >= 0) AND (COALESCE("contest_attended", 0) >= 0)))
 );
@@ -2004,6 +2147,10 @@ COMMENT ON COLUMN "public"."profiles"."invited_by" IS 'The person whose link bro
 
 
 COMMENT ON COLUMN "public"."profiles"."joined_via_referral" IS 'The referral link used. joined_via_squad is derivable from it; kept so the join can be traced without joining the referrals table.';
+
+
+
+COMMENT ON COLUMN "public"."profiles"."username_lower" IS 'Generated, so username stays exactly as typed for display while every lookup is case-insensitive. Index is unique: "Alice" and "alice" are one account.';
 
 
 
@@ -3583,6 +3730,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS "profiles_leetcode_username_lower_unique" ON "
 
 
 
+CREATE UNIQUE INDEX IF NOT EXISTS "profiles_username_lower_unique" ON "public"."profiles" USING "btree" ("username_lower");
+
+
+
 CREATE INDEX IF NOT EXISTS "push_subscriptions_user_id_idx" ON "public"."push_subscriptions" USING "btree" ("user_id");
 
 
@@ -3719,6 +3870,10 @@ CREATE OR REPLACE TRIGGER "enforce_ai_ladder_ceiling" BEFORE INSERT ON "public".
 
 
 
+CREATE OR REPLACE TRIGGER "feature_triage_label_needs_admin" BEFORE INSERT ON "public"."feature_triage" FOR EACH ROW EXECUTE FUNCTION "public"."assert_triage_label_needs_admin"();
+
+
+
 CREATE OR REPLACE TRIGGER "guard_product_admin" BEFORE UPDATE ON "public"."profiles" FOR EACH ROW EXECUTE FUNCTION "public"."guard_product_admin"();
 
 
@@ -3744,6 +3899,10 @@ CREATE OR REPLACE TRIGGER "notify_recap_ready" AFTER INSERT ON "public"."squad_r
 
 
 CREATE OR REPLACE TRIGGER "preserve_attempted_on_manual_import" BEFORE UPDATE ON "public"."user_problem_status" FOR EACH ROW EXECUTE FUNCTION "public"."preserve_attempted_on_manual_import"();
+
+
+
+CREATE OR REPLACE TRIGGER "profiles_username_case_unique" BEFORE INSERT OR UPDATE OF "username" ON "public"."profiles" FOR EACH ROW EXECUTE FUNCTION "public"."normalize_username_case"();
 
 
 
@@ -4639,10 +4798,17 @@ $guard$;
 
 
 
-DROP POLICY IF EXISTS "Admins decide triage" ON "public"."feature_triage";
-CREATE POLICY "Admins decide triage" ON "public"."feature_triage" USING ((EXISTS ( SELECT 1
+DROP POLICY IF EXISTS "Admins label and revise triage" ON "public"."feature_triage";
+CREATE POLICY "Admins label and revise triage" ON "public"."feature_triage" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
   WHERE (("p"."id" = ( SELECT "auth"."uid"() AS "uid")) AND "p"."is_product_admin")))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."profiles" "p"
+  WHERE (("p"."id" = ( SELECT "auth"."uid"() AS "uid")) AND "p"."is_product_admin"))));
+
+
+
+DROP POLICY IF EXISTS "Admins remove triage" ON "public"."feature_triage";
+CREATE POLICY "Admins remove triage" ON "public"."feature_triage" FOR DELETE TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
   WHERE (("p"."id" = ( SELECT "auth"."uid"() AS "uid")) AND "p"."is_product_admin"))));
 
@@ -4767,17 +4933,18 @@ CREATE POLICY "Members create own referral links" ON "public"."squad_referrals" 
 
 
 
+DROP POLICY IF EXISTS "Members propose features" ON "public"."feature_triage";
+CREATE POLICY "Members propose features" ON "public"."feature_triage" FOR INSERT TO "authenticated" WITH CHECK ((( SELECT "auth"."uid"() AS "uid") IS NOT NULL));
+
+
+
 DROP POLICY IF EXISTS "No client access to sync rate limits" ON "public"."sync_rate_limits";
 CREATE POLICY "No client access to sync rate limits" ON "public"."sync_rate_limits" USING (false) WITH CHECK (false);
 
 
 
 DROP POLICY IF EXISTS "Owners and editors can update notes" ON "public"."notebook_notes";
-CREATE POLICY "Owners and editors can update notes" ON "public"."notebook_notes" FOR UPDATE USING (((( SELECT "auth"."uid"() AS "uid") = "owner_id") OR (EXISTS ( SELECT 1
-   FROM "public"."note_shares"
-  WHERE (("note_shares"."note_id" = "notebook_notes"."id") AND ("note_shares"."shared_with" = ( SELECT "auth"."uid"() AS "uid")) AND ("note_shares"."can_edit" = true)))))) WITH CHECK (((( SELECT "auth"."uid"() AS "uid") = "owner_id") OR (EXISTS ( SELECT 1
-   FROM "public"."note_shares"
-  WHERE (("note_shares"."note_id" = "notebook_notes"."id") AND ("note_shares"."shared_with" = ( SELECT "auth"."uid"() AS "uid")) AND ("note_shares"."can_edit" = true))))));
+CREATE POLICY "Owners and editors can update notes" ON "public"."notebook_notes" FOR UPDATE USING (((( SELECT "auth"."uid"() AS "uid") = "owner_id") OR "public"."note_shared_with"("id", true))) WITH CHECK (((( SELECT "auth"."uid"() AS "uid") = "owner_id") OR "public"."note_shared_with"("id", true)));
 
 
 
@@ -4807,11 +4974,7 @@ CREATE POLICY "Owners can update approaches" ON "public"."approaches" FOR UPDATE
 
 
 DROP POLICY IF EXISTS "Owners manage shares" ON "public"."note_shares";
-CREATE POLICY "Owners manage shares" ON "public"."note_shares" USING ((EXISTS ( SELECT 1
-   FROM "public"."notebook_notes"
-  WHERE (("notebook_notes"."id" = "note_shares"."note_id") AND ("notebook_notes"."owner_id" = ( SELECT "auth"."uid"() AS "uid")))))) WITH CHECK ((EXISTS ( SELECT 1
-   FROM "public"."notebook_notes"
-  WHERE (("notebook_notes"."id" = "note_shares"."note_id") AND ("notebook_notes"."owner_id" = ( SELECT "auth"."uid"() AS "uid"))))));
+CREATE POLICY "Owners manage shares" ON "public"."note_shares" USING ("public"."owns_note"("note_id")) WITH CHECK ("public"."owns_note"("note_id"));
 
 
 
@@ -4911,9 +5074,7 @@ CREATE POLICY "Researchers write observations" ON "public"."validation_observati
 
 
 DROP POLICY IF EXISTS "Shared notes readable" ON "public"."notebook_notes";
-CREATE POLICY "Shared notes readable" ON "public"."notebook_notes" FOR SELECT USING ((EXISTS ( SELECT 1
-   FROM "public"."note_shares"
-  WHERE (("note_shares"."note_id" = "notebook_notes"."id") AND ("note_shares"."shared_with" = ( SELECT "auth"."uid"() AS "uid"))))));
+CREATE POLICY "Shared notes readable" ON "public"."notebook_notes" FOR SELECT USING ("public"."note_shared_with"("id", false));
 
 
 
@@ -5443,6 +5604,12 @@ GRANT ALL ON FUNCTION "public"."assert_referral_referrer_is_member"() TO "servic
 
 
 
+GRANT ALL ON FUNCTION "public"."assert_triage_label_needs_admin"() TO "anon";
+GRANT ALL ON FUNCTION "public"."assert_triage_label_needs_admin"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."assert_triage_label_needs_admin"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."attribute_join"("p_referral_token" "text", "p_squad_id" "uuid", "p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."attribute_join"("p_referral_token" "text", "p_squad_id" "uuid", "p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."attribute_join"("p_referral_token" "text", "p_squad_id" "uuid", "p_user_id" "uuid") TO "service_role";
@@ -5614,6 +5781,25 @@ GRANT ALL ON FUNCTION "public"."normalize_leetcode_username"() TO "service_role"
 
 
 
+GRANT ALL ON FUNCTION "public"."normalize_username_case"() TO "anon";
+GRANT ALL ON FUNCTION "public"."normalize_username_case"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."normalize_username_case"() TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_user" "uuid", "p_need_edit" boolean) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_user" "uuid", "p_need_edit" boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_user" "uuid", "p_need_edit" boolean) TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."notify_challenge_completed"() TO "anon";
 GRANT ALL ON FUNCTION "public"."notify_challenge_completed"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."notify_challenge_completed"() TO "service_role";
@@ -5641,6 +5827,19 @@ GRANT ALL ON FUNCTION "public"."notify_goal_near_complete"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."notify_recap_ready"() TO "anon";
 GRANT ALL ON FUNCTION "public"."notify_recap_ready"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."notify_recap_ready"() TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid", "p_user" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid", "p_user" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid", "p_user" "uuid") TO "service_role";
 
 
 
@@ -5757,6 +5956,12 @@ GRANT ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") TO "
 GRANT ALL ON FUNCTION "public"."validation_squads"() TO "anon";
 GRANT ALL ON FUNCTION "public"."validation_squads"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."validation_squads"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") TO "service_role";
 
 
 

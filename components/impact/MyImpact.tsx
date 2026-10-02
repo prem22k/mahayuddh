@@ -1,5 +1,6 @@
 "use client";
 
+import { profileHref } from "@/lib/profiles/username";
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
@@ -140,7 +141,7 @@ export function MyImpact() {
           <ul className="space-y-1">
             {chain.slice(0, 6).map((c) => (
               <li key={`${c.fork_id}`} className="text-[11px] text-white/50">
-                <Link href={`/u/${c.forker_username}`} className="font-bold text-white/75 hover:text-white">
+                <Link href={profileHref(c.forker_username)} className="font-bold text-white/75 hover:text-white">
                   @{c.forker_username}
                 </Link>{" "}
                 copied{" "}

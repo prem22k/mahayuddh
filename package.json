@@ -22,7 +22,9 @@
     "sync:sheets": "node scripts/sync.mjs --sheets",
     "sync:catalog": "node scripts/sync.mjs --catalog",
     "sync:all": "node scripts/sync.mjs --all",
-    "test:integration:validation": "node tests/integration/validation.mjs"
+    "test:integration:validation": "node tests/integration/validation.mjs",
+    "test:integration:notebook": "node tests/integration/notebook.mjs",
+    "test:integration:recommend": "node tests/integration/recommend.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

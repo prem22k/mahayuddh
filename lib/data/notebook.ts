@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { findProfileByUsername } from "@/lib/profiles/username";
 import { NotebookNote, NotebookNoteSummary, NoteVisibility } from "@/types/database";
 import { DataError } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
@@ -118,15 +119,13 @@ export async function deleteNote(id: string): Promise<void> {
 /** 1:1 share (no public publish needed). Owner-only. */
 export async function shareNoteWith(noteId: string, username: string, canEdit = false): Promise<void> {
   const supabase = createClient();
-  const { data: target } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("username", username.trim())
-    .maybeSingle();
+  // Case-insensitive, because "@Prem Sai" and "@prem sai" are the same member
+  // and the error message used to contradict that.
+  const target = await findProfileByUsername(supabase, username);
   if (!target) throw new DataError("notebook", `No member named @${username.trim()}.`);
   const { error } = await supabase
     .from("note_shares")
-    .upsert({ note_id: noteId, shared_with: (target as { id: string }).id, can_edit: canEdit }, { onConflict: "note_id,shared_with" });
+    .upsert({ note_id: noteId, shared_with: target.id, can_edit: canEdit }, { onConflict: "note_id,shared_with" });
   if (error) throw new DataError("notebook", "Couldn't share note. Try again.", { cause: error });
 }
 

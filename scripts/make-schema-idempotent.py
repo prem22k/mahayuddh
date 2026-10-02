@@ -24,6 +24,28 @@ PATH = "supabase/schema.sql"
 
 src = open(PATH).read()
 
+# Count what needs guarding first, so the summary below reports the real totals
+# instead of a hard-coded number that goes stale every time the schema grows.
+def count(pattern):
+    return len(re.findall(pattern, src, re.MULTILINE))
+
+# Count only the forms that still NEED guarding, so re-running this script on its
+# own output reports zero rather than claiming it found 120 policies to guard.
+#   - a guarded ADD CONSTRAINT sits inside a DO block, indented, so a line-start
+#     ALTER TABLE matches only the unguarded form
+#   - a guarded index already says IF NOT EXISTS
+#   - a guarded policy is immediately preceded by its own DROP
+want = {
+    "constraints": count(r'^ALTER TABLE (?:ONLY )?.*\n[ \t]+ADD CONSTRAINT '),
+    "indexes": count(r'^CREATE (UNIQUE )?INDEX (?!IF NOT EXISTS)'),
+    "policies": sum(
+        1
+        for i, line in enumerate(src.split("\n"))
+        if re.match(r'^CREATE POLICY ("[^"]+") ON ("public"\."[^"]+")', line)
+        and (i == 0 or not src.split("\n")[i - 1].startswith("DROP POLICY IF EXISTS"))
+    ),
+}
+
 # ── 1. ADD CONSTRAINT, inside `ALTER TABLE ONLY "public"."tbl"\n    ADD CONSTRAINT "name" ...;`
 def guard_constraints(text: str) -> tuple[str, int]:
     pattern = re.compile(
@@ -60,13 +82,19 @@ def guard_constraints(text: str) -> tuple[str, int]:
 def guard_policies(text: str) -> tuple[str, int]:
     count = 0
     out = []
+    # Policy names contain spaces and capitals ("Everyone reads triage"), and the
+    # trailing clause is lowercase in pg_dump output ("for select").
+    pattern = re.compile(r'^CREATE POLICY ("[^"]+") ON ("public"\."[^"]+")')
     for line in text.split("\n"):
-        # Policy names contain spaces and capitals ("Everyone reads triage"),
-        # and the trailing clause is lowercase in pg_dump output ("for select").
-        m = re.match(r'^CREATE POLICY ("[^"]+") ON ("public"\."[a-z_0-9]+")', line)
+        m = pattern.match(line)
         if m:
-            count += 1
-            out.append(f'DROP POLICY IF EXISTS {m.group(1)} ON {m.group(2)};')
+            # Skip a policy already preceded by its own DROP, so running this
+            # script twice does not stack duplicate DROPs. Without that, the
+            # script was not idempotent even though the file it produced was.
+            drop = f"DROP POLICY IF EXISTS {m.group(1)} ON {m.group(2)};"
+            if not out or out[-1].strip() != drop:
+                count += 1
+                out.append(drop)
         out.append(line)
     return "\n".join(out), count
 
@@ -85,6 +113,17 @@ assert isinstance(out, str), f"transform produced {type(out)}, refusing to write
 with open(PATH, "w") as fh:
     fh.write(out)
 print(f"guarded {n_con} ADD CONSTRAINT, {n_pol} CREATE POLICY, {n_idx} CREATE INDEX")
-if n_idx != 68:
-    print(f"WARNING: expected 68 indexes, matched {n_idx}", file=sys.stderr)
+# Only under-guarding is a defect: something was found and not made re-runnable.
+# Over-counting is expected on a second pass, since guarded CREATE POLICY and
+# CREATE INDEX IF NOT EXISTS lines are still present in the file.
+got = {"constraints": n_con, "policies": n_pol, "indexes": n_idx}
+under = [k for k in want if got[k] < want[k]]
+if under:
+    # The regexes have drifted from the dump's formatting, so the file would be
+    # only partly re-runnable while looking perfectly fine.
+    print(
+        f"ERROR: found {want} but guarded {got} — under-guarded: {under}. "
+        "The patterns no longer match the dump; refusing to claim idempotency.",
+        file=sys.stderr,
+    )
     sys.exit(1)

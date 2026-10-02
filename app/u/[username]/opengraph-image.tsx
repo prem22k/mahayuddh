@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { getPublicJourney } from "@/lib/data/journey";
+import { decodePathSegment } from "@/lib/pathSegment";
 
 export const alt = "A personal practice journey on Mahayuddh";
 export const size = { width: 1200, height: 630 };
@@ -16,7 +17,7 @@ export default async function JourneyOpengraphImage({
 }: {
   params: { username: string };
 }) {
-  const journey = await getPublicJourney(params.username, 30);
+  const journey = await getPublicJourney(decodePathSegment(params.username), 30);
 
   const cells = journey
     ? [

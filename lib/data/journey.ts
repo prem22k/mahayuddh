@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { getServiceClient } from "@/lib/supabase/service";
+import { findProfileByUsername } from "@/lib/profiles/username";
 import { DataError } from "@/lib/data/errors";
 import { buildJourney, JourneyBody, journeyWindow } from "@/lib/journey";
 import type { Approach, Battle, ProblemEvent, StuckRequest, Suggestion } from "@/types/database";
@@ -103,14 +104,10 @@ export async function getPublicJourney(
   const supabase = getServiceClient();
   if (!supabase) return null;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, username")
-    .eq("username", username.toLowerCase())
-    .maybeSingle();
+  const profile = await findProfileByUsername(supabase, username);
   if (!profile) return null;
 
-  const userId = profile.id as string;
+  const userId = profile.id;
   const w = journeyWindow(days);
   const from = `${w.from}T00:00:00.000Z`;
   const to = `${w.to}T23:59:59.999Z`;

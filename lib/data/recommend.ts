@@ -103,10 +103,27 @@ export async function getRecommendation(
   if (!user) return null;
 
   const sheetSlug = opts.sheetSlug ?? "neetcode-150";
+
+  // Resolve the sheet to its id first. list_problems is keyed by list_id, not by
+  // slug — there is no list_slug column — so the original single query returned
+  // 42703 "column list_problems.list_slug does not exist" on EVERY call, and
+  // this function threw before it recommended anything. Found by crawling the
+  // signed-in /practice page, not by a test: the recommendation engine had no
+  // suite of its own, so a total failure went unnoticed.
+  const { data: sheetRow, error: sheetErr } = await supabase
+    .from("custom_lists")
+    .select("id")
+    .eq("slug", sheetSlug)
+    .maybeSingle();
+  if (sheetErr) throw new DataError("recommend", "Couldn't load your sheet. Retry.", { cause: sheetErr });
+  // An unknown slug is not an error worth a red message: it means "no curriculum
+  // chosen", so there is nothing to recommend from yet.
+  if (!sheetRow) return null;
+
   const { data: listRows, error: listErr } = await supabase
     .from("list_problems")
     .select("title_slug,category")
-    .eq("list_slug", sheetSlug)
+    .eq("list_id", sheetRow.id)
     .limit(400);
   if (listErr) throw new DataError("recommend", "Couldn't load your sheet. Retry.", { cause: listErr });
 
