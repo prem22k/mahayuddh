@@ -81,6 +81,12 @@ function LoginForm() {
       if (isChallengeSignup) {
         track("signup_from_challenge", { via, next: nextPath, source: from ?? undefined });
       }
+      // §56 Loop B names this event explicitly: share_clicked on the way out,
+      // share_signup on the way in. Without the second one, sharing is only
+      // measurable up to the click and never as a conversion.
+      if (from) {
+        track("share_signup", { source: from, next: nextPath });
+      }
       track("signup_completed", { via, next: nextPath, source: from ?? undefined });
     },
     [isChallengeSignup, nextPath]

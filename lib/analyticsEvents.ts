@@ -34,6 +34,9 @@ export const ANALYTICS_EVENTS = [
   "squad_joined",
   // Shareable artifacts (Step 16, Bible §56 Loop B)
   "share_clicked",
+  // §56 Loop B, the conversion half. share_clicked is the numerator's
+  // numerator; without this, sharing is only measurable as far as the click.
+  "share_signup",
   "battle_card_viewed",
   // Social learning (Steps 17-20)
   "revenge_started",
@@ -47,6 +50,10 @@ export const ANALYTICS_EVENTS = [
   // the funnel query does not have to read somebody's own rows.
   "recommendation_shown",
   "recommendation_decided",
+  // Loop C knowledge (Step 26, §47/§56). Whether authors see impact at all is
+  // the question Loop C rests on, so the panel view itself is the signal.
+  "impact_panel_opened",
+  "content_published",
   // AI (Step 25, Bible §45). outcome is the interesting property: a rising
   // refused/rate_limited count means the guardrails are holding, not that
   // something broke.

@@ -19,6 +19,7 @@ export type ShareArtifact =
   | { kind: "journey"; id: string }
   | { kind: "recap"; id: string; squadId: string }
   | { kind: "primer"; id: string }
+  | { kind: "season"; id: string; squadId: string }
   | { kind: "stuck"; id: string };
 
 /** Stable, non-identifying attribution slug: "battle:9f3c…". */
@@ -40,6 +41,8 @@ export function artifactPath(artifact: ShareArtifact): string {
       return `/squad/${artifact.squadId}/recaps/${artifact.id}`;
     case "primer":
       return `/primers/${artifact.id}`;
+    case "season":
+      return `/squad/${artifact.squadId}/seasons/${artifact.id}`;
     case "stuck":
       return `/stuck/${artifact.id}`;
   }

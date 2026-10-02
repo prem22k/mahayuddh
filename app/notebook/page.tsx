@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Plus, Copy, Check, Trash2, BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { MyImpact } from "@/components/impact/MyImpact";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { getSharedResources } from "@/lib/data/vault";
@@ -21,7 +22,7 @@ import {
 import { dataErrorMessage } from "@/lib/data/errors";
 import { NotebookNoteSummary, SharedResource, NoteVisibility } from "@/types/database";
 
-type Tab = "mine" | "vault" | "shared";
+type Tab = "mine" | "vault" | "shared" | "impact";
 
 export default function NotebookPage() {
   const { user, profile } = useAuth();
@@ -148,14 +149,35 @@ export default function NotebookPage() {
       </div>
 
       <div className="flex items-center gap-2 p-1 bg-white/[0.04] rounded-full border border-white/[0.06] w-fit">
-        {(["mine", "vault", "shared"] as Tab[]).map((t) => (
+        {(["mine", "vault", "shared", "impact"] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={cn("px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
               tab === t ? "bg-white/[0.12] text-white shadow-sm" : "text-white/40 hover:text-white/80")}>
-            {t === "mine" ? `My Notes (${notes.length})` : t === "vault" ? "Vault" : `Shared with me (${shared.length})`}
+            {t === "mine"
+              ? `My Notes (${notes.length})`
+              : t === "vault"
+                ? "Vault"
+                : t === "shared"
+                  ? `Shared with me (${shared.length})`
+                  : "Impact"}
           </button>
         ))}
       </div>
+
+      {/* Loop C (§56): does your writing change what anybody does? A fourth tab
+          rather than another card, because it is a different question from
+          "what have I written". */}
+      {tab === "impact" && (
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-lg font-bold text-white">Your impact</h2>
+            <p className="text-xs text-white/40 mt-0.5">
+              Who copied what you wrote, and whether they went on to solve it.
+            </p>
+          </div>
+          <MyImpact />
+        </section>
+      )}
 
       {loadError && (
         <div role="alert" className="flex items-center justify-between gap-3 px-5 py-4 rounded-2xl bg-[#ff453a]/10 border border-[#ff453a]/30">

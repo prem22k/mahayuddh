@@ -75,7 +75,14 @@ export async function updateSession(request: NextRequest) {
   const isPublicRecapPath = /^\/squad\/[^/]+\/recaps\/[^/]+$/.test(
     request.nextUrl.pathname
   );
-  const isPublicSharePath = isInvitePath || isPublicRecapPath || isPublicPrimerPath;
+
+  // A finished season is a shareable result (§38), matched precisely. The
+  // squad's season LIST stays authenticated.
+  const isPublicSeasonPath = /^\/squad\/[^/]+\/seasons\/[^/]+$/.test(
+    request.nextUrl.pathname
+  );
+  const isPublicSharePath =
+    isInvitePath || isPublicRecapPath || isPublicPrimerPath || isPublicSeasonPath;
 
   // Fast-path: Check if any Supabase auth cookies exist in request
   const allCookies = request.cookies.getAll();
