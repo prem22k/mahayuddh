@@ -49,6 +49,15 @@ function LoginForm() {
     [nextPath]
   );
 
+  // Loop D: arriving on an invite link. The squad is named on the signup form so
+  // the account is created *for* something specific rather than in the hope that
+  // something turns up afterwards. Only the code is read here — the join itself
+  // happens on the invite page after the account exists.
+  const inviteCode = useMemo(() => {
+    const m = nextPath.match(/^\/squad\/join\/([A-Za-z0-9]{8})/);
+    return m ? m[1].toUpperCase() : null;
+  }, [nextPath]);
+
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -87,9 +96,12 @@ function LoginForm() {
       if (from) {
         track("share_signup", { source: from, next: nextPath });
       }
+      if (inviteCode) {
+        track("invite_signup", { invite_code: inviteCode });
+      }
       track("signup_completed", { via, next: nextPath, source: from ?? undefined });
     },
-    [isChallengeSignup, nextPath]
+    [isChallengeSignup, nextPath, inviteCode]
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -317,6 +329,21 @@ function LoginForm() {
               Join Squad
             </button>
           </div>
+
+          {/* Loop D: arriving on an invite link. Names the squad so the account
+              is created for something specific, and says plainly that the join
+              happens next — no pretending it already happened. */}
+          {inviteCode && mode === "signup" && (
+            <div className="mb-5 p-3 rounded-2xl bg-[#fa586a]/10 border border-[#fa586a]/25 space-y-0.5">
+              <p className="text-xs font-bold text-[#fa586a]">
+                You were invited to a squad
+              </p>
+              <p className="text-[11px] text-white/50">
+                Create your account and you&apos;ll land straight on the invite for squad{" "}
+                <span className="font-mono text-white/70">{inviteCode}</span>, ready to join.
+              </p>
+            </div>
+          )}
 
           {/* Error Message */}
           {errorMsg && (

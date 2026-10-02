@@ -43,14 +43,19 @@ export async function updateSession(request: NextRequest) {
 
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
   const isAuthCallback = request.nextUrl.pathname.startsWith("/auth");
-  // These routes authenticate internally (bearer or session cookie) and return
-  // honest 401s. Letting middleware 307 them to /login would turn an API call
-  // into an HTML redirect — and silently drop analytics for logged-out visitors.
-  const isPublicApi =
-    request.nextUrl.pathname.startsWith("/api/sync") ||
-    request.nextUrl.pathname.startsWith("/api/auth") ||
-    request.nextUrl.pathname.startsWith("/api/analytics") ||
-    request.nextUrl.pathname.startsWith("/api/squads/preview");
+  // API routes are NEVER middleware-redirected to /login.
+  //
+  // Every route under /api authenticates itself with resolveUser() or
+  // isAuthorizedCron() and returns an honest JSON 401. Letting the middleware
+  // 307 them turns an API call into an HTML redirect, so a logged-out caller
+  // gets a login page instead of a status code — and a client following the
+  // redirect POSTs to /login and gets a confusing 405.
+  //
+  // This was previously an allowlist of five prefixes, and every route added
+  // after it silently inherited the bug. /api/push/deliver and
+  // /api/squads/referral both did. An allowlist here can only ever be wrong in
+  // one direction, so it is gone.
+  const isApiRequest = request.nextUrl.pathname.startsWith("/api");
 // Invite + share deep links preview for logged-out users (Bible §42: preview
   // first, signup second). Join/accept/start actions still require auth inside
   // the pages. /b/* is the share surface (Step 16) — a share link that demands a
@@ -98,7 +103,7 @@ export async function updateSession(request: NextRequest) {
   // - Public/login/auth/invite routes pass through immediately
   // - Protected routes redirect to /login
   if (!hasAuthCookie) {
-    if (isLoginPage || isAuthCallback || isPublicApi || isPublicSharePath) {
+    if (isLoginPage || isAuthCallback || isApiRequest || isPublicSharePath) {
       return supabaseResponse;
     }
     return loginUrlFor(request, supabaseResponse);
@@ -133,7 +138,7 @@ export async function updateSession(request: NextRequest) {
     const user = data?.user ?? null;
 
     // If user is not authenticated and trying to access protected route
-    if (!user && !isLoginPage && !isAuthCallback && !isPublicApi && !isPublicSharePath) {
+    if (!user && !isLoginPage && !isAuthCallback && !isApiRequest && !isPublicSharePath) {
       return loginUrlFor(request, supabaseResponse);
     }
 
@@ -147,7 +152,7 @@ export async function updateSession(request: NextRequest) {
     }
   } catch (err) {
     console.warn("Supabase auth check in middleware encountered an error:", err);
-    if (!isLoginPage && !isAuthCallback && !isPublicApi && !isPublicSharePath) {
+    if (!isLoginPage && !isAuthCallback && !isApiRequest && !isPublicSharePath) {
       return loginUrlFor(request, supabaseResponse);
     }
   }

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Users, Copy, Check, ArrowRight } from "lucide-react";
 import { copyText } from "@/lib/clipboard";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -14,13 +14,19 @@ interface Preview {
   squad: { id: string; name: string; description: string | null };
   member_count: number;
   sample_members: { profile: { username: string; avatar_url: string | null } }[];
+  /** Who sent the link, when it was a personal referral. Null for a bare code. */
+  invited_by: string | null;
 }
 
 export default function SquadJoinPage() {
   const params = useParams<{ code: string }>();
+  const search = useSearchParams();
   const router = useRouter();
   const { user, refreshProfile } = useAuth();
   const code = (params.code || "").toUpperCase();
+  // The referral token identifies who sent the link. It survives signup: this
+  // is the difference between "you joined a squad" and "Priya brought you here".
+  const ref = search.get("ref") ?? "";
   const [preview, setPreview] = useState<Preview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -28,8 +34,8 @@ export default function SquadJoinPage() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    track("invite_opened", { invite_code: code });
-    fetch(`/api/squads/preview/${code}`)
+    track("invite_opened", { invite_code: code, referred: Boolean(ref) });
+    fetch(`/api/squads/preview/${code}${ref ? `?ref=${encodeURIComponent(ref)}` : ""}`)
       .then(async (res) => {
         const json = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -40,20 +46,24 @@ export default function SquadJoinPage() {
       })
       .catch(() => setError("Couldn't load this invite. Check your connection."))
       .finally(() => setLoading(false));
-  }, [code]);
+  }, [code, ref]);
 
   const handleJoin = async () => {
     if (!user) {
       // Same-origin continuation: after signup the user returns to this invite.
-      router.push(`/login?next=${encodeURIComponent(`/squad/join/${code}`)}`);
+      const target = ref
+        ? `/squad/join/${code}?ref=${encodeURIComponent(ref)}`
+        : `/squad/join/${code}`;
+      router.push(`/login?next=${encodeURIComponent(target)}`);
       return;
     }
     setJoining(true);
     setError(null);
     try {
-      await joinSquad(code);
+      const joined = await joinSquad(code, ref || null);
       await refreshProfile();
       router.push("/squad");
+      track("referral_join_completed", { squad_id: joined?.squad.id, referred: Boolean(ref) });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't join. Try again.");
     } finally {
@@ -89,6 +99,14 @@ export default function SquadJoinPage() {
             </div>
           </div>
           {preview.squad.description && <p className="text-xs text-white/50">{preview.squad.description}</p>}
+          {preview.invited_by && (
+            <p className="text-xs text-[#fa586a]">
+              <Link href={`/u/${preview.invited_by}`} className="font-bold hover:underline">
+                @{preview.invited_by}
+              </Link>{" "}
+              invited you to this squad.
+            </p>
+          )}
           <div className="flex items-center gap-2">
             {preview.sample_members.map((m, i) => (
               <div key={i} className="w-7 h-7 rounded-full bg-white/[0.06] border border-white/[0.1] flex items-center justify-center font-bold text-[10px] text-white overflow-hidden" title={m.profile.username}>
@@ -104,7 +122,15 @@ export default function SquadJoinPage() {
           {error && <p className="text-xs text-[#ff453a]">{error}</p>}
           <button onClick={handleJoin} disabled={joining}
             className="w-full py-3 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white text-xs font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5">
-            <span>{joining ? "Joining…" : user ? "Join squad" : "Log in to join"}</span>
+            <span>
+              {joining
+                ? "Joining…"
+                : user
+                  ? "Join squad"
+                  : preview.invited_by
+                    ? `Join ${preview.squad.name}`
+                    : "Create an account to join"}
+            </span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
           <button

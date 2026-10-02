@@ -20,6 +20,7 @@ export type ShareArtifact =
   | { kind: "recap"; id: string; squadId: string }
   | { kind: "primer"; id: string }
   | { kind: "season"; id: string; squadId: string }
+  | { kind: "squad"; id: string }
   | { kind: "stuck"; id: string };
 
 /** Stable, non-identifying attribution slug: "battle:9f3c…". */
@@ -45,6 +46,10 @@ export function artifactPath(artifact: ShareArtifact): string {
       return `/squad/${artifact.squadId}/seasons/${artifact.id}`;
     case "stuck":
       return `/stuck/${artifact.id}`;
+    case "squad":
+      // A squad has no public page of its own; the invite route is the shareable
+      // surface, and the token is appended by withVia, not here.
+      return `/squad/${artifact.id}`;
   }
 }
 

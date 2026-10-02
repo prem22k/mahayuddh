@@ -17,6 +17,7 @@
     "test:integration:composer": "node --no-warnings --experimental-strip-types tests/integration/composer.mjs",
     "test:integration:ai": "node tests/integration/aiGates.mjs",
     "test:integration:impact": "node --no-warnings tests/integration/impact.mjs",
+    "test:integration:referral": "node --no-warnings tests/integration/referral.mjs",
     "sync:contests": "node scripts/sync-contests.mjs",
     "sync:sheets": "node scripts/sync.mjs --sheets",
     "sync:catalog": "node scripts/sync.mjs --catalog",

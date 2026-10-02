@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Plus, Users, Copy, Check, Target, ArrowRight, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { InviteLink } from "@/components/squad/InviteLink";
 import { copyText } from "@/lib/clipboard";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { PageLoader } from "@/components/ui/PageLoader";
@@ -162,7 +163,9 @@ export default function SquadPage() {
     setBusy(true);
     setFormError(null);
     try {
-      const squad = await joinSquad(code);
+      // Typing a bare code has no referrer, which is the honest case: the
+      // referral token only exists when somebody sent a personal link.
+      const { squad } = await joinSquad(code, null);
       track("invite_opened", { squad_id: squad.id });
       setCode("");
       setShowJoin(false);
@@ -303,7 +306,9 @@ export default function SquadPage() {
                   <p className="text-[11px] text-white/30 mt-1 font-mono">{members.length} member{members.length === 1 ? "" : "s"}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={handleCopyInvite} className="px-3.5 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-white text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5" title="Copy invite link">
+                  {/* Loop D: the bare code still works, and stays available for
+                      pasting into a channel where a link would be awkward. */}
+                  <button onClick={handleCopyInvite} className="px-3.5 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-white text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5" title="Copy invite code">
                     {copied ? <Check className="w-3.5 h-3.5 text-[#30d158]" /> : <Copy className="w-3.5 h-3.5" />}
                     <span className="font-mono">{copied ? "Copied!" : activeSquad.invite_code}</span>
                   </button>
@@ -311,6 +316,17 @@ export default function SquadPage() {
                     <LogOut className="w-3.5 h-3.5" />
                   </button>
                 </div>
+              </div>
+
+              {/* Your own link, and what came through it (Loop D, §56/§57). */}
+              <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-2">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-white/30">
+                  Invite people
+                </div>
+                <p className="text-[11px] text-white/40">
+                  Your link remembers who you are, so you can tell whether it worked.
+                </p>
+                <InviteLink squadId={activeSquad.id} squadName={activeSquad.name} />
               </div>
 
               {/* Goals (Step 19: multiple, and progress measured inside the

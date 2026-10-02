@@ -100,16 +100,27 @@ export async function createSquad(params: { name: string; description?: string }
   return json.squad as Squad;
 }
 
-export async function joinSquad(inviteCode: string): Promise<Squad> {
+export async function joinSquad(
+  inviteCode: string,
+  /** Loop D referral token. Attributes the join; grants nothing. */
+  referralToken?: string | null
+): Promise<{ squad: Squad; invitedBy: string | null }> {
   const token = await accessToken();
   const res = await fetch("/api/squads/join", {
     method: "POST",
     headers: authedHeaders(token),
-    body: JSON.stringify({ invite_code: inviteCode.trim().toUpperCase() }),
+    body: JSON.stringify({
+      invite_code: inviteCode.trim().toUpperCase(),
+      ref: referralToken ?? undefined,
+    }),
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new DataError("squads", json.error || "Couldn't join squad. Check the code and try again.");
-  return json.squad as Squad;
+  return {
+    squad: json.squad as Squad,
+    // Null when nobody referred them, which is most joins. Never invented.
+    invitedBy: (json.invited_by as string | null) ?? null,
+  };
 }
 
 export async function switchActiveSquad(squadId: string): Promise<void> {

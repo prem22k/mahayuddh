@@ -50,6 +50,13 @@ export const ANALYTICS_EVENTS = [
   // the funnel query does not have to read somebody's own rows.
   "recommendation_shown",
   "recommendation_decided",
+  // Loop D squad from referral (Step 26). invite_opened and squad_joined are
+  // server-side; this is the outbound half the member controls.
+  "invite_link_copied",
+  // An account created while arriving on an invite link. Distinct from
+  // invite_opened (a click) and referral_join_completed (a membership).
+  "invite_signup",
+  "referral_join_completed",
   // Loop C knowledge (Step 26, §47/§56). Whether authors see impact at all is
   // the question Loop C rests on, so the panel view itself is the signal.
   "impact_panel_opened",
