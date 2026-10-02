@@ -43,6 +43,11 @@ import { RITUALS } from "../lib/rituals.ts";
 import { buildJourney, journeyWindow, median } from "../lib/journey.ts";
 import { withVia, viaSlug, artifactPath, shareTargets } from "../lib/share.ts";
 import {
+  reputationDimensions,
+  oftenTeaches,
+  NO_SINGLE_REPUTATION_SCORE,
+} from "../lib/reputation.ts";
+import {
   isActionable,
   checkDiscussionDraft,
   draftMessage,
@@ -1498,5 +1503,98 @@ describe("feed scopes", () => {
 
   it("states a purpose for every scope", () => {
     for (const s of FEED_SCOPES) assert.notEqual(SCOPE_PURPOSE[s], "");
+  });
+});
+
+// ── Step 22: reputation dimensions (Bible §22) ───────────────────────────────
+
+const STATS = {
+  user_id: "u1",
+  username: "prem",
+  logged_solves: 120,
+  verified_solves: 80,
+  active_days: 42,
+  battles: 90,
+  battles_won: 70,
+  approaches: 9,
+  patterns_taught: 4,
+  primers: 3,
+  challenge_completions: 11,
+  challenges_sent: 20,
+  discussions: 5,
+  replies_received: 18,
+  note_forks: 6,
+  primer_forks: 14,
+  frequent_patterns: ["Graphs", "DP", "Sliding Window", "Two Pointers", "Heap"],
+  improvements: 23,
+};
+
+describe("reputationDimensions", () => {
+  it("returns exactly the five dimensions §22 names, in §22's order", () => {
+    assert.deepEqual(reputationDimensions(STATS).map((d) => d.id), [
+      "solving", "teaching", "helpfulness", "consistency", "impact",
+    ]);
+  });
+
+  it("counts verified solves apart from self-reported ones", () => {
+    const solving = reputationDimensions(STATS)[0];
+    assert.equal(solving.value, 80);
+    // Saying "80" with no qualifier would be the false precision §22 warns about.
+    assert.match(solving.note, /120 logged, 80 with LeetCode evidence/);
+  });
+
+  it("states what every dimension counts", () => {
+    for (const d of reputationDimensions(STATS)) {
+      assert.notEqual(d.definition, "", `${d.id} has no definition`);
+    }
+  });
+
+  it("never produces a single score", () => {
+    // §22: "Do not compress these immediately into a single skill score."
+    // The strongest available assertion: there is no such function to call.
+    const exported = reputationDimensions(STATS);
+    for (const d of exported) {
+      assert.equal(typeof d.value, "number");
+      assert.equal(d.total, undefined);
+      assert.equal(d.score, undefined);
+    }
+    assert.equal(NO_SINGLE_REPUTATION_SCORE.allowed, false);
+    assert.match(NO_SINGLE_REPUTATION_SCORE.reason, /false precision/);
+  });
+
+  it("does not sort by size, so a large dimension cannot hide a small one", () => {
+    const labels = reputationDimensions(STATS).map((d) => d.id);
+    assert.deepEqual(labels, ["solving", "teaching", "helpfulness", "consistency", "impact"]);
+  });
+
+  it("handles a brand new account without inventing activity", () => {
+    const empty = {
+      ...STATS,
+      logged_solves: 0, verified_solves: 0, active_days: 0, battles: 0, battles_won: 0,
+      approaches: 0, patterns_taught: 0, primers: 0, challenge_completions: 0,
+      challenges_sent: 0, discussions: 0, replies_received: 0, note_forks: 0,
+      primer_forks: 0, improvements: 0, frequent_patterns: [],
+    };
+    for (const d of reputationDimensions(empty)) assert.equal(d.value, 0);
+    const impact = reputationDimensions(empty)[4];
+    assert.match(impact.note, /0 forks, 0 problems improved/);
+  });
+
+  it("uses singular wording for one, not '1 problems'", () => {
+    const one = reputationDimensions({ ...STATS, improvements: 1, note_forks: 0, primer_forks: 0 });
+    assert.match(one[4].note, /1 problem improved/);
+    const oneTeaching = reputationDimensions({ ...STATS, approaches: 1, primers: 0 });
+    assert.match(oneTeaching[1].note, /^1 approach\./);
+  });
+});
+
+describe("oftenTeaches", () => {
+  it("caps at three — a list of eleven is not a summary", () => {
+    assert.equal(oftenTeaches(STATS.frequent_patterns).length, 3);
+    assert.deepEqual(oftenTeaches(STATS.frequent_patterns), ["Graphs", "DP", "Sliding Window"]);
+  });
+
+  it("copes with nothing to say", () => {
+    assert.deepEqual(oftenTeaches([]), []);
   });
 });

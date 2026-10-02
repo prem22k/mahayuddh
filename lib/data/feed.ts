@@ -305,43 +305,6 @@ export async function unblockUser(blockedId: string): Promise<void> {
   if (error) throw new DataError("feed", "Couldn't unblock that person.", { cause: error });
 }
 
-export async function isFollowing(followedId: string): Promise<boolean> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return false;
-  const { data } = await supabase
-    .from("follows")
-    .select("followed_id")
-    .eq("follower_id", user.id)
-    .eq("followed_id", followedId)
-    .maybeSingle();
-  return Boolean(data);
-}
-
-export async function toggleFollow(followedId: string, follow: boolean): Promise<void> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new DataError("feed", "Log in to follow.");
-  if (follow) {
-    const { error } = await supabase.from("follows").insert({ followed_id: followedId });
-    // 23505 = already following. Treat it as success: the desired state holds.
-    if (error && error.code !== "23505") {
-      throw new DataError("feed", "Couldn't follow.", { cause: error });
-    }
-  } else {
-    const { error } = await supabase
-      .from("follows")
-      .delete()
-      .eq("follower_id", user.id)
-      .eq("followed_id", followedId);
-    if (error) throw new DataError("feed", "Couldn't unfollow.", { cause: error });
-  }
-}
-
 // ── Legacy readers kept for callers that want plain chronological rows ───────
 // §20 ranks usefulness, but the Home panel wants "what just happened", and
 // re-deriving that from a usefulness sort would bury the last two minutes.

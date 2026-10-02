@@ -10,6 +10,7 @@ import { getPrimersForPatterns } from "@/lib/data/primers";
 import { getCatalogByTopic } from "@/lib/data/problems";
 import { getApproachesForSlugs } from "@/lib/data/approaches";
 import { getSharedResources } from "@/lib/data/vault";
+import { TeacherList } from "@/components/profile/TeacherList";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { Primer, Problem, Approach, SharedResource } from "@/types/database";
 
@@ -124,6 +125,13 @@ export default function PatternPage() {
             </div>
           ))
         )}
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-bold text-white">
+          People who teach it <span className="text-white/30 font-normal text-[11px]">· §22</span>
+        </h2>
+        <TeacherList pattern={topic} />
       </section>
 
       {approaches.length > 0 && (
