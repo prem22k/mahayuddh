@@ -95,8 +95,58 @@ and the §22 dimensions and "Often teaches" both appear.
 
 ---
 
+## Loop D — Squad from referral (`44af1a2`)
+
+### The problem it solves
+
+`squads.invite_code` is one shared 8-character capability per squad. So the link a member forwards to a friend is **byte-identical** to the one another member forwards — "who sent this?" is unanswerable, and a member cannot tell whether their invite did anything. That is the whole reason to invite people.
+
+So the link is now `/squad/join/<code>?ref=<token>`. The split is the design:
+
+| | Role | Consequence if forged |
+|---|---|---|
+| **`invite_code`** | **Authorises** the join | — |
+| **`ref` token** | **Attributes** it | Misattributes credit at worst. Cannot create a membership. |
+
+That asymmetry is why a token is safe to put in a forwardable URL.
+
+### The flow
+
+1. Link opens **logged out**, previews the squad, and **names the inviter**
+2. Joining routes to signup **with the token intact**
+3. The signup form says what the account is for, and quotes the code
+4. Sign-in lands back on the invite, ready to join
+5. One click joins, attributes, and sets the squad active
+
+### Opens next to joins
+
+```
+3 people have joined through your links (10 opens).
+```
+
+The gap between the two is the useful part: twelve opens and no joins means the *pitch* needs work, not the link. Countered server-side with no client UPDATE policy.
+
+### Privacy and abuse
+
+- One inviter per account, **first one wins** — credit cannot be overwritten by walking somebody through a second link
+- The table is **private**: readable by the sender and by somebody they actually brought in, nobody else. "Who recruited you" is social data and the link is forwardable
+- Only members can mint, enforced by a trigger as well as the route
+- Self-referrals ignored
+
+### Three bugs, all mine
+
+**`attribute_join` reused one `uuid` variable to hold a username**, so plpgsql raised `invalid input syntax for type uuid: "some_username_1"` on every call. The route swallowed the RPC error, so attribution silently credited nobody. The route now logs it — that silence is exactly what hid it.
+
+**`my_referral_links` filtered on `auth.uid()`**, which is always NULL for the service-role client the route uses, so every member saw an empty list. Same mistake as the unattributed `ai_calls` rows in Step 25. The user id is now a parameter, granted to `service_role` only.
+
+**The middleware only let five `/api` prefixes past its login redirect.** Every API route added since — including `push/deliver` from Phase 5 and this one — 307'd to `/login` instead of returning its own JSON 401. An allowlist there can only ever be wrong in one direction, so it is gone: `/api/*` is never redirected.
+
+Verified: 36 live-database checks including every abuse case, plus the full flow driven in Chromium — logged-out preview, signup context, sign-in return, join, and the sender's panel.
+
+---
+
 ## What is left in the plan
 
 - **Step 27** (two-week real-user test, §58 gates, §76 review, §60 triage) — needs 3–5 real squads. **Blocked on people, not code.** It is the only remaining step.
-- **Loop D** squad-from-referral: `shareSource` records the source of a visit, so the data exists, but no flow yet attributes a *squad creation* to a share. Half-built.
-- **Demo squad realism** (Step 26's cold-start polish): the demo squad exists from Phase 0; this step's line is about making it realistic enough that an empty Global feed does not pretend success. Partially true already — the Global segment returns empty rather than falling back to lifetime totals.
+- **Demo squad realism** (Step 26's cold-start polish): the demo squad exists from Phase 0. The Global segment already returns empty rather than falling back to lifetime totals, which was the honest half of that line.
+- **`ai_calls` and `recommendation_log` have no retention policy.** Fine at current volume; worth one before either is indexed.
