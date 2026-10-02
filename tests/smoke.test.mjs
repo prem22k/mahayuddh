@@ -43,6 +43,14 @@ import { RITUALS } from "../lib/rituals.ts";
 import { buildJourney, journeyWindow, median } from "../lib/journey.ts";
 import { withVia, viaSlug, artifactPath, shareTargets } from "../lib/share.ts";
 import {
+  isActionable,
+  checkDiscussionDraft,
+  draftMessage,
+  globalPostBlockedBy,
+  FEED_SCOPES,
+  SCOPE_PURPOSE,
+} from "../lib/feedPolicy.ts";
+import {
   rememberSource,
   consumeSource,
   peekSource,
@@ -1381,5 +1389,114 @@ describe("peekSource / consumeSource", () => {
   it("no-ops without a store, so server renders are unaffected", () => {
     assert.equal(rememberSource("battle:9f3c", { store: null, now: 1 }), undefined);
     assert.equal(peekSource({ store: null, now: 1 }), null);
+  });
+});
+
+// ── Step 21: feed policy (Bible §51) ──────────────────────────────────────────
+
+describe("isActionable", () => {
+  it("accepts something the reader could actually do", () => {
+    assert.equal(isActionable("Try solving it without the hash map — what breaks?"), true);
+    assert.equal(isActionable("Which of these two is O(n)?"), true);
+    assert.equal(isActionable("Compare your space usage with the editorial"), true);
+  });
+
+  it("rejects the low-quality shapes §51 names", () => {
+    // §51 lists "generic I solved #100 posts" and engagement bait as low quality.
+    assert.equal(isActionable("I solved it"), false);
+    assert.equal(isActionable("solved the problem"), false);
+    assert.equal(isActionable("check this out"), false);
+    assert.equal(isActionable("dm me"), false);
+    assert.equal(isActionable("referral code here"), false);
+  });
+
+  it("does not accept a bare link as actionable", () => {
+    assert.equal(isActionable("https://example.com/solution"), false);
+  });
+
+  it("rejects a post that mixes an action word with a low-quality phrase", () => {
+    // This is the case the disjunction bug slipped through: "try" satisfied the
+    // action side and the bait phrase was never consulted. SQL fixed in
+    // 20261003000014; this mirrors it.
+    assert.equal(isActionable("Try this, but check this out"), false);
+  });
+});
+
+describe("checkDiscussionDraft", () => {
+  const base = {
+    problemSlug: "two-sum",
+    patternTags: ["Arrays"],
+    body: "Try the two-pointer version — what breaks?",
+    visibility: "squad",
+  };
+
+  it("accepts a complete draft", () => {
+    assert.deepEqual(checkDiscussionDraft(base), { ok: true });
+  });
+
+  it("insists on a pattern, because that is how people find it", () => {
+    assert.deepEqual(checkDiscussionDraft({ ...base, patternTags: [] }), {
+      ok: false,
+      reason: "pattern",
+    });
+  });
+
+  it("insists on a problem link", () => {
+    assert.deepEqual(checkDiscussionDraft({ ...base, problemSlug: "" }), {
+      ok: false,
+      reason: "problem",
+    });
+    assert.deepEqual(checkDiscussionDraft({ ...base, problemSlug: "Not A Slug" }), {
+      ok: false,
+      reason: "problem",
+    });
+  });
+
+  it("refuses an unactionable body", () => {
+    assert.deepEqual(checkDiscussionDraft({ ...base, body: "I solved it" }), {
+      ok: false,
+      reason: "actionable",
+    });
+  });
+
+  it("whitespace is not a post", () => {
+    assert.deepEqual(checkDiscussionDraft({ ...base, body: "   " }), {
+      ok: false,
+      reason: "body",
+    });
+  });
+
+  it("has a message for every rejection reason", () => {
+    for (const draft of [
+      { ...base, patternTags: [] },
+      { ...base, problemSlug: "" },
+      { ...base, body: "" },
+      { ...base, body: "I solved it" },
+      { ...base, visibility: "planetwide" },
+    ]) {
+      const v = checkDiscussionDraft(draft);
+      assert.equal(v.ok, false);
+      if (!v.ok) assert.notEqual(draftMessage(v), "");
+    }
+    assert.equal(draftMessage({ ok: true }), "");
+  });
+});
+
+describe("globalPostBlockedBy", () => {
+  it("blocks Global below the solve threshold, per §51", () => {
+    assert.equal(globalPostBlockedBy(0), true);
+    assert.equal(globalPostBlockedBy(2), true);
+    assert.equal(globalPostBlockedBy(3), false);
+  });
+});
+
+describe("feed scopes", () => {
+  it("lists Squad first — §19 makes it the default", () => {
+    assert.deepEqual(FEED_SCOPES[0], "squad");
+    assert.deepEqual([...FEED_SCOPES].sort(), ["following", "global", "platform", "squad"]);
+  });
+
+  it("states a purpose for every scope", () => {
+    for (const s of FEED_SCOPES) assert.notEqual(SCOPE_PURPOSE[s], "");
   });
 });

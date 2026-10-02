@@ -1,6 +1,5 @@
 import { ImageResponse } from "next/og";
 import { getPublicJourney } from "@/lib/data/journey";
-import { formatDuration } from "@/lib/format";
 
 export const alt = "A personal practice journey on Mahayuddh";
 export const size = { width: 1200, height: 630 };

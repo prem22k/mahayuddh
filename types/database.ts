@@ -377,7 +377,10 @@ export interface ReviewItem {
 export type FeedEventType =
   | "solved" | "streak" | "contest" | "suggested" | "completed"
   | "solve" | "teach" | "challenge" | "complete" | "improve"
-  | "stuck" | "resource" | "squad_milestone";
+  | "stuck" | "resource" | "squad_milestone"
+  // Step 21: the one prose-authored feed object (§51). The body lives on the
+  // discussion row; the feed only points at it (§64).
+  | "discuss";
 
 export interface FeedEvent {
   id: string;

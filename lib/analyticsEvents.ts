@@ -42,6 +42,18 @@ export const ANALYTICS_EVENTS = [
   "approach_copied",
   "compare_viewed",
   "recap_generated",
+  // Feed (Step 21, Bible §19/§51). Useful-action rate per feed view is the
+  // Step 21 metric, so the denominators and the actions are both named.
+  // feed_view is the DENOMINATOR (a feed was looked at); feed_action is the
+  // NUMERATOR (somebody acted on something in it). Keeping them separate is the
+  // whole point — reusing one name for both would make the rate always 1.
+  "feed_view",
+  "feed_action",
+  "discuss_posted",
+  "feed_reported",
+  "feed_blocked",
+  "user_followed",
+  "user_unfollowed",
   // Misc
   "sync_completed",
   "stuck_requested",
