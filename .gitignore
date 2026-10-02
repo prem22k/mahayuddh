@@ -27,7 +27,12 @@ yarn-error.log*
 *.pem
 image*.png
 *.screenshot.png
-scripts/
+# `scripts/` is ignored because it holds local one-off tooling, but
+# make-schema-idempotent.py is part of the documented schema regeneration
+# procedure in README, so it has to be in the repo. Git cannot re-include a
+# file whose parent directory is excluded, hence scripts/* rather than scripts/.
+scripts/*
+!scripts/make-schema-idempotent.py
 
 # TypeScript cache
 *.tsbuildinfo

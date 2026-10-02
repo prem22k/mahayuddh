@@ -59,6 +59,18 @@ import {
   LADDER_LEVELS,
 } from "../lib/ai/policy.ts";
 import {
+  buildGates,
+  gateBoard,
+  QUALITATIVE_GATE,
+  REVIEW_QUESTIONS,
+  REVIEW_RULE,
+  OBSERVATION_CATEGORIES,
+  OBSERVATION_DAYS,
+  TRIAGE_LABELS,
+  TRIAGE_FIELDS,
+  triageCompleteness,
+} from "../lib/validation/gates.ts";
+import {
   acceptRate,
   signalBreakdown,
   explainRates,
@@ -2214,5 +2226,152 @@ describe("practiceNextFromRecommendation", () => {
     const r = practiceNextFromRecommendation(0);
     assert.equal(r.citesWhy, false);
     assert.match(r.summary, /Nothing to suggest/i);
+  });
+});
+
+// ── Step 27: validation gates (§58, §59, §60, §76) ──────────────────────────
+
+const RAW = [
+  { gate: "activation", passed: true, measured: "4 of 4 members started a battle", detail: "Median 2h." },
+  { gate: "social", passed: false, measured: "0 challenges sent", detail: "Nobody has sent one." },
+  { gate: "learning", passed: false, measured: "0 written", detail: "Nothing yet." },
+];
+
+describe("buildGates", () => {
+  it("returns all five gates in §58's order, whatever came back from SQL", () => {
+    const gates = buildGates(RAW);
+    assert.deepEqual(gates.map((g) => g.id), ["activation", "social", "learning", "retention", "organic"]);
+  });
+
+  it("marks a missing row unknown, never fail", () => {
+    // The honesty rule: a gate with nobody to measure is not a failure.
+    const gates = buildGates(RAW);
+    const retention = gates.find((g) => g.id === "retention");
+    assert.equal(retention.verdict, "unknown");
+    assert.equal(retention.measured, null);
+  });
+
+  it("keeps the reason a gate failed, because 'fail' alone is not actionable", () => {
+    const social = buildGates(RAW).find((g) => g.id === "social");
+    assert.equal(social.verdict, "fail");
+    assert.match(social.cannotTell, /Nobody has sent one/);
+  });
+
+  it("states what every gate cannot tell you", () => {
+    for (const g of buildGates(RAW)) {
+      assert.notEqual(g.cannotTell, "", `${g.id} claims certainty it does not have`);
+    }
+  });
+
+  it("never lets reading pass for learning", () => {
+    const learning = buildGates(RAW).find((g) => g.id === "learning");
+    assert.match(learning.cannotTell, /Reading is not measurable/i);
+  });
+});
+
+describe("gateBoard", () => {
+  it("reports the empty state rather than a wall of failures", () => {
+    const board = gateBoard([]);
+    assert.equal(board.empty, true);
+    assert.equal(board.failed, 0);
+    assert.equal(board.unknown, 5);
+  });
+
+  it("counts pass / fail / unknown", () => {
+    const board = gateBoard(RAW);
+    assert.equal(board.passed, 1);
+    assert.equal(board.failed, 2);
+    assert.equal(board.unknown, 2);
+    assert.equal(board.empty, false);
+  });
+
+  it("carries the qualitative gate explicitly rather than omitting it", () => {
+    const board = gateBoard(RAW);
+    assert.equal(board.qualitative.measurable, false);
+    assert.match(board.qualitative.question, /where we do DSA/i);
+    // It lives in the observation log, not in a query.
+    assert.match(OBSERVATION_CATEGORIES.map((c) => c.id).join(), /praise/);
+  });
+});
+
+describe("§76 review questions", () => {
+  it("asks all six", () => {
+    assert.equal(REVIEW_QUESTIONS.length, 6);
+  });
+
+  it("maps every question to a gate", () => {
+    for (const q of REVIEW_QUESTIONS) assert.ok(q.gate, `${q.id} has no gate`);
+  });
+
+  it("records that the invite question was unanswerable before Loop D", () => {
+    const join = REVIEW_QUESTIONS.find((q) => q.id === "join");
+    assert.match(join.note, /Loop D/);
+  });
+
+  it("states the consequence of a no", () => {
+    assert.match(REVIEW_RULE, /stop adding surface area/i);
+  });
+});
+
+describe("§59 observation log", () => {
+  it("covers all four day markers", () => {
+    assert.deepEqual(OBSERVATION_DAYS.map((d) => d.day), [1, 3, 7, 14]);
+  });
+
+  it("has a category for every thing §59 asks to record", () => {
+    const ids = OBSERVATION_CATEGORIES.map((c) => c.id).sort();
+    for (const need of ["hesitation", "ignored", "requested", "workaround"]) {
+      assert.ok(ids.includes(need), `§59 asks for ${need}`);
+    }
+  });
+
+  it("treats silence as data, not as a missing category", () => {
+    const ignored = OBSERVATION_CATEGORIES.find((c) => c.id === "ignored");
+    assert.match(ignored.hint, /Silence is data/);
+  });
+});
+
+describe("§60 triage", () => {
+  it("defines all six labels with their meaning", () => {
+    assert.deepEqual(
+      Object.keys(TRIAGE_LABELS).sort(),
+      ["CORE", "DUPLICATE", "EXPERIMENT", "FUTURE", "KILL", "SUPPORT"]
+    );
+    for (const v of Object.values(TRIAGE_LABELS)) assert.notEqual(v, "");
+  });
+
+  it("asks for exactly the nine fields §60 lists", () => {
+    assert.equal(TRIAGE_FIELDS.length, 9);
+  });
+
+  it("counts a partial entry honestly", () => {
+    const partial = triageCompleteness({
+      feature: "Interview sim", label: "EXPERIMENT",
+      problem: "Nobody practises speaking out loud.",
+      target_user: null, behaviour: null, core_loop_link: null,
+      alternative: "A buddy reads your approach.",
+      cost: null, risk: null, success_metric: null, decision: null,
+    });
+    assert.equal(partial.filled, 2);
+    assert.equal(partial.total, 9);
+    assert.equal(partial.ready, false);
+  });
+
+  it("accepts a complete entry", () => {
+    const full = triageCompleteness({
+      feature: "x", label: "KILL",
+      problem: "a", target_user: "b", behaviour: "c", core_loop_link: "d",
+      alternative: "e", cost: "f", risk: "g", success_metric: "h", decision: "i",
+    });
+    assert.equal(full.ready, true);
+  });
+
+  it("treats whitespace as unfilled", () => {
+    const padded = triageCompleteness({
+      feature: "x", label: null,
+      problem: "real", target_user: "   ", behaviour: "", core_loop_link: null,
+      alternative: null, cost: null, risk: null, success_metric: null, decision: null,
+    });
+    assert.equal(padded.filled, 1);
   });
 });

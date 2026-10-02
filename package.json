@@ -21,7 +21,8 @@
     "sync:contests": "node scripts/sync-contests.mjs",
     "sync:sheets": "node scripts/sync.mjs --sheets",
     "sync:catalog": "node scripts/sync.mjs --catalog",
-    "sync:all": "node scripts/sync.mjs --all"
+    "sync:all": "node scripts/sync.mjs --all",
+    "test:integration:validation": "node tests/integration/validation.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

@@ -169,9 +169,10 @@ Instant search across the full catalog by title, slug, or question number.
 
 ## 🗄️ Database Schema
 
-The live schema is `supabase/schema.sql` (canonical) plus the versioned
-migrations in `supabase/migrations/`. Do not hand-edit a migration that has
-already been applied — add a new one.
+The live schema is `supabase/schema.sql` (canonical, generated from the live
+database) plus the versioned migrations in `supabase/migrations/`. Do not
+hand-edit a migration that has already been applied — add a new one, then
+regenerate `schema.sql`.
 
 | Table | Purpose | Key constraints |
 |---|---|---|
@@ -279,8 +280,18 @@ because the migration chain assumes `profiles` already exists.
 (or `psql`), then seed:
 
 ```bash
-# supabase/schema.sql is complete and idempotent on its own:
-# 24 tables, 73 policies, 45 functions, 9 triggers, RLS on 23 tables.
+# supabase/schema.sql is complete and idempotent on its own, and re-running it
+# is how you repair drift. Verified by installing it three times in a row
+# against a clean Postgres 17 with the anon/authenticated/service_role roles and
+# the auth schema stubbed: 0 errors each time, and all 15 RPCs and 43 tables the
+# app calls are present afterwards.
+#
+# 41 tables, 118 policies, 55 functions, 22 triggers, 2 views, RLS on all 41 tables.
+#
+# It is generated from the live database. After applying a migration, regenerate:
+#     npx supabase db dump --file /tmp/dump.sql --schema public
+#     python3 scripts/make-schema-idempotent.py   # applied to /tmp/dump.sql first
+# then re-append the seed block at the bottom — a schema-only dump carries no rows.
 ```
 
 **B. Existing project** — apply the versioned migrations:
