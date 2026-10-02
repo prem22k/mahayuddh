@@ -284,3 +284,53 @@ export function triageCompleteness(entry: TriageEntry): {
   const filled = TRIAGE_FIELDS.filter((f) => (values[f] ?? "").trim().length > 0).length;
   return { filled, total: TRIAGE_FIELDS.length, ready: filled === TRIAGE_FIELDS.length };
 }
+
+// ── Has the two-week test actually started? ───────────────────────────────────
+
+export interface TestStatus {
+  members: number;
+  observations: number;
+  squads: number;
+  /**
+   * Whether anything here should be read as a result yet.
+   *
+   * The gate board is instrumentation. It renders verdicts from whatever rows
+   * exist, and during development those rows are synthetic — four test members
+   * produce four correct, meaningless red "fail" badges. The gates can never
+   * tell the difference, because a gate that cannot find data reports `unknown`
+   * and a gate that finds test data reports a pass or fail just the same.
+   *
+   * §59 is the only thing that distinguishes the two: an observation recorded by
+   * a human who was actually there. So that count is what decides whether the
+   * board is a result or a rehearsal.
+   */
+  started: boolean;
+  /** Sentence for the page. Says what the numbers are, without editorialising. */
+  sentence: string;
+}
+
+export function testStatus(
+  members: number,
+  observations: number,
+  squads: number,
+): TestStatus {
+  const started = observations > 0;
+  let sentence: string;
+  if (members === 0) {
+    sentence = "No squad has members yet. Nothing here can be measured.";
+  } else if (!started) {
+    sentence =
+      `${members} ${plural(members, "member")} across ${squads} ${plural(squads, "squad")}, ` +
+      "and no observations recorded. The gates below are the instrument working, not a result: " +
+      "nothing has been asked of anyone yet.";
+  } else {
+    sentence =
+      `${members} ${plural(members, "member")} across ${squads} ${plural(squads, "squad")}, ` +
+      `${observations} ${plural(observations, "observation")} recorded.`;
+  }
+  return { members, observations, squads, started, sentence };
+}
+
+function plural(n: number, word: string): string {
+  return n === 1 ? word : `${word}s`;
+}

@@ -69,6 +69,7 @@ import {
   TRIAGE_LABELS,
   TRIAGE_FIELDS,
   triageCompleteness,
+  testStatus,
 } from "../lib/validation/gates.ts";
 import {
   acceptRate,
@@ -2382,5 +2383,42 @@ describe("§60 triage", () => {
       alternative: null, cost: null, risk: null, success_metric: null, decision: null,
     });
     assert.equal(padded.filled, 1);
+  });
+});
+
+// ── Step 27: is the test actually under way? ─────────────────────────────────
+
+describe("testStatus", () => {
+  it("calls an empty scope unmeasurable rather than failing", () => {
+    const st = testStatus(0, 0, 0);
+    assert.equal(st.started, false);
+    assert.match(st.sentence, /No squad has members yet/);
+  });
+
+  it("says synthetic data is not a result", () => {
+    // The failure this exists to prevent: four test members producing four
+    // correct, meaningless red badges that read as a verdict on the product.
+    const st = testStatus(4, 0, 2);
+    assert.equal(st.started, false);
+    assert.match(st.sentence, /instrument working, not a result/);
+  });
+
+  it("treats a single observation as the test having started", () => {
+    // §59 is what makes a result a result: somebody was actually there.
+    const st = testStatus(4, 1, 2);
+    assert.equal(st.started, true);
+    assert.match(st.sentence, /1 observation recorded/);
+  });
+
+  it("pluralises correctly", () => {
+    assert.match(testStatus(1, 1, 1).sentence, /1 member across 1 squad, 1 observation/);
+    assert.match(testStatus(3, 5, 2).sentence, /3 members across 2 squads, 5 observations/);
+  });
+
+  it("reports counts so the denominator is never invisible", () => {
+    const st = testStatus(7, 2, 3);
+    assert.equal(st.members, 7);
+    assert.equal(st.observations, 2);
+    assert.equal(st.squads, 3);
   });
 });

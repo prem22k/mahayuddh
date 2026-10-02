@@ -9,6 +9,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { dataErrorMessage } from "@/lib/data/errors";
 import {
   getGateBoard,
+  getTestStatus,
   getSquadsForValidation,
   listObservations,
   recordObservation,
@@ -27,6 +28,7 @@ import {
   OBSERVATION_DAYS,
   REVIEW_QUESTIONS,
   REVIEW_RULE,
+  TestStatus,
   TRIAGE_FIELDS,
   TRIAGE_LABELS,
   TriageEntry,
@@ -43,6 +45,7 @@ const VERDICT_STYLE: Record<GateVerdict, { cls: string; Icon: typeof Check; word
 export default function ValidationPage() {
   const { user } = useAuth();
   const [board, setBoard] = useState<GateBoard | null>(null);
+  const [status, setStatus] = useState<TestStatus | null>(null);
   const [squads, setSquads] = useState<SquadOption[]>([]);
   const [squadId, setSquadId] = useState<string>("");
   const [observations, setObservations] = useState<Observation[]>([]);
@@ -55,12 +58,14 @@ export default function ValidationPage() {
     setError(null);
     try {
       const scope = squadId || null;
-      const [b, o, t] = await Promise.all([
+      const [b, st, o, t] = await Promise.all([
         getGateBoard(scope),
+        getTestStatus(scope),
         listObservations(scope),
         listTriage(),
       ]);
       setBoard(b);
+      setStatus(st);
       setObservations(o);
       setTriage(t);
     } catch (e) {
@@ -121,6 +126,7 @@ export default function ValidationPage() {
         <PageLoader label="Reading the gates…" />
       ) : (
         <>
+          <StatusBanner status={status} />
           <ReviewSection board={board} />
           <GateSection board={board} />
           <ObservationSection
@@ -133,6 +139,24 @@ export default function ValidationPage() {
         </>
       )}
     </main>
+  );
+}
+
+function StatusBanner({ status }: { status: TestStatus | null }) {
+  if (!status) return null;
+  const rehearsal = !status.started && status.members > 0;
+  return (
+    <p
+      role="status"
+      className={cn(
+        "rounded-xl border p-4 text-sm",
+        rehearsal
+          ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+          : "border-slate-800 bg-slate-900/40 text-slate-400"
+      )}
+    >
+      {status.sentence}
+    </p>
   );
 }
 

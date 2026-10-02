@@ -169,10 +169,25 @@ Instant search across the full catalog by title, slug, or question number.
 
 ## 🗄️ Database Schema
 
-The live schema is `supabase/schema.sql` (canonical, generated from the live
-database) plus the versioned migrations in `supabase/migrations/`. Do not
-hand-edit a migration that has already been applied — add a new one, then
+The live schema is described by two artefacts that are **alternatives, not a pair to
+run together**:
+
+- `supabase/schema.sql` — a complete snapshot for a **fresh** project. Regenerated from
+  the live database, re-runnable.
+- `supabase/migrations/` — the incremental history for an **existing** project, applied
+  with `db push`.
+
+Do not hand-edit a migration that has already been applied — add a new one, then
 regenerate `schema.sql`.
+
+> **Do not run `schema.sql` and then replay the migrations.** Verified: 13 of the 50
+> migrations fail when applied on top of a complete `schema.sql`, because those 13
+> predate the `drop ... if exists` guards and error with `policy "…" already exists`.
+> They cannot be fixed without editing already-applied migrations, which would change
+> their checksums and break `db push`. Pick one path:
+>
+> - **New project** → run `supabase/schema.sql`, done. Do not link or push.
+> - **Existing project** → `supabase link` + `db push` only. Never run `schema.sql`.
 
 | Table | Purpose | Key constraints |
 |---|---|---|

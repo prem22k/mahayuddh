@@ -102,16 +102,16 @@ And `logCall` used a browser client server-side to find the user, which returned
 ```bash
 npx tsc --noEmit                # clean
 npm run lint                    # no warnings or errors
-npm run test:smoke              # 200/200
+npm run test:smoke              # 221/221
 npm run test:static             # the RLS insert audit
 npm run build                   # 32/32 static pages
 
-npm run test:integration:wall      # 5/19
-npm run test:integration:feed      # 23/28
-npm run test:integration:teacher   # 14/19
+npm run test:integration:wall      # 5/5
+npm run test:integration:feed      # 23/23
+npm run test:integration:teacher   # 14/14
 npm run test:integration:notify    # 28/28
 npm run test:integration:composer  # 30/30
-npm run test:integration:ai        # 19/30
+npm run test:integration:ai        # 19/19
 ```
 
 ---

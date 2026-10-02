@@ -3,12 +3,13 @@ import { DataError } from "@/lib/data/errors";
 import type {
   Gate,
   GateBoard,
+  TestStatus,
   ObservationCategory,
   RawGateRow,
   TriageEntry,
   TriageLabel,
 } from "@/lib/validation/gates";
-import { gateBoard } from "@/lib/validation/gates";
+import { gateBoard, testStatus } from "@/lib/validation/gates";
 
 /**
  * Step 27 reads (Bible §58, §59, §60, §76).
@@ -46,6 +47,24 @@ export async function getGateBoard(squadId: string | null = null): Promise<GateB
     throw new DataError("gates", "Couldn't read the validation gates. Retry.", { cause: error });
   }
   return gateBoard((data ?? []) as RawGateRow[]);
+}
+
+/**
+ * Whether the two-week test has actually begun.
+ *
+ * Kept beside the gates on purpose: reading the verdicts without it is how a
+ * board full of synthetic test data gets mistaken for a verdict on the product.
+ */
+export async function getTestStatus(squadId: string | null = null): Promise<TestStatus> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("validation_test_status", { p_squad_id: squadId });
+  if (error) {
+    throw new DataError("gates", "Couldn't read the test status. Retry.", { cause: error });
+  }
+  const row = (data ?? [])[0] as
+    | { member_count: number; observation_count: number; squad_count: number }
+    | undefined;
+  return testStatus(Number(row?.member_count ?? 0), Number(row?.observation_count ?? 0), Number(row?.squad_count ?? 0));
 }
 
 /** Squads with at least one member, so the picker is not full of empty rooms. */

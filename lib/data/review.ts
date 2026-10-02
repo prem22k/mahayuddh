@@ -216,7 +216,8 @@ export async function toggleBookmark(problemSlug: string): Promise<boolean> {
   return true;
 }
 
-export async function isBookmarked(problemSlug: string): Promise<boolean> {  const supabase = createClient();
+export async function isBookmarked(problemSlug: string): Promise<boolean> {
+  const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
   const { data } = await supabase

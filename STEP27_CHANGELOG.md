@@ -181,10 +181,71 @@ Three real defects surfaced only because it was installed rather than read:
 
 ## Gates
 
-221 unit tests. **200 live-database checks across nine suites**, 27 of them new here.
+226 unit tests. **200 live-database checks across nine suites**, 27 of them new here.
 `tsc`, lint, static RLS audit and production build all clean. The page was driven in
 Chromium with zero console errors — including submitting an observation, proposing a
 feature as a non-admin, being correctly refused a label, and switching squad scope.
+
+## The review that followed ("is everything done?")
+
+### `schema.sql` and the migrations conflict, and the README said otherwise
+
+The README described the schema as "`schema.sql` (canonical) **plus** the versioned
+migrations". Tested on a clean Postgres 17: apply `schema.sql`, then replay all 50
+migrations in order — **13 fail**, every one of them `policy "…" already exists` or
+`constraint "…" already exists`. Those 13 predate the `drop … if exists` guards.
+
+They cannot be fixed. Editing an applied migration changes its checksum and breaks
+`db push`, and the README's own first rule is "do not hand-edit a migration that has
+already been applied". So the documentation was the thing that was wrong: the two
+artefacts are **alternatives**, and the README now says so, tells you which to pick,
+and states plainly that running both breaks.
+
+### The board was displaying test-account data as a finding
+
+This is the one that mattered. Six synthetic members from browser testing produced six
+correct, meaningless red "fail" badges — arithmetically true, evidentially worthless.
+The `unknown` state cannot help here: it triggers when a gate finds *no data*, and a
+gate that finds *test data* reports a verdict just the same.
+
+§59 is what separates the two. An observation recorded by a human who was actually
+there is the only evidence that the two-week test has begun, and no gate can see that
+— so `00034` counts it and the page says so:
+
+> **6 members across 4 squads, and no observations recorded. The gates below are the
+> instrument working, not a result: nothing has been asked of anyone yet.**
+
+Amber while true, neutral once an observation exists. Verified in the browser both ways.
+
+It also flushed out that my own throwaway probe scripts had left debris in the live
+database — two orphaned observations and two `val…` squads from the runs that exited
+before cleanup. Worth noting *why* that mattered: `observed_by` is `ON DELETE SET
+NULL`, so an observation whose observer's account is deleted survives but becomes
+readable only by an admin. The banner counts it (it is `security definer`) while the
+researcher cannot see it. Purged.
+
+### A systemic audit of the bug I had just fixed
+
+I fixed `decideTriage` and then asked whether the same silent-RLS-no-op existed
+elsewhere. Audited every `.update()` / `.delete()` in `lib/data`: 26 candidates. Read
+the policies for each and **24 are own-row writes, where the caller's own policy always
+matches and the bug cannot fire.** `review_queue` looked alarming — a single
+`auth.uid() = user_id` policy — until I read it: it is a *personal* spaced-repetition
+queue, not a moderation queue, so own-row is correct.
+
+The two genuinely reachable non-owner cases, `suggestions` and `stuck_replies`, both
+have policies that admit the non-owner (`from_user = to_user`, `author_id OR
+participant`). So the triage case was the only one where a real user hits this. No
+mass refactor justified.
+
+### Two smaller things
+
+`isBookmarked` had its first statement welded to its signature
+(`{  const supabase = …`), left over from an edit.
+
+`PHASE5_CHANGELOG.md` reported `# 5/19`, `# 23/28`, `# 14/19`, `# 19/30` for suites
+that have 5, 23, 14 and 19 checks — wrong denominators, so the changelog could not be
+used to verify anything. And `# 200/200` smoke, now 226.
 
 ## Honest accounting of what "verified" means here
 
@@ -194,6 +255,8 @@ feature as a non-admin, being correctly refused a label, and switching squad sco
 | RLS on both tables, as a non-admin, by effect not by error message | The admin path through the UI — no non-admin can be blocked, which is also a failure mode I never exercised the other way |
 | 15 RPCs and 43 tables install from `schema.sql` | Migrations 10–31 replayed *on top of* `schema.sql`; README says "schema plus migrations" and I only tested the schema alone |
 | 3 of 22 triggers observed firing | The other 19, which exist and are wired identically |
+| `schema.sql` alone installs | `schema.sql` **+** migrations — they conflict, and the README now says not to |
+| Whether the board admits it is a rehearsal | …which is why the banner above exists |
 | Zero console errors on one page | Mobile breakpoints, keyboard navigation, screen readers, Core Web Vitals — none measured |
 | All AI gates refusing honestly | Any AI feature actually working: 4 of 5 have no provider behind them |
 | — | Push delivery against a real FCM endpoint |
