@@ -543,35 +543,19 @@ CREATE OR REPLACE FUNCTION "public"."gate_activation"("p_squad_id" "uuid" DEFAUL
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
-  with members as (
-    select m.user_id, p.created_at
-    from public.squad_members m
-    join public.profiles p on p.id = m.user_id
-    where p_squad_id is null or m.squad_id = p_squad_id
-  ),
-  first_battle as (
-    select m.user_id, min(b.started_at) as at
-    from members m
-    left join public.battles b on b.user_id = m.user_id
-    group by m.user_id
-  )
-  select
-    'activation',
-    count(*) filter (where f.at is not null) = count(*),
-    count(*) filter (where f.at is not null)::text || ' of ' || count(*)::text || ' members started a battle',
-    case when count(*) = 0 then 'No members yet — the gate cannot be measured.'
-         when count(*) filter (where f.at is not null) = 0 then 'Nobody has started a battle.'
-         else 'Median hours to first battle: ' || coalesce(
-           (select round(avg(h))::text from (
-              select extract(epoch from (f.at - m.created_at)) / 3600 as h
-              from first_battle f join members m on m.user_id = f.user_id
-              where f.at is not null
-            ) s),
-           'n/a'
-         )
+  select 'activation',
+    count(*) filter (where b.id is not null) > 0,
+    count(distinct m.user_id) filter (where b.id is not null)::text
+      || ' of ' || count(distinct m.user_id)::text || ' members started a battle',
+    case when count(distinct m.user_id) = 0 then 'No members yet — the gate cannot be measured.'
+         when count(distinct m.user_id) filter (where b.id is not null) = 0 then 'Nobody has started a battle.'
+         else 'A battle was started by at least one member.'
     end
-  from first_battle f
-  join members m on m.user_id = f.user_id
+  from public.squad_members m
+  left join public.battles b on b.user_id = m.user_id
+  where (p_squad_id is not null or exists (
+          select 1 from public.squads s where s.id = m.squad_id and not s.is_demo))
+  group by m.squad_id
   having count(*) > 0
 $$;
 
@@ -597,17 +581,21 @@ CREATE OR REPLACE FUNCTION "public"."gate_learning"("p_squad_id" "uuid" DEFAULT 
   from (
     select
       (select count(*) from public.squad_members m
-        where p_squad_id is null or m.squad_id = p_squad_id) as n_members,
+        where p_squad_id is not null or exists (
+          select 1 from public.squads s where s.id = m.squad_id and not s.is_demo)) as n_members,
       (select count(*) from public.approaches a where a.user_id in
         (select m.user_id from public.squad_members m
-          where p_squad_id is null or m.squad_id = p_squad_id)) as written,
+          where p_squad_id is not null or exists (
+            select 1 from public.squads sq where sq.id = m.squad_id and not sq.is_demo))) as written,
       (select count(*) from public.primers p where p.author_id in
         (select m.user_id from public.squad_members m
-          where p_squad_id is null or m.squad_id = p_squad_id)) as primers,
+          where p_squad_id is not null or exists (
+            select 1 from public.squads sq where sq.id = m.squad_id and not sq.is_demo))) as primers,
       (select count(*) from public.notebook_notes n
         where n.fork_of is not null and n.owner_id in
           (select m.user_id from public.squad_members m
-            where p_squad_id is null or m.squad_id = p_squad_id)) as copied
+            where p_squad_id is not null or exists (
+              select 1 from public.squads sq where sq.id = m.squad_id and not sq.is_demo))) as copied
   ) c
   where c.n_members > 0
 $$;
@@ -633,10 +621,16 @@ CREATE OR REPLACE FUNCTION "public"."gate_organic"("p_squad_id" "uuid" DEFAULT N
   from (
     select
       (select count(*) from public.squad_members m
-        where p_squad_id is null or m.squad_id = p_squad_id) as n_members,
+        where p_squad_id is not null or exists (
+          select 1 from public.squads s where s.id = m.squad_id and not s.is_demo)) as n_members,
+      -- Scoped to the members counted above, so a referral only counts for a
+      -- squad the invitee actually belongs to.
       (select count(*) from public.profiles p
         where p.invited_by is not null
-          and (p_squad_id is null or p.active_squad_id = p_squad_id)) as referred
+          and p.active_squad_id is not null
+          and (p_squad_id is not null
+               or exists (select 1 from public.squads s
+                          where s.id = p.active_squad_id and not s.is_demo))) as referred
   ) c
   where c.n_members > 0
 $$;
@@ -645,7 +639,7 @@ $$;
 ALTER FUNCTION "public"."gate_organic"("p_squad_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."gate_organic"("p_squad_id" "uuid") IS '§58 organic growth. Measurable only since Loop D. No row when the scope has no members.';
+COMMENT ON FUNCTION "public"."gate_organic"("p_squad_id" "uuid") IS '§58 organic growth. Referrals counted among members of in-scope, non-demo squads. Measurable only since Loop D. No row when the scope has no members.';
 
 
 
@@ -662,11 +656,13 @@ CREATE OR REPLACE FUNCTION "public"."gate_retention"("p_squad_id" "uuid" DEFAULT
   from (
     select
       (select count(*) from public.squad_members m
-        where p_squad_id is null or m.squad_id = p_squad_id) as n_members,
+        where p_squad_id is not null or exists (
+          select 1 from public.squads s where s.id = m.squad_id and not s.is_demo)) as n_members,
       (select count(distinct date_trunc('week', e.created_at))
        from public.problem_events e
        where e.user_id in (select m.user_id from public.squad_members m
-         where p_squad_id is null or m.squad_id = p_squad_id)
+         where p_squad_id is not null or exists (
+           select 1 from public.squads sq where sq.id = m.squad_id and not sq.is_demo))
          and e.kind in ('solved', 'revisited')
          and e.created_at > now() - interval '21 days') as active_weeks
   ) c
@@ -688,19 +684,22 @@ CREATE OR REPLACE FUNCTION "public"."gate_social"("p_squad_id" "uuid" DEFAULT NU
   select 'social', c.n_sent > 0,
     c.n_sent::text || ' challenges sent, ' || c.n_done::text || ' completed',
     case when c.n_sent = 0
-      then 'Nobody has sent a challenge. Whether one happens naturally by day 3 is §59''s question, and it is an observation — this count cannot see it.'
+      then 'Nobody has sent a challenge. §59 asks whether one happens naturally by day 3, and that is an observation, not something this query can see.'
       else 'These are PROMPTED, not unprompted: the product says "challenge someone" in at least six places, including a button after every solve. §58 asks about challenges sent without being instructed, so this number does not answer that. Read the §59 log for it.'
     end
   from (
     select
       (select count(*) from public.squad_members m
-        where p_squad_id is null or m.squad_id = p_squad_id) as n_members,
+        where p_squad_id is not null or exists (
+          select 1 from public.squads s where s.id = m.squad_id and not s.is_demo)) as n_members,
       (select count(*) from public.suggestions s
         where s.from_user in (select m.user_id from public.squad_members m
-          where p_squad_id is null or m.squad_id = p_squad_id)) as n_sent,
+          where p_squad_id is not null or exists (
+            select 1 from public.squads sq where sq.id = m.squad_id and not sq.is_demo))) as n_sent,
       (select count(*) from public.suggestions s
         where s.from_user in (select m.user_id from public.squad_members m
-          where p_squad_id is null or m.squad_id = p_squad_id)
+          where p_squad_id is not null or exists (
+            select 1 from public.squads sq where sq.id = m.squad_id and not sq.is_demo))
           and s.status = 'completed') as n_done
   ) c
   where c.n_members > 0
@@ -1893,14 +1892,14 @@ COMMENT ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") IS 'Al
 
 
 
-CREATE OR REPLACE FUNCTION "public"."validation_squads"() RETURNS TABLE("squad_id" "uuid", "name" "text")
+CREATE OR REPLACE FUNCTION "public"."validation_squads"() RETURNS TABLE("squad_id" "uuid", "name" "text", "is_demo" boolean)
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
-  select s.id, s.name
+  select s.id, s.name, s.is_demo
   from public.squads s
   where exists (select 1 from public.squad_members m where m.squad_id = s.id)
-  order by s.name
+  order by s.is_demo, s.name
 $$;
 
 
@@ -1913,21 +1912,20 @@ CREATE OR REPLACE FUNCTION "public"."validation_test_status"("p_squad_id" "uuid"
     AS $$
   select
     (select count(*) from public.squad_members m
-      where p_squad_id is null or m.squad_id = p_squad_id),
-    -- RLS applies to validation_observations, and this function is security
-    -- definer, so an observer's own rows are visible to the caller through it.
-    -- Deliberately: the count is the researcher's own tally.
+      where p_squad_id is not null or exists (
+        select 1 from public.squads s where s.id = m.squad_id and not s.is_demo)),
     (select count(*) from public.validation_observations o
       where p_squad_id is null or o.squad_id = p_squad_id),
     (select count(distinct m.squad_id) from public.squad_members m
-      where p_squad_id is null or m.squad_id = p_squad_id)
+      where p_squad_id is not null or exists (
+        select 1 from public.squads s where s.id = m.squad_id and not s.is_demo))
 $$;
 
 
 ALTER FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") IS 'Member and observation counts for the scope. observation_count is the honest answer to "has the two-week test started?" — gates alone never are.';
+COMMENT ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") IS 'Member and observation counts for the scope. Demo squads are excluded when the scope is platform-wide: a shop window is not a cohort.';
 
 
 
@@ -2605,6 +2603,7 @@ CREATE TABLE IF NOT EXISTS "public"."squads" (
     "season_name" "text",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "ai_enabled" boolean DEFAULT false NOT NULL,
+    "is_demo" boolean DEFAULT false NOT NULL,
     CONSTRAINT "squads_description_check" CHECK ((("description" IS NULL) OR ("octet_length"("description") <= 2000))),
     CONSTRAINT "squads_name_check" CHECK ((("char_length"("name") >= 1) AND ("char_length"("name") <= 60)))
 );
@@ -2614,6 +2613,10 @@ ALTER TABLE "public"."squads" OWNER TO "postgres";
 
 
 COMMENT ON COLUMN "public"."squads"."ai_enabled" IS '§45: AI features are a per-squad experiment, off by default. Set by the platform, never by a member.';
+
+
+
+COMMENT ON COLUMN "public"."squads"."is_demo" IS 'Seeded showcase squad. Excluded from the §58 validation gates: a demo squad must never be able to turn a gate green.';
 
 
 
@@ -3803,6 +3806,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS "squad_seasons_one_active" ON "public"."squad_
 
 
 CREATE INDEX IF NOT EXISTS "squad_seasons_squad_idx" ON "public"."squad_seasons" USING "btree" ("squad_id", "starts_at" DESC);
+
+
+
+CREATE INDEX IF NOT EXISTS "squads_is_demo_idx" ON "public"."squads" USING "btree" ("is_demo");
 
 
 

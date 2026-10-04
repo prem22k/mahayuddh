@@ -1,23 +1,35 @@
 "use client";
 
-import React, { useState } from "react";
-import { Bell, BellRing, RefreshCw, Menu, Search } from "lucide-react";
+import React from "react";
+import { RefreshCw, Menu, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { syncUserProfileStats } from "@/lib/data/profiles";
-
-import { UserStatsDossierModal } from "@/components/profile/UserStatsDossierModal";
+import { NotificationBell } from "./NotificationBell";
 
 interface HeaderProps {
   onMenuToggle?: () => void;
   onSearchOpen?: () => void;
 }
 
+/**
+ * The utility bar (design.md §2).
+ *
+ * Three things live here and nothing else: the global search, the LeetCode sync
+ * trigger, and notifications. Identity is NOT here — the sidebar footer already
+ * carries avatar, handle, streak and sign-out, and a second copy of the same
+ * person in the bar was the reason "who am I" appeared three times per screen.
+ * The dossier opens from the sidebar footer instead.
+ *
+ * There is exactly one notification control. A separate "Alerts" permission
+ * pill used to sit beside the real bell, and because the bell was mounted as a
+ * fixed overlay in the same corner the two were drawn on top of each other:
+ * unread state and push permission were both unreachable. Permission now lives
+ * inside the bell's own panel, where it belongs.
+ */
 export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
   const { profile, user, refreshProfile } = useAuth();
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isDossierOpen, setIsDossierOpen] = useState(false);
 
   const displayName = profile?.username || user?.email?.split("@")[0] || "Squad Member";
 
@@ -35,71 +47,43 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
     }
   };
 
-  const toggleNotifications = async () => {
-    if (!notificationsEnabled && "Notification" in window) {
-      const permission = await Notification.requestPermission();
-      setNotificationsEnabled(permission === "granted");
-    } else {
-      setNotificationsEnabled(!notificationsEnabled);
-    }
-  };
-
   return (
-    <>
-      <header className="sticky top-0 z-20 px-4 md:px-8 py-3 flex items-center justify-between bg-black/60 backdrop-blur-xl border-b border-white/[0.04] select-none">
-        {/* Left: Mobile controls + Currently Active User */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onMenuToggle}
-            className="md:hidden p-2 rounded-xl text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors"
-            aria-label="Open navigation menu"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+    <header className="sticky top-0 z-20 px-4 md:px-8 py-2 md:py-3 flex items-center justify-between gap-3 bg-black/70 backdrop-blur-xl border-b border-white/[0.06] select-none">
+      {/* Left: mobile drawer + global search */}
+      <div className="flex items-center gap-1.5 md:gap-3 flex-1 min-w-0">
+        <button
+          onClick={onMenuToggle}
+          className="md:hidden w-11 h-11 -ml-2 rounded-xl text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors flex items-center justify-center cursor-pointer"
+          aria-label="Open navigation menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
 
-          <button
-            onClick={onSearchOpen}
-            className="md:hidden p-2 rounded-xl text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors"
-            aria-label="Search problems"
-          >
-            <Search className="w-5 h-5" />
-          </button>
+        {/* design.md §2 puts the search pill in the header. The sidebar keeps its
+            own trigger (§3.1); on a phone this one replaces it, since the
+            drawer is a worse search entry than a visible field. */}
+        <button
+          onClick={onSearchOpen}
+          className="group h-9 md:h-8 px-3 w-full max-w-md bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.06] hover:border-[#fa586a]/30 rounded-[10px] flex items-center justify-between gap-3 text-white/40 transition-all cursor-pointer"
+        >
+          <span className="flex items-center gap-2 min-w-0">
+            <Search className="w-3.5 h-3.5 shrink-0 group-hover:text-[#fa586a] transition-colors" />
+            <span className="text-[12px] truncate group-hover:text-white/70 transition-colors">
+              Search problems, tags, squad members
+            </span>
+          </span>
+          <kbd className="hidden sm:block shrink-0 px-1.5 py-0.5 text-[10px] font-mono bg-white/[0.04] rounded border border-white/[0.06] text-white/25">
+            ⌘K
+          </kbd>
+        </button>
+      </div>
 
-          {/* Currently Active User Display - Clickable to open Dossier */}
-          {profile && (
-            <button
-              onClick={() => setIsDossierOpen(true)}
-              className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.06] hover:border-[#fa586a]/40 transition-all cursor-pointer group"
-              title="Click to view your Warrior Stats Dossier & Combat Radar"
-            >
-              <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#fa586a] to-[#ff8a9c] flex items-center justify-center font-bold text-[9px] text-white shrink-0 overflow-hidden group-hover:scale-105 transition-transform">
-                {profile.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={profile.avatar_url}
-                    alt={displayName}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  displayName.charAt(0).toUpperCase()
-                )}
-              </div>
-              <div className="flex items-center gap-1.5 text-xs">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#30d158]" />
-                <span className="font-semibold text-white/90 group-hover:text-white truncate max-w-[130px]">{displayName}</span>
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-white/[0.06] text-[#fa586a]">Dossier</span>
-              </div>
-            </button>
-          )}
-        </div>
-
-      {/* Right: Controls */}
-      <div className="flex items-center gap-2.5">
-        {/* Sync Button */}
+      {/* Right: sync + notifications */}
+      <div className="flex items-center gap-1.5 shrink-0">
         <button
           onClick={handleSync}
           disabled={isSyncing}
-          className="p-2 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-white/40 hover:text-white transition-all disabled:opacity-50 cursor-pointer"
+          className="w-10 h-10 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-white/45 hover:text-white transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center"
           title="Sync LeetCode Submissions"
           aria-label="Sync LeetCode Submissions"
         >
@@ -111,37 +95,10 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
           />
         </button>
 
-        {/* Notifications */}
-        <button
-          onClick={toggleNotifications}
-          className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all cursor-pointer",
-            notificationsEnabled
-              ? "bg-[#fa586a]/15 border-[#fa586a]/30 text-[#fa586a]"
-              : "bg-white/[0.04] border-white/[0.06] text-white/40 hover:text-white/70"
-          )}
-          aria-label="Toggle push notifications"
-        >
-          {notificationsEnabled ? (
-            <>
-              <BellRing className="w-3 h-3 fill-[#fa586a]" />
-              <span className="hidden md:inline">Alerts On</span>
-            </>
-          ) : (
-            <>
-              <Bell className="w-3 h-3" />
-              <span className="hidden md:inline">Alerts</span>
-            </>
-          )}
-        </button>
+        <div className="flex items-center rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-colors">
+          <NotificationBell />
+        </div>
       </div>
     </header>
-
-    <UserStatsDossierModal
-      isOpen={isDossierOpen}
-      onClose={() => setIsDossierOpen(false)}
-      profile={profile}
-    />
-  </>
   );
 }

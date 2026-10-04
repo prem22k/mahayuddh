@@ -77,6 +77,11 @@ export async function updateSession(request: NextRequest) {
   // One frozen recap is public (Step 20) so a shared week renders for a
   // logged-out visitor. Matched precisely: the *list* at /squad/[id]/recaps
   // still requires auth, because it offers the generate button.
+  // Step 3's public landing. Every share surface in the product sends somebody
+  // here, and §42 says a share link has to show context before it asks for an
+  // account — "here is a login form" is not context.
+  const isWelcomePath = request.nextUrl.pathname === "/welcome";
+
   const isPublicRecapPath = /^\/squad\/[^/]+\/recaps\/[^/]+$/.test(
     request.nextUrl.pathname
   );
@@ -87,7 +92,11 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname
   );
   const isPublicSharePath =
-    isInvitePath || isPublicRecapPath || isPublicPrimerPath || isPublicSeasonPath;
+    isInvitePath ||
+    isPublicRecapPath ||
+    isPublicPrimerPath ||
+    isPublicSeasonPath ||
+    isWelcomePath;
 
   // Fast-path: Check if any Supabase auth cookies exist in request
   const allCookies = request.cookies.getAll();

@@ -22,6 +22,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { getAllLists } from "@/lib/data/sheets";
 import { CustomList } from "@/types/database";
 import { CreateListModal } from "@/components/modals/CreateListModal";
+import { UserStatsDossierModal } from "@/components/profile/UserStatsDossierModal";
 
 interface SidebarProps {
   onSearchOpen?: () => void;
@@ -34,6 +35,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
   const [lists, setLists] = useState<CustomList[]>([]);
   const [loadingLists, setLoadingLists] = useState(true);
   const [isCreateListOpen, setIsCreateListOpen] = useState(false);
+  const [isDossierOpen, setIsDossierOpen] = useState(false);
 
   const fetchLists = async () => {
     try {

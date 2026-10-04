@@ -39,6 +39,23 @@
     --bottom-bar-height: 56px;
     --bottom-bar-margin: 16px;
     --bottom-bar-max-width: 680px;
+    --mobile-tab-height: 54px;
+
+    /* On phones the tab bar owns the bottom edge and the solving dock stacks
+       directly above it, so the dock's offset is not a constant. */
+    --dock-bottom: var(--bottom-bar-margin);
+    --content-bottom-padding: calc(
+      var(--bottom-bar-height) + var(--bottom-bar-margin) * 2 + 8px
+    );
+  }
+
+  @media (max-width: 767px) {
+    :root {
+      --dock-bottom: calc(var(--mobile-tab-height) + 10px);
+      --content-bottom-padding: calc(
+        var(--mobile-tab-height) + var(--bottom-bar-height) + 26px
+      );
+    }
   }
 
   * {
@@ -87,12 +104,14 @@
   top: var(--sidebar-margin);
   left: var(--sidebar-margin);
   bottom: calc(
-    var(--bottom-bar-height) + var(--bottom-bar-margin) + var(--sidebar-margin)
+    var(--dock-bottom) + var(--bottom-bar-height) + var(--sidebar-margin)
   );
   width: var(--sidebar-width);
   border-radius: 16px;
   z-index: 100;
-  display: flex;
+  /* display is owned by the `hidden md:flex` utilities on the element — the
+     raw `display` used to live here and silently outranked Tailwind's
+     `.hidden` on source order. */
   flex-direction: column;
   overflow: hidden;
 
@@ -114,7 +133,7 @@
 
 .floating-bottom-dock-container {
   position: fixed;
-  bottom: var(--bottom-bar-margin);
+  bottom: var(--dock-bottom);
   left: 0;
   right: 0;
   display: flex;
@@ -141,15 +160,81 @@
   align-items: center;
   padding: 0 10px;
 
-  /* Glass material */
-  background: var(--glass-bg);
-  backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
-  -webkit-backdrop-filter: saturate(var(--glass-saturate))
-    blur(var(--glass-blur));
+  /* Glass material. Opaque enough that page copy scrolling underneath reads as
+     texture instead of competing text — at the sidebar's 0.65 alpha, headings
+     stayed legible straight through the pill. */
+  background: rgba(20, 20, 22, 0.88);
+  backdrop-filter: saturate(var(--glass-saturate)) blur(30px);
+  -webkit-backdrop-filter: saturate(var(--glass-saturate)) blur(30px);
   border: 0.5px solid var(--glass-border);
   box-shadow:
     0 12px 40px var(--glass-shadow),
     inset 0 0.5px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE TAB BAR — design.md §4. Permanent bottom navigation on
+   phones, where the drawer was the only way to move.
+   ═══════════════════════════════════════════════════════════ */
+
+.mobile-tab-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--mobile-tab-height);
+  z-index: 100;
+  display: flex;
+  align-items: stretch;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: rgba(20, 20, 22, 0.9);
+  backdrop-filter: saturate(var(--glass-saturate)) blur(30px);
+  -webkit-backdrop-filter: saturate(var(--glass-saturate)) blur(30px);
+  border-top: 0.5px solid var(--glass-border);
+}
+
+@media (min-width: 768px) {
+  .mobile-tab-bar {
+    display: none;
+  }
+}
+
+.mobile-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  /* design.md §4: touch targets are >= 44x44 on mobile. */
+  min-height: 44px;
+  color: rgba(255, 255, 255, 0.45);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.mobile-tab:hover {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.mobile-tab.active {
+  color: #ffffff;
+}
+
+.mobile-tab.active .mobile-tab-icon {
+  color: var(--text-accent);
+}
+
+.mobile-tab-icon {
+  color: rgba(255, 255, 255, 0.55);
+  transition: color 0.15s ease;
+}
+
+.mobile-tab-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -158,9 +243,7 @@
 
 .main-content-area {
   margin-left: calc(var(--sidebar-width) + var(--sidebar-margin) * 2);
-  padding-bottom: calc(
-    var(--bottom-bar-height) + var(--bottom-bar-margin) * 2 + 8px
-  );
+  padding-bottom: var(--content-bottom-padding);
   min-height: 100vh;
 }
 
@@ -181,6 +264,16 @@
   cursor: pointer;
   text-decoration: none;
   position: relative;
+}
+
+/* design.md §4 requires >= 44x44 touch targets on mobile. The drawer is the
+   only nav on a phone, so its rows have to clear that bar; the floating
+   desktop sidebar keeps the tighter 13px-density rhythm. */
+@media (max-width: 767px) {
+  .nav-item {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
 }
 
 .nav-item:hover {
@@ -318,11 +411,9 @@
    RESPONSIVE — collapse sidebar on mobile, adjust bottom bar
    ═══════════════════════════════════════════════════════════ */
 
-@media (max-width: 768px) {
-  .floating-sidebar {
-    display: none;
-  }
-
+/* 767px, not 768px, so this never overlaps the `md:` breakpoint utilities
+   above. `.floating-sidebar`'s own visibility is owned by `hidden md:flex`. */
+@media (max-width: 767px) {
   .main-content-area {
     margin-left: 0;
   }

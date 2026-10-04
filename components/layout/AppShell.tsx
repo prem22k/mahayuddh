@@ -5,9 +5,9 @@ import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { NowSolvingBar } from "./NowSolvingBar";
+import { MobileTabBar } from "./MobileTabBar";
 import { SearchModal } from "../modals/SearchModal";
 import { LeetCodeAutoSync } from "@/components/providers/LeetCodeAutoSync";
-import { NotificationBell } from "./NotificationBell";
 import { useAuth } from "@/components/providers/AuthProvider";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -29,6 +29,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // A drawer that survives the navigation it triggered hides the page you just
+  // asked for behind a menu you have to dismiss first.
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [pathname]);
+
   // If on login page or auth callbacks, show clean full-page view
   if (pathname?.startsWith("/login") || pathname?.startsWith("/auth")) {
     return <main className="min-h-screen bg-surface-base">{children}</main>;
@@ -41,12 +47,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-surface-base text-txt-primary">
-      {/* Notification bell, top-right. §37 low-noise by default: it only
-          exists because the triggers write rows somebody can act on. */}
-      <div className="fixed top-4 right-4 z-[150] md:right-6">
-        <NotificationBell />
-      </div>
-
       {/* ── Floating Sidebar (desktop) ──────────────────── */}
       <div className="hidden md:flex floating-sidebar">
         <Sidebar onSearchOpen={() => setIsSearchOpen(true)} />
@@ -59,7 +59,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className="fixed inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setIsMobileMenuOpen(false)}
           />
-          <div className="relative w-64 max-w-[80vw] h-full z-10">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation"
+            className="relative w-64 max-w-[80vw] h-full z-10"
+          >
             <div className="h-full rounded-r-2xl overflow-hidden glass-panel border-r border-border-subtle">
               <Sidebar
                 onSearchOpen={() => {
@@ -85,6 +90,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* ── Floating Bottom Bar (Now Solving) ───────────── */}
       <NowSolvingBar onSearchOpen={() => setIsSearchOpen(true)} />
+
+      {/* ── Mobile Tab Bar (design.md §4) ───────────────── */}
+      <MobileTabBar />
 
       {/* ── Global Cmd+K Search Modal ───────────────────── */}
       <SearchModal

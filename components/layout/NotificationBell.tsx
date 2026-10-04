@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bell } from "lucide-react";
+import { Bell, BellRing } from "lucide-react";
 import {
   getNotifications,
   getUnreadCount,
@@ -24,12 +24,18 @@ import type { Notification } from "@/types/database";
  * a Postgres trigger cannot call lib/push.ts, and inventing an HTTP extension
  * for six notification kinds would be a lot of machinery to avoid a round trip.
  * The row is the queue: unread rows are the unit of work.
+ *
+ * Push *permission* lives here as well, for the same reason it used to be a
+ * second bell-shaped button in the header: a separate "Alerts" pill beside a
+ * real bell is two controls for one concept, and mounted as a fixed overlay in
+ * the same corner the two were drawn on top of each other.
  */
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [pushGranted, setPushGranted] = useState(false);
   // Push must fire once per notification, ever. A ref rather than state: this
   // runs in an effect and a state write there would loop.
   const pushed = useRef<Set<string>>(new Set());
@@ -64,6 +70,13 @@ export function NotificationBell() {
     }
   }, []);
 
+  // The permission can be granted or revoked outside the page (browser
+  // settings), so read it on mount rather than assuming a default.
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    setPushGranted(Notification.permission === "granted");
+  }, []);
+
   useEffect(() => {
     void refresh();
     const t = setInterval(() => void refresh(), 60_000);
@@ -84,16 +97,31 @@ export function NotificationBell() {
     }
   };
 
+  const togglePush = async () => {
+    if (!("Notification" in window)) return;
+    if (pushGranted) {
+      // The browser gives no API to revoke permission programmatically, so say
+      // where the switch is instead of pretending a click turned it off.
+      track("notification_push_manage_opened", { from: "bell" });
+      window.open("https://support.google.com/chrome/answer/3223642", "_blank", "noopener");
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setPushGranted(permission === "granted");
+    track("notification_push_toggled", { granted: permission === "granted" });
+  };
+
   return (
     <div className="relative">
       <button
         onClick={() => void onOpen()}
         aria-label={`Notifications${unread > 0 ? ` (${unread} unread)` : ""}`}
-        className="relative p-2 rounded-full text-white/50 hover:text-white hover:bg-white/[0.06] transition-all cursor-pointer"
+        aria-expanded={open}
+        className="relative w-10 h-10 rounded-full text-white/50 hover:text-white transition-colors cursor-pointer flex items-center justify-center"
       >
         <Bell className="w-4 h-4" />
         {unread > 0 && (
-          <span className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded-full bg-[#fa586a] text-white text-[9px] font-black flex items-center justify-center">
+          <span className="absolute top-1.5 right-1.5 min-w-[14px] h-[14px] px-1 rounded-full bg-[#fa586a] text-white text-[9px] font-black flex items-center justify-center">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -107,7 +135,7 @@ export function NotificationBell() {
             onClick={() => setOpen(false)}
             className="fixed inset-0 z-10 cursor-default"
           />
-          <div className="absolute right-0 top-full mt-2 z-20 w-[20rem] max-w-[90vw] rounded-2xl border border-white/[0.08] bg-[#0e0e0e] shadow-2xl overflow-hidden">
+          <div className="absolute right-0 top-full mt-1 z-20 w-[20rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-white/[0.08] bg-[#0e0e0e] shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06]">
               <span className="text-[10px] font-bold uppercase tracking-widest text-white/35">
                 Notifications
@@ -160,6 +188,31 @@ export function NotificationBell() {
                 ))}
               </ul>
             )}
+
+            {/* Push permission, with the bell. One concept, one control. */}
+            <div className="border-t border-white/[0.06] px-4 py-2.5 flex items-center justify-between gap-3">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white/35">
+                Push alerts
+              </span>
+              <button
+                onClick={() => void togglePush()}
+                aria-pressed={pushGranted}
+                className={
+                  pushGranted
+                    ? "flex items-center gap-1.5 text-[10px] font-bold text-[#fa586a] hover:opacity-80 transition-opacity cursor-pointer"
+                    : "text-[10px] font-bold text-white/35 hover:text-white transition-colors cursor-pointer"
+                }
+              >
+                {pushGranted ? (
+                  <>
+                    <BellRing className="w-3 h-3" />
+                    On
+                  </>
+                ) : (
+                  "Turn on"
+                )}
+              </button>
+            </div>
           </div>
         </>
       )}

@@ -133,6 +133,43 @@ async function main() {
       "every gate must say why it says what it says");
   });
 
+  await check("the board has at most one row per gate", async () => {
+    // 00039 gave gate_activation a `group by m.squad_id` while adding the demo
+    // exclusion, which turned it from a verdict into a per-squad list. The board
+    // returned six rows with "activation" twice. buildGates() collapses duplicates
+    // through a Map, so the page kept showing five cards and the UI never showed
+    // it — only the row count did.
+    const { data, error } = await service.rpc("validation_gate_board", { p_squad_id: null });
+    assert(!error, `error: ${error?.message}`);
+    const ids = (data ?? []).map((g) => g.gate);
+    const distinct = new Set(ids);
+    assert(ids.length === distinct.size,
+      `duplicate gate rows: ${ids.join(", ")}`);
+    assert(ids.length <= 5, `board returned ${ids.length} rows for 5 gates`);
+  });
+
+  await check("a whole-scope gate counts the whole scope, not one squad", async () => {
+    const { data } = await service.rpc("gate_activation", { p_squad_id: null });
+    assert((data ?? []).length === 1,
+      `gate_activation emitted ${(data ?? []).length} rows for a whole-scope query`);
+    // The whole-scope denominator is every NON-DEMO member, so compare against
+    // that and not against the raw row count: counting demo members here would be
+    // the bug the demo flag exists to prevent.
+    const { data: demoSquads } = await service.from("squads").select("id").eq("is_demo", true);
+    const demoIds = new Set((demoSquads ?? []).map((s) => s.id));
+    // Both columns, or r.user_id is undefined and the Set collapses to size 1 —
+    // which is exactly what this assertion reported.
+    const { data: memberRows } = await service.from("squad_members").select("squad_id, user_id");
+    const nonDemoMembers = new Set(
+      (memberRows ?? []).filter((r) => !demoIds.has(r.squad_id)).map((r) => r.user_id)
+    ).size;
+
+    const m = /^(\d+) of (\d+) members/.exec((data ?? [])[0]?.measured ?? "");
+    assert(m, `unparseable measured string: ${(data ?? [])[0]?.measured}`);
+    assert(Number(m[2]) === nonDemoMembers,
+      `denominator ${m[2]} should be the ${nonDemoMembers} non-demo members`);
+  });
+
   await check("the board returns gates in §58's order", async () => {
     const { data } = await service.rpc("validation_gate_board", { p_squad_id: squad });
     assert(JSON.stringify((data ?? []).map((g) => g.gate))
