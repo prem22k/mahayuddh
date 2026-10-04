@@ -29,10 +29,13 @@ image*.png
 *.screenshot.png
 # `scripts/` is ignored because it holds local one-off tooling, but
 # make-schema-idempotent.py is part of the documented schema regeneration
-# procedure in README, so it has to be in the repo. Git cannot re-include a
+# procedure in README, so it has to be in the repo. sync-contests.mjs is
+# imported by app/api/sync/contests/route.ts, so a fresh clone without it
+# cannot build — which is the same class of problem, found the hard way. Git cannot re-include a
 # file whose parent directory is excluded, hence scripts/* rather than scripts/.
 scripts/*
 !scripts/make-schema-idempotent.py
+!scripts/sync-contests.mjs
 
 # TypeScript cache
 *.tsbuildinfo
