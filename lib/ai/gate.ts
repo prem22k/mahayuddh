@@ -22,6 +22,7 @@ import {
   type AiFeature,
   type AiOutcome,
 } from "./policy.ts";
+import { askLadder, readProviderConfig } from "./provider.ts";
 import type { StuckLevel } from "@/types/database";
 import { DataError } from "@/lib/data/errors";
 
@@ -171,11 +172,21 @@ export async function askStuckAssistant(params: {
   //
   // Unreachable while no provider is configured: decideStuckAssistant refuses
   // with outcome 'no_provider' before reaching here, which is why the provider
-  // call is a separate throwing function rather than an inline stub. When a
-  // provider is added, isProviderConfigured() is the only thing that should
-  // change to make this reachable.
+  // call is a separate function rather than an inline stub.
+  //
+  // ProviderError from askLadder propagates to the route, which reports it as a
+  // sentence. It must NOT be logged into ai_calls as an answer, and must not be
+  // swallowed into an empty hint.
   const startedAt = Date.now();
-  const raw = await callProvider();
+  const raw = await callProvider({
+    requestedLevel: params.requestedLevel,
+    // The ladder route sends a slug, not a title, so that is what the model is
+    // told. Naming the pattern is enough context for a hint and cannot be used to
+    // smuggle a solution past the level ceiling.
+    problemTitle: params.problemSlug,
+    userText: params.request,
+    scratchpad: params.scratchpad ?? null,
+  });
 
   const clean = sanitizeAnswer(params.requestedLevel, raw);
 
@@ -209,14 +220,32 @@ export async function askStuckAssistant(params: {
  * nothing. It must not be reached while isProviderConfigured() is false, and
  * tests/integration/aiGates.mjs asserts exactly that.
  */
-async function callProvider(): Promise<{ level: StuckLevel; text: string }> {
-  if (!isProviderConfigured()) {
+async function callProvider(params: {
+  requestedLevel: StuckLevel;
+  problemTitle?: string | null;
+  userText?: string | null;
+  scratchpad?: string | null;
+}): Promise<{ level: StuckLevel; text: string }> {
+  const config = readProviderConfig();
+  if (!config) {
+    // Same ordering invariant as before, now against the config the provider
+    // module actually reads rather than the boolean that was standing in for it.
     throw new Error(
       "callProvider reached with no provider configured. decideStuckAssistant should have refused first — this is a bug in the gate ordering."
     );
   }
-  // Provider SDK call goes here, sending SYSTEM_PREAMBLE and the requested level.
-  throw new Error("No provider SDK is wired up yet.");
+
+  // The provider module owns the wire format, the preamble, the timeout, the
+  // output cap and the error scrubbing. This function's whole remaining job is
+  // to pass the ladder level through, because askLadder builds the instruction
+  // from it.
+  return askLadder({
+    config,
+    requestedLevel: params.requestedLevel,
+    problemTitle: params.problemTitle,
+    userText: params.userText,
+    scratchpad: params.scratchpad,
+  });
 }
 
 // Re-exported so call sites have one AI entry point, while the testable logic

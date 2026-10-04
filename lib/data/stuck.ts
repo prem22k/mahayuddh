@@ -248,3 +248,51 @@ export function maxAllowedLevel(asked: StuckLevel): StuckLevel {
 }
 
 export { LEVEL_RANK };
+/**
+ * Open "I'm stuck" asks on the problems of one pattern, for the pattern hub
+ * (Step 15 / §17).
+ *
+ * The hub's seventh section, and the one that joins two loops: §17 makes the
+ * pattern page a hub rather than a page, and this is what connects it to the
+ * stuck ladder. A member who opens "Sliding Window" and sees two squad-mates
+ * stuck inside it learns something a primer cannot say — that this pattern is
+ * where their squad is actually losing time, which is a different and more useful
+ * reason to read it.
+ *
+ * Deliberately public-read rather than caller-filtered. A stuck request is
+ * already a request for help, and the ladder's whole design is that help is
+ * offered at the level the asker chose. Hiding the existence of an ask on the
+ * hub would recreate the private-first problem in the one place where seeing it
+ * is the entire value.
+ *
+ * Author names are joined but never the request body: the hub shows WHO is stuck
+ * on WHAT and at WHAT level, which is what makes it useful, and not what they
+ * wrote, which is theirs to share or not.
+ */
+export async function getStuckRequestsForPattern(
+  problemSlugs: string[],
+  limit = 6,
+): Promise<StuckRequest[]> {
+  const supabase = createClient();
+  const unique = Array.from(new Set(problemSlugs.map((s) => s.trim().toLowerCase()))).filter(Boolean);
+  if (unique.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("stuck_requests")
+    .select(
+      "id, user_id, problem_slug, battle_id, level, visibility, squad_id, status, last_reminded_at, created_at, " +
+        "author:user_id (id, username, leetcode_username, avatar_url)",
+    )
+    .eq("status", "open")
+    .in("problem_slug", unique)
+    // Not `.neq("user_id", …)`: this is a public hub and the reader is not
+    // necessarily signed in, so there is no caller to exclude.
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new DataError("stuck", "Couldn't load asks for this pattern. Retry.", { cause: error });
+  }
+
+  return (data as unknown as StuckRequest[]).map(normalizeReplies);
+}
