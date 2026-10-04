@@ -217,7 +217,21 @@ export async function logRecommendationShown(
   surface: RecSurface
 ): Promise<void> {
   const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  // user_id is NOT optional here. The insert policy is
+  // `auth.uid() = user_id`, and with user_id NULL that comparison is NULL rather
+  // than true, so the row is rejected 403 — silently, because the only handling
+  // was a console.warn. Step 24's whole point is "store recommendation +
+  // accepted/rejected to validate signal weights before any AI", and
+  // recommendation_log had accumulated exactly 0 rows: every recommendation had
+  // been shown to every user and none of it recorded. getRecommendationStats
+  // reads this table, so that surface was reading an always-empty one.
   const { error } = await supabase.from("recommendation_log").insert({
+    user_id: user.id,
     problem_slug: rec.problem.titleSlug.toLowerCase(),
     problem_title: rec.problem.title,
     difficulty: rec.problem.difficulty,
@@ -270,6 +284,7 @@ export async function logRecommendationDecision(
   }
 
   const { error } = await supabase.from("recommendation_log").insert({
+    user_id: user.id,
     problem_slug: rec.problem.titleSlug.toLowerCase(),
     problem_title: rec.problem.title,
     difficulty: rec.problem.difficulty,

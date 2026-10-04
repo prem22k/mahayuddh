@@ -153,6 +153,52 @@ async function main() {
     assert(error, "a member wrote to another member's solve history");
   });
 
+  console.log("\nStep 24's logging — which recorded nothing at all");
+
+  await check("a shown recommendation is actually written to the log", async () => {
+    // The insert policy is auth.uid() = user_id, so an insert without user_id is
+    // rejected 403 and, because the only handling was a console.warn, invisible.
+    // recommendation_log sat at 0 rows after every recommendation had been shown.
+    const uid2 = (await cli.auth.getUser()).data.user.id;
+    const { error } = await cli.from("recommendation_log").insert({
+      user_id: uid2,
+      problem_slug: slugs[0].toLowerCase(),
+      problem_title: "Probe",
+      difficulty: "Medium",
+      pattern: "Arrays",
+      why_json: ["low exposure"],
+      signal_ids: ["low_exposure"],
+      decision: "shown",
+      surface: "home",
+    });
+    assert(!error, `insert rejected: ${error?.message}`);
+    const { data, error: selErr } = await cli.from("recommendation_log")
+      .select("id, decision, surface").eq("problem_slug", slugs[0].toLowerCase());
+    assert(!selErr, `read-back failed: ${selErr?.message}`);
+    assert(data.length >= 1, "the row did not read back to the member who wrote it");
+  });
+
+  await check("an insert without user_id is rejected, so this cannot regress quietly", async () => {
+    const { error } = await cli.from("recommendation_log").insert({
+      problem_slug: slugs[1].toLowerCase(),
+      decision: "shown",
+      surface: "home",
+    });
+    assert(error, "a row with no user_id was accepted; the 403 that hid this bug is gone");
+  });
+
+  await check("a member cannot write a log row attributed to somebody else", async () => {
+    const other = await makeUser();
+    const otherId = (await other.auth.getUser()).data.user.id;
+    const { error } = await cli.from("recommendation_log").insert({
+      user_id: otherId,
+      problem_slug: slugs[2].toLowerCase(),
+      decision: "shown",
+      surface: "home",
+    });
+    assert(error, "a member forged a log row for another account");
+  });
+
   console.log("\nthe ordering rule the engine exists to enforce");
 
   await check("solved problems are excluded from the candidate pool", async () => {

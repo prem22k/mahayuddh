@@ -169,13 +169,42 @@ list need to read *other* members' progress — an own-row policy would blank th
 one place progress is the point. Pinned in the recommend suite, in both
 directions: a member can read a squadmate's solve, and nobody can write one.
 
+## 4. Recommendation logging had never recorded anything
+
+Found by watching the signed-in `/home` network tab while auditing Step 24:
+
+```
+403  /rest/v1/recommendation_log
+```
+
+`logRecommendationShown` and `logRecommendationDecision` both inserted without
+`user_id`. The insert policy is `auth.uid() = user_id`, and with `user_id` NULL
+that comparison is NULL rather than true, so every row was rejected — and the only
+handling was `console.warn`, which nobody sees in production.
+
+**`recommendation_log` had accumulated 0 rows** while recommendations were being
+shown to signed-in users every session. Step 24's stated purpose is "store
+recommendation + accepted/rejected to validate signal weights before any AI", so
+the one thing Step 24 was for had never once recorded. `getRecommendationStats`
+reads that table, so the stats surface was reading an always-empty one.
+
+Fixed by sending `user_id` on both paths. Verified in the browser: a
+recommendation shown on `/home` now produces exactly one row carrying its
+why-bullets, with no failing request. Pinned by three checks — the row is written
+and readable, an insert without `user_id` is rejected (so it cannot regress
+quietly again), and a member cannot forge a row for another account.
+
+This is Step 0 hazard 4 in a place it was not applied: the plan asked for "no
+silent `return []` on error — throw typed errors, surface retry UI", and the same
+silent-failure shape had reached a *write* instead of a read.
+
 ## Where this leaves the app
 
 - 29 routes crawled signed in and signed out: **no console errors, no page errors,
   no failing requests.** Only the correct 404s.
 - `notebook_notes` and `note_shares` readable again; sharing verified end to end
   including the read-only/edit distinction and the admin-only share writes.
-- 238 unit tests, **229 live-database checks across eleven suites** (notebook,
+- 238 unit tests, **232 live-database checks across eleven suites** (notebook,
   recommend and the triage/validation fixes are all new).
 - `schema.sql` regenerated: 0 errors installed three times into a clean
   Postgres 17, all 15 RPCs and 43 tables present, triggers observed firing,
