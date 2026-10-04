@@ -68,14 +68,15 @@ CREATE OR REPLACE FUNCTION "public"."ai_calls_remaining"("p_squad" "uuid") RETUR
   from public.ai_calls
   where squad_id = p_squad
     and created_at > now() - interval '1 hour'
-    and outcome not in ('refused', 'disabled')
+    -- Every outcome where no request reached a provider.
+    and outcome not in ('refused', 'disabled', 'no_provider', 'rate_limited');
 $$;
 
 
 ALTER FUNCTION "public"."ai_calls_remaining"("p_squad" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."ai_calls_remaining"("p_squad" "uuid") IS '§45 cost cap proxy: AI calls allowed for this squad in the last hour. Refused and disabled calls do not consume budget — a squad should not be charged for the guardrail stopping the model.';
+COMMENT ON FUNCTION "public"."ai_calls_remaining"("p_squad" "uuid") IS '§45 cost cap proxy: calls allowed for this squad in the last hour. A squad is never charged for a guardrail stopping a call: refused, disabled, no_provider and rate_limited are all free. ''error'' is charged, because the request was sent and providers bill failures.';
 
 
 
@@ -543,19 +544,26 @@ CREATE OR REPLACE FUNCTION "public"."gate_activation"("p_squad_id" "uuid" DEFAUL
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
-  select 'activation',
-    count(*) filter (where b.id is not null) > 0,
-    count(distinct m.user_id) filter (where b.id is not null)::text
-      || ' of ' || count(distinct m.user_id)::text || ' members started a battle',
-    case when count(distinct m.user_id) = 0 then 'No members yet — the gate cannot be measured.'
-         when count(distinct m.user_id) filter (where b.id is not null) = 0 then 'Nobody has started a battle.'
-         else 'A battle was started by at least one member.'
+  with members as (
+    select distinct m.user_id
+    from public.squad_members m
+    where public.validation_scope_has(p_squad_id, m.squad_id)
+  )
+  select
+    'activation',
+    count(*) filter (where started_at is not null) > 0,
+    count(*) filter (where started_at is not null)::text || ' of ' || count(*)::text
+      || ' members started a battle',
+    case when count(*) = 0 then 'No members yet — the gate cannot be measured.'
+         when count(*) filter (where started_at is not null) = 0 then 'Nobody has started a battle.'
+         else 'At least one member has started a battle.'
     end
-  from public.squad_members m
-  left join public.battles b on b.user_id = m.user_id
-  where (p_squad_id is not null or exists (
-          select 1 from public.squads s where s.id = m.squad_id and not s.is_demo))
-  group by m.squad_id
+  from (
+    select mb.user_id, (
+      select min(b.started_at) from public.battles b where b.user_id = mb.user_id
+    ) as started_at
+    from members mb
+  ) per_user
   having count(*) > 0
 $$;
 
@@ -563,7 +571,7 @@ $$;
 ALTER FUNCTION "public"."gate_activation"("p_squad_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."gate_activation"("p_squad_id" "uuid") IS '§58 activation. Returns no row rather than a failure when there are no members, because "0% activation" over an empty squad is not a finding.';
+COMMENT ON FUNCTION "public"."gate_activation"("p_squad_id" "uuid") IS '§58 activation: how many in-scope members have started a battle. One row for the whole scope — never one per squad. No row when the scope has no members.';
 
 
 
@@ -581,21 +589,17 @@ CREATE OR REPLACE FUNCTION "public"."gate_learning"("p_squad_id" "uuid" DEFAULT 
   from (
     select
       (select count(*) from public.squad_members m
-        where p_squad_id is not null or exists (
-          select 1 from public.squads s where s.id = m.squad_id and not s.is_demo)) as n_members,
+        where public.validation_scope_has(p_squad_id, m.squad_id)) as n_members,
       (select count(*) from public.approaches a where a.user_id in
         (select m.user_id from public.squad_members m
-          where p_squad_id is not null or exists (
-            select 1 from public.squads sq where sq.id = m.squad_id and not sq.is_demo))) as written,
+          where public.validation_scope_has(p_squad_id, m.squad_id))) as written,
       (select count(*) from public.primers p where p.author_id in
         (select m.user_id from public.squad_members m
-          where p_squad_id is not null or exists (
-            select 1 from public.squads sq where sq.id = m.squad_id and not sq.is_demo))) as primers,
+          where public.validation_scope_has(p_squad_id, m.squad_id))) as primers,
       (select count(*) from public.notebook_notes n
         where n.fork_of is not null and n.owner_id in
           (select m.user_id from public.squad_members m
-            where p_squad_id is not null or exists (
-              select 1 from public.squads sq where sq.id = m.squad_id and not sq.is_demo))) as copied
+            where public.validation_scope_has(p_squad_id, m.squad_id))) as copied
   ) c
   where c.n_members > 0
 $$;
@@ -621,16 +625,14 @@ CREATE OR REPLACE FUNCTION "public"."gate_organic"("p_squad_id" "uuid" DEFAULT N
   from (
     select
       (select count(*) from public.squad_members m
-        where p_squad_id is not null or exists (
-          select 1 from public.squads s where s.id = m.squad_id and not s.is_demo)) as n_members,
-      -- Scoped to the members counted above, so a referral only counts for a
-      -- squad the invitee actually belongs to.
+        where public.validation_scope_has(p_squad_id, m.squad_id)) as n_members,
+      -- Scoped to the members in scope, so a referral counts only for a squad the
+      -- invitee actually belongs to. Counting every invited profile in the
+      -- installation lit this gate for every squad at once.
       (select count(*) from public.profiles p
         where p.invited_by is not null
           and p.active_squad_id is not null
-          and (p_squad_id is not null
-               or exists (select 1 from public.squads s
-                          where s.id = p.active_squad_id and not s.is_demo))) as referred
+          and public.validation_scope_has(p_squad_id, p.active_squad_id)) as referred
   ) c
   where c.n_members > 0
 $$;
@@ -656,13 +658,11 @@ CREATE OR REPLACE FUNCTION "public"."gate_retention"("p_squad_id" "uuid" DEFAULT
   from (
     select
       (select count(*) from public.squad_members m
-        where p_squad_id is not null or exists (
-          select 1 from public.squads s where s.id = m.squad_id and not s.is_demo)) as n_members,
+        where public.validation_scope_has(p_squad_id, m.squad_id)) as n_members,
       (select count(distinct date_trunc('week', e.created_at))
        from public.problem_events e
        where e.user_id in (select m.user_id from public.squad_members m
-         where p_squad_id is not null or exists (
-           select 1 from public.squads sq where sq.id = m.squad_id and not sq.is_demo))
+         where public.validation_scope_has(p_squad_id, m.squad_id))
          and e.kind in ('solved', 'revisited')
          and e.created_at > now() - interval '21 days') as active_weeks
   ) c
@@ -690,16 +690,13 @@ CREATE OR REPLACE FUNCTION "public"."gate_social"("p_squad_id" "uuid" DEFAULT NU
   from (
     select
       (select count(*) from public.squad_members m
-        where p_squad_id is not null or exists (
-          select 1 from public.squads s where s.id = m.squad_id and not s.is_demo)) as n_members,
+        where public.validation_scope_has(p_squad_id, m.squad_id)) as n_members,
       (select count(*) from public.suggestions s
         where s.from_user in (select m.user_id from public.squad_members m
-          where p_squad_id is not null or exists (
-            select 1 from public.squads sq where sq.id = m.squad_id and not sq.is_demo))) as n_sent,
+          where public.validation_scope_has(p_squad_id, m.squad_id))) as n_sent,
       (select count(*) from public.suggestions s
         where s.from_user in (select m.user_id from public.squad_members m
-          where p_squad_id is not null or exists (
-            select 1 from public.squads sq where sq.id = m.squad_id and not sq.is_demo))
+          where public.validation_scope_has(p_squad_id, m.squad_id))
           and s.status = 'completed') as n_done
   ) c
   where c.n_members > 0
@@ -1892,6 +1889,26 @@ COMMENT ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") IS 'Al
 
 
 
+CREATE OR REPLACE FUNCTION "public"."validation_scope_has"("p_squad_id" "uuid", "p_row_squad" "uuid") RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  select case
+    when p_squad_id is not null then p_row_squad = p_squad_id
+    else exists (
+      select 1 from public.squads s where s.id = p_row_squad and not s.is_demo
+    )
+  end;
+$$;
+
+
+ALTER FUNCTION "public"."validation_scope_has"("p_squad_id" "uuid", "p_row_squad" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."validation_scope_has"("p_squad_id" "uuid", "p_row_squad" "uuid") IS 'The §58 scope rule, in one place: a named squad is that squad exactly; the platform-wide view excludes demo squads.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."validation_squads"() RETURNS TABLE("squad_id" "uuid", "name" "text", "is_demo" boolean)
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -1912,13 +1929,11 @@ CREATE OR REPLACE FUNCTION "public"."validation_test_status"("p_squad_id" "uuid"
     AS $$
   select
     (select count(*) from public.squad_members m
-      where p_squad_id is not null or exists (
-        select 1 from public.squads s where s.id = m.squad_id and not s.is_demo)),
+      where public.validation_scope_has(p_squad_id, m.squad_id)),
     (select count(*) from public.validation_observations o
       where p_squad_id is null or o.squad_id = p_squad_id),
     (select count(distinct m.squad_id) from public.squad_members m
-      where p_squad_id is not null or exists (
-        select 1 from public.squads s where s.id = m.squad_id and not s.is_demo))
+      where public.validation_scope_has(p_squad_id, m.squad_id))
 $$;
 
 
@@ -5957,6 +5972,12 @@ GRANT ALL ON FUNCTION "public"."teachers_for_pattern"("p_pattern" "text", "p_lim
 GRANT ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."validation_scope_has"("p_squad_id" "uuid", "p_row_squad" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."validation_scope_has"("p_squad_id" "uuid", "p_row_squad" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."validation_scope_has"("p_squad_id" "uuid", "p_row_squad" "uuid") TO "service_role";
 
 
 

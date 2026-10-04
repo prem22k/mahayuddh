@@ -75,6 +75,19 @@ export const ANALYTICS_EVENTS = [
   // opened, clicked.
   "notification_delivered",
   "notification_bell_opened",
+  // Step 25 (#2/#4/#5): the three non-ladder features.
+  //
+  // ai_refused is the one that matters. A guardrail nobody can audit is a
+  // guardrail that quietly stopped working, and a refusal is only visible if it is
+  // recorded — "how often does this feature say no, and to what" is a question
+  // about the product, not about a model.
+  //
+  // Named per feature rather than one ai_answered, because the interesting split
+  // is WHICH feature refused and why, not that something was refused once.
+  "ai_refused",
+  "explain_mistake_answered",
+  "explain_back_answered",
+  "interview_sim_answered",
   "notification_clicked",
   // Push permission now lives inside the bell rather than in a second control
   // beside it, so the grant rate is measurable from the same surface.

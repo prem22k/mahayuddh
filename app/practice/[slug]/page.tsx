@@ -21,6 +21,7 @@ import { getBattlesForSlug } from "@/lib/data/battles";
 import { getChallengesForSlug } from "@/lib/data/suggestions";
 import { toggleBookmark, isBookmarked, getReviewForSlug } from "@/lib/data/review";
 import { getApproachesForProblem, createApproach, setApproachVisibility, deleteApproach } from "@/lib/data/approaches";
+import { BoundedAssistant } from "@/components/ai/BoundedAssistant";
 import { copyApproachToNotebook } from "@/lib/data/notebook";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
@@ -463,6 +464,48 @@ export default function ProblemPage() {
           </form>
         )}
       </section>
+
+      {/*
+          Step 25 #4 and #5 — inside the solved block, because both operate on an
+          approach. Offering an AI box on a problem nobody has attempted is the
+          filler §45 warns about, and there is nothing for either to respond to
+          before the member has written something.
+
+          Both read the DRAFT rather than a saved row, so reasoning can be checked
+          before it is published — which is the moment it is worth checking.
+      */}
+      {user && status === "solved" && profile?.active_squad_id && (
+        <section className="grid gap-3 md:grid-cols-2">
+          <BoundedAssistant
+            feature="explain-back"
+            squadId={profile.active_squad_id}
+            problemSlug={slug}
+            problemTitle={problem?.title ?? null}
+            input={coreIdea}
+          />
+          <BoundedAssistant
+            feature="interview-sim"
+            squadId={profile.active_squad_id}
+            problemSlug={slug}
+            problemTitle={problem?.title ?? null}
+            input={coreIdea}
+          />
+        </section>
+      )}
+
+      {/*
+          Step 25 #2 — only for an attempt that did not land. "What did I miss" has
+          no answer on a problem nobody has tried, and the honest response there is
+          to go and try it.
+      */}
+      {user && status === "attempted" && profile?.active_squad_id && (
+        <BoundedAssistant
+          feature="explain-mistake"
+          squadId={profile.active_squad_id}
+          problemSlug={slug}
+          problemTitle={problem?.title ?? null}
+        />
+      )}
 
       {/* ── Review state (Bible §25) ── */}
       {review && (
