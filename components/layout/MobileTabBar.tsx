@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Trophy, Compass, MessageSquare } from "lucide-react";
+import { LayoutGrid, Trophy, Compass, Inbox } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -32,7 +32,7 @@ const TABS: Tab[] = [
   { name: "Arena", href: "/home", icon: LayoutGrid, aliases: ["/"] },
   { name: "Ranks", href: "/leaderboard", icon: Trophy, aliases: [] },
   { name: "Topics", href: "/patterns", icon: Compass, aliases: ["/sheets"] },
-  { name: "Inbox", href: "/challenges", icon: MessageSquare, aliases: ["/suggestions"] },
+  { name: "Inbox", href: "/challenges", icon: Inbox, aliases: ["/suggestions"] },
 ];
 
 export function MobileTabBar() {

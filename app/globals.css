@@ -163,7 +163,7 @@
   /* Glass material. Opaque enough that page copy scrolling underneath reads as
      texture instead of competing text — at the sidebar's 0.65 alpha, headings
      stayed legible straight through the pill. */
-  background: rgba(20, 20, 22, 0.88);
+  background: rgba(18, 18, 20, 0.94);
   backdrop-filter: saturate(var(--glass-saturate)) blur(30px);
   -webkit-backdrop-filter: saturate(var(--glass-saturate)) blur(30px);
   border: 0.5px solid var(--glass-border);

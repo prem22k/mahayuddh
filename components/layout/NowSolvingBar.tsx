@@ -332,7 +332,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
       {/* ── REVENGE COMPLETE (Step 17). A solve that answers a recorded failure
           is a different event from a solve: it closes a loop the user opened. ── */}
       {revengeResult && (
-        <div className="fixed bottom-[calc(var(--bottom-bar-height)+var(--bottom-bar-margin)+14px)] left-1/2 -translate-x-1/2 w-[26rem] max-w-[calc(100vw-2rem)] z-[160] rounded-3xl bg-[#1c1c1e]/95 backdrop-blur-2xl border border-[#30d158]/30 shadow-[0_20px_60px_rgba(0,0,0,0.6)] p-4 space-y-2">
+        <div className="fixed bottom-[calc(var(--dock-bottom)+var(--bottom-bar-height)+14px)] left-1/2 -translate-x-1/2 w-[26rem] max-w-[calc(100vw-2rem)] z-[160] rounded-3xl bg-[#1c1c1e]/95 backdrop-blur-2xl border border-[#30d158]/30 shadow-[0_20px_60px_rgba(0,0,0,0.6)] p-4 space-y-2">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-[10px] font-extrabold uppercase tracking-widest text-[#30d158]">
@@ -397,7 +397,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
 
       {/* ── Scratchpad Popover ─────────────────────────── */}
       {isScratchpadOpen && activeProblem && (
-        <div className="fixed bottom-[calc(var(--bottom-bar-height)+var(--bottom-bar-margin)+12px)] right-6 w-96 max-w-[calc(100vw-3rem)] bg-[#1c1c1e]/95 backdrop-blur-2xl border border-white/[0.1] rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] z-[150] p-4">
+        <div className="fixed bottom-[calc(var(--dock-bottom)+var(--bottom-bar-height)+12px)] right-6 w-96 max-w-[calc(100vw-3rem)] bg-[#1c1c1e]/95 backdrop-blur-2xl border border-white/[0.1] rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] z-[150] p-4">
           <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
             <span className="text-xs font-semibold text-white pl-1">
               Notes • {activeProblem.title}
@@ -477,7 +477,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
           <div className="flex items-center justify-center gap-2.5 flex-1 min-w-0 mx-2 truncate px-2">
             {activeProblem ? (
               <>
-                <div className="w-7 h-7 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center shrink-0 font-mono text-[10px] font-bold text-white/80">
+                <div className="hidden sm:flex w-7 h-7 rounded-lg bg-white/[0.06] border border-white/[0.08] items-center justify-center shrink-0 font-mono text-[10px] font-bold text-white/80">
                   #{activeProblem.id}
                 </div>
 
@@ -495,14 +495,20 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                       {activeProblem.difficulty}
                     </span>
                   </div>
-                  <div className="text-[9px] text-white/35 truncate">
+                  {/* The status line is the first thing to go when width is
+                      scarce — the header row above already carries the fact. */}
+                  <div className="hidden sm:block text-[9px] text-white/35 truncate">
                     {activeProblem.category ? `${activeProblem.category} • ` : ""}
                     {isPlaying ? "Session in progress" : "Session paused"}
                   </div>
                 </div>
               </>
             ) : (
-              <div className="flex items-center justify-center text-white/35 text-[11px] truncate">
+              /* "No problem active • Select a problem to solve" used to be
+                 clipped mid-word by the Find Problem button on a 390px screen.
+                 The button already carries the instruction, so the copy only
+                 earns its place when there is room for it whole. */
+              <div className="hidden md:flex items-center justify-center text-white/35 text-[11px] truncate">
                 <span>No problem active • Select a problem to solve</span>
               </div>
             )}

@@ -122,7 +122,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
           {/* Core Navigation */}
           <div>
             <div className="nav-section-label">Main</div>
-            <nav className="space-y-0.5">
+            <nav className="space-y-0.5" aria-label="Main">
               {coreNav.map((item) => {
                 // Legacy paths stay highlighted: /vault now renders the Notebook
                 // Vault tab, / is the Home alias.
@@ -138,6 +138,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
                   <Link
                     key={item.name}
                     href={item.href}
+                    aria-current={isActive ? "page" : undefined}
                     className={cn("nav-item", isActive && "active")}
                   >
                     <Icon className={cn("nav-icon w-[16px] h-[16px]")} />
@@ -151,7 +152,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
           {/* Curated Roadmaps (Apple Music Playlist Style) */}
           <div>
             <div className="nav-section-label">Roadmaps</div>
-            <nav className="space-y-0.5">
+            <nav className="space-y-0.5" aria-label="Curated roadmaps">
               {loadingLists ? (
                 <div className="px-3 py-1.5 text-[11px] text-white/25">
                   Loading roadmaps...
@@ -168,6 +169,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
                     <Link
                       key={item.id}
                       href={href}
+                      aria-current={isActive ? "page" : undefined}
                       className={cn(
                         "nav-item",
                         isActive && "active",
@@ -196,7 +198,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
               </button>
             </div>
 
-            <nav className="space-y-0.5">
+            <nav className="space-y-0.5" aria-label="Squad lists">
               {squadLists.length === 0 ? (
                 <button
                   onClick={() => setIsCreateListOpen(true)}
@@ -213,6 +215,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
                     <Link
                       key={item.id}
                       href={href}
+                      aria-current={isActive ? "page" : undefined}
                       className={cn(
                         "nav-item",
                         isActive && "active",
@@ -231,33 +234,43 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
 
         {/* ── Profile Footer ── */}
         <div className="p-3 border-t border-white/[0.06]">
-          <div className="flex items-center justify-between p-2 rounded-xl bg-white/[0.03] border border-white/[0.05]">
-            <div className="flex items-center gap-2.5 overflow-hidden">
+          <div className="flex items-center justify-between gap-1 p-1.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+            {/* One identity control for the whole shell. This used to be joined
+                by a second copy in the header bar, which is why the person was
+                on screen three times over. */}
+            <button
+              onClick={() => setIsDossierOpen(true)}
+              className="flex items-center gap-2.5 overflow-hidden flex-1 min-w-0 text-left rounded-lg px-1 py-1 hover:bg-white/[0.04] transition-colors cursor-pointer group"
+              title="Open your Warrior Stats Dossier"
+            >
               <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#fa586a] to-[#ff8a9c] flex items-center justify-center font-bold text-[10px] text-white shrink-0 overflow-hidden">
                 {profile?.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={profile.avatar_url}
-                    alt={displayName}
+                    alt=""
                     className="w-full h-full rounded-full object-cover"
                   />
                 ) : (
                   displayName.charAt(0).toUpperCase()
                 )}
               </div>
-              <div className="flex flex-col truncate">
-                <span className="text-[12px] font-semibold text-white truncate leading-tight">
+              <div className="flex flex-col truncate min-w-0">
+                <span className="text-[12px] font-semibold text-white truncate leading-tight group-hover:text-white">
                   {displayName}
                 </span>
                 <span className="text-[10px] text-white/35 truncate leading-tight font-mono">
                   @{displayHandle}
                 </span>
               </div>
-            </div>
+            </button>
 
             <div className="flex items-center gap-1.5 shrink-0">
               {/* Clean Streak Badge */}
-              <div className="px-2 py-0.5 rounded-full bg-white/[0.05] border border-white/[0.08] text-white/80 font-mono text-[10px] font-semibold">
+              <div
+                className="px-2 py-0.5 rounded-full bg-white/[0.05] border border-white/[0.08] text-white/80 font-mono text-[10px] font-semibold"
+                title={`${displayStreak}-day streak`}
+              >
                 {displayStreak}d
               </div>
 
@@ -280,6 +293,12 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
         isOpen={isCreateListOpen}
         onClose={() => setIsCreateListOpen(false)}
         onListCreated={handleListCreated}
+      />
+
+      <UserStatsDossierModal
+        isOpen={isDossierOpen}
+        onClose={() => setIsDossierOpen(false)}
+        profile={profile}
       />
     </>
   );

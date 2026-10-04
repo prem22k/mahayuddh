@@ -117,7 +117,7 @@ export function NotificationBell() {
         onClick={() => void onOpen()}
         aria-label={`Notifications${unread > 0 ? ` (${unread} unread)` : ""}`}
         aria-expanded={open}
-        className="relative w-10 h-10 rounded-full text-white/50 hover:text-white transition-colors cursor-pointer flex items-center justify-center"
+        className="relative w-11 h-11 md:w-10 md:h-10 rounded-full text-white/50 hover:text-white transition-colors cursor-pointer flex items-center justify-center"
       >
         <Bell className="w-4 h-4" />
         {unread > 0 && (

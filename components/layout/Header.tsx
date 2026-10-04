@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { RefreshCw, Menu, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -30,8 +30,6 @@ interface HeaderProps {
 export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
   const { profile, user, refreshProfile } = useAuth();
   const [isSyncing, setIsSyncing] = useState(false);
-
-  const displayName = profile?.username || user?.email?.split("@")[0] || "Squad Member";
 
   const handleSync = async () => {
     setIsSyncing(true);
