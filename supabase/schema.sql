@@ -1786,6 +1786,39 @@ $$;
 ALTER FUNCTION "public"."stuck_reminder_allowed"("p_request_id" "uuid", "p_actor" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") RETURNS TABLE("id" "uuid", "from_user" "uuid", "to_user" "uuid", "problem_slug" "text", "problem_title" "text", "difficulty" "text", "status" "text", "sender_time_sec" integer, "beat_time" boolean, "deadline_at" timestamp with time zone, "parent_id" "uuid", "message" "text", "created_at" timestamp with time zone, "completed_at" timestamp with time zone, "depth" integer)
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  with recursive chain as (
+    select
+      s.id, s.from_user, s.to_user, s.problem_slug, s.problem_title,
+      s.difficulty, s.status, s.sender_time_sec, s.beat_time, s.deadline_at,
+      s.parent_id, s.message, s.created_at, s.completed_at, 0 as depth
+    from public.suggestions s
+    where s.id = p_leaf_id
+
+    union all
+
+    select
+      s.id, s.from_user, s.to_user, s.problem_slug, s.problem_title,
+      s.difficulty, s.status, s.sender_time_sec, s.beat_time, s.deadline_at,
+      s.parent_id, s.message, s.created_at, s.completed_at, c.depth + 1
+    from public.suggestions s
+    join chain c on s.id = c.parent_id
+    where c.depth < 20
+  )
+  select * from chain order by depth desc;
+$$;
+
+
+ALTER FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") IS 'Walk a challenge chain (parent_id links) oldest-first in one query. Replaces up to 10 sequential client round trips. Depth capped at 20.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."suggestion_remind_allowed"("p_suggestion_id" "uuid", "p_actor" "uuid") RETURNS boolean
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -3663,6 +3696,10 @@ CREATE INDEX IF NOT EXISTS "ai_calls_squad_idx" ON "public"."ai_calls" USING "bt
 
 
 
+CREATE INDEX IF NOT EXISTS "ai_calls_user_id_idx" ON "public"."ai_calls" USING "btree" ("user_id");
+
+
+
 CREATE INDEX IF NOT EXISTS "analytics_events_event_time_idx" ON "public"."analytics_events" USING "btree" ("event", "occurred_at" DESC);
 
 
@@ -3671,7 +3708,15 @@ CREATE INDEX IF NOT EXISTS "analytics_events_user_idx" ON "public"."analytics_ev
 
 
 
+CREATE INDEX IF NOT EXISTS "approaches_fork_of_idx" ON "public"."approaches" USING "btree" ("fork_of");
+
+
+
 CREATE INDEX IF NOT EXISTS "approaches_slug_idx" ON "public"."approaches" USING "btree" ("problem_slug", "created_at" DESC);
+
+
+
+CREATE INDEX IF NOT EXISTS "approaches_squad_id_idx" ON "public"."approaches" USING "btree" ("squad_id");
 
 
 
@@ -3687,6 +3732,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS "battles_one_live_per_user" ON "public"."battl
 
 
 
+CREATE INDEX IF NOT EXISTS "battles_squad_id_idx" ON "public"."battles" USING "btree" ("squad_id");
+
+
+
 CREATE INDEX IF NOT EXISTS "battles_user_slug_idx" ON "public"."battles" USING "btree" ("user_id", "problem_slug", "started_at" DESC);
 
 
@@ -3699,6 +3748,14 @@ CREATE INDEX IF NOT EXISTS "custom_lists_created_by_idx" ON "public"."custom_lis
 
 
 
+CREATE INDEX IF NOT EXISTS "daily_battles_user_id_idx" ON "public"."daily_battles" USING "btree" ("user_id");
+
+
+
+CREATE INDEX IF NOT EXISTS "discussion_replies_author_id_idx" ON "public"."discussion_replies" USING "btree" ("author_id");
+
+
+
 CREATE INDEX IF NOT EXISTS "discussion_replies_discussion_idx" ON "public"."discussion_replies" USING "btree" ("discussion_id", "created_at") WHERE ("deleted_at" IS NULL);
 
 
@@ -3708,6 +3765,14 @@ CREATE INDEX IF NOT EXISTS "discussions_author_idx" ON "public"."discussions" US
 
 
 CREATE INDEX IF NOT EXISTS "discussions_problem_idx" ON "public"."discussions" USING "btree" ("problem_slug", "created_at" DESC);
+
+
+
+CREATE INDEX IF NOT EXISTS "discussions_squad_id_idx" ON "public"."discussions" USING "btree" ("squad_id");
+
+
+
+CREATE INDEX IF NOT EXISTS "feature_triage_decided_by_idx" ON "public"."feature_triage" USING "btree" ("decided_by");
 
 
 
@@ -3747,11 +3812,23 @@ CREATE INDEX IF NOT EXISTS "follows_followed_idx" ON "public"."follows" USING "b
 
 
 
+CREATE INDEX IF NOT EXISTS "follows_follower_id_idx" ON "public"."follows" USING "btree" ("follower_id");
+
+
+
 CREATE INDEX IF NOT EXISTS "list_problems_list_id_idx" ON "public"."list_problems" USING "btree" ("list_id");
 
 
 
 CREATE UNIQUE INDEX IF NOT EXISTS "list_problems_list_slug_unique" ON "public"."list_problems" USING "btree" ("list_id", "title_slug");
+
+
+
+CREATE INDEX IF NOT EXISTS "note_shares_note_id_idx" ON "public"."note_shares" USING "btree" ("note_id");
+
+
+
+CREATE INDEX IF NOT EXISTS "note_shares_shared_with_idx" ON "public"."note_shares" USING "btree" ("shared_with");
 
 
 
@@ -3763,6 +3840,10 @@ CREATE INDEX IF NOT EXISTS "notebook_squad_idx" ON "public"."notebook_notes" USI
 
 
 
+CREATE INDEX IF NOT EXISTS "notifications_actor_id_idx" ON "public"."notifications" USING "btree" ("actor_id");
+
+
+
 CREATE UNIQUE INDEX IF NOT EXISTS "notifications_dedupe_open_unique" ON "public"."notifications" USING "btree" ("user_id", "kind", "dedupe_key") WHERE (("dedupe_key" IS NOT NULL) AND ("read_at" IS NULL));
 
 
@@ -3771,11 +3852,23 @@ CREATE INDEX IF NOT EXISTS "notifications_user_unread_idx" ON "public"."notifica
 
 
 
+CREATE INDEX IF NOT EXISTS "platform_posts_author_id_idx" ON "public"."platform_posts" USING "btree" ("author_id");
+
+
+
 CREATE INDEX IF NOT EXISTS "platform_posts_recent_idx" ON "public"."platform_posts" USING "btree" ("pinned" DESC, "created_at" DESC);
 
 
 
+CREATE INDEX IF NOT EXISTS "primers_author_id_idx" ON "public"."primers" USING "btree" ("author_id");
+
+
+
 CREATE INDEX IF NOT EXISTS "primers_pattern_idx" ON "public"."primers" USING "btree" ("pattern");
+
+
+
+CREATE INDEX IF NOT EXISTS "primers_squad_id_idx" ON "public"."primers" USING "btree" ("squad_id");
 
 
 
@@ -3796,6 +3889,18 @@ CREATE INDEX IF NOT EXISTS "problems_difficulty_idx" ON "public"."problems" USIN
 
 
 CREATE INDEX IF NOT EXISTS "problems_question_id_idx" ON "public"."problems" USING "btree" ("question_id");
+
+
+
+CREATE INDEX IF NOT EXISTS "profiles_active_squad_id_idx" ON "public"."profiles" USING "btree" ("active_squad_id");
+
+
+
+CREATE INDEX IF NOT EXISTS "profiles_invited_by_idx" ON "public"."profiles" USING "btree" ("invited_by");
+
+
+
+CREATE INDEX IF NOT EXISTS "profiles_joined_via_referral_idx" ON "public"."profiles" USING "btree" ("joined_via_referral");
 
 
 
@@ -3831,7 +3936,15 @@ CREATE INDEX IF NOT EXISTS "shared_resources_author_id_idx" ON "public"."shared_
 
 
 
+CREATE INDEX IF NOT EXISTS "shared_resources_squad_id_idx" ON "public"."shared_resources" USING "btree" ("squad_id");
+
+
+
 CREATE INDEX IF NOT EXISTS "squad_goals_active_idx" ON "public"."squad_goals" USING "btree" ("squad_id", "created_at" DESC) WHERE (("status" = 'active'::"text") AND ("archived" = false));
+
+
+
+CREATE INDEX IF NOT EXISTS "squad_goals_created_by_idx" ON "public"."squad_goals" USING "btree" ("created_by");
 
 
 
@@ -3855,6 +3968,10 @@ CREATE INDEX IF NOT EXISTS "squad_milestones_squad_idx" ON "public"."squad_miles
 
 
 
+CREATE INDEX IF NOT EXISTS "squad_recaps_generated_by_idx" ON "public"."squad_recaps" USING "btree" ("generated_by");
+
+
+
 CREATE INDEX IF NOT EXISTS "squad_recaps_squad_idx" ON "public"."squad_recaps" USING "btree" ("squad_id", "week_start" DESC);
 
 
@@ -3871,6 +3988,10 @@ CREATE INDEX IF NOT EXISTS "squad_referrals_squad_idx" ON "public"."squad_referr
 
 
 
+CREATE INDEX IF NOT EXISTS "squad_seasons_created_by_idx" ON "public"."squad_seasons" USING "btree" ("created_by");
+
+
+
 CREATE UNIQUE INDEX IF NOT EXISTS "squad_seasons_one_active" ON "public"."squad_seasons" USING "btree" ("squad_id") WHERE ("status" = 'active'::"text");
 
 
@@ -3879,11 +4000,23 @@ CREATE INDEX IF NOT EXISTS "squad_seasons_squad_idx" ON "public"."squad_seasons"
 
 
 
+CREATE INDEX IF NOT EXISTS "squads_created_by_idx" ON "public"."squads" USING "btree" ("created_by");
+
+
+
 CREATE INDEX IF NOT EXISTS "squads_is_demo_idx" ON "public"."squads" USING "btree" ("is_demo");
 
 
 
+CREATE INDEX IF NOT EXISTS "stuck_replies_author_id_idx" ON "public"."stuck_replies" USING "btree" ("author_id");
+
+
+
 CREATE INDEX IF NOT EXISTS "stuck_replies_request_idx" ON "public"."stuck_replies" USING "btree" ("request_id", "created_at");
+
+
+
+CREATE INDEX IF NOT EXISTS "stuck_requests_battle_id_idx" ON "public"."stuck_requests" USING "btree" ("battle_id");
 
 
 
@@ -3892,6 +4025,10 @@ CREATE INDEX IF NOT EXISTS "stuck_requests_open_idx" ON "public"."stuck_requests
 
 
 CREATE INDEX IF NOT EXISTS "stuck_requests_problem_idx" ON "public"."stuck_requests" USING "btree" ("problem_slug", "created_at" DESC);
+
+
+
+CREATE INDEX IF NOT EXISTS "stuck_requests_squad_id_idx" ON "public"."stuck_requests" USING "btree" ("squad_id");
 
 
 
@@ -3927,11 +4064,23 @@ CREATE INDEX IF NOT EXISTS "sync_rate_limits_last_sync_idx" ON "public"."sync_ra
 
 
 
+CREATE INDEX IF NOT EXISTS "user_blocks_blocked_id_idx" ON "public"."user_blocks" USING "btree" ("blocked_id");
+
+
+
+CREATE INDEX IF NOT EXISTS "user_blocks_blocker_id_idx" ON "public"."user_blocks" USING "btree" ("blocker_id");
+
+
+
 CREATE INDEX IF NOT EXISTS "user_problem_status_user_id_idx" ON "public"."user_problem_status" USING "btree" ("user_id");
 
 
 
 CREATE INDEX IF NOT EXISTS "validation_observations_category_idx" ON "public"."validation_observations" USING "btree" ("category");
+
+
+
+CREATE INDEX IF NOT EXISTS "validation_observations_observed_by_idx" ON "public"."validation_observations" USING "btree" ("observed_by");
 
 
 
@@ -6009,6 +6158,13 @@ GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "service_role";
 
 
 GRANT ALL ON FUNCTION "public"."stuck_reminder_allowed"("p_request_id" "uuid", "p_actor" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") TO "service_role";
 
 
 

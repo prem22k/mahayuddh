@@ -2492,3 +2492,29 @@ describe("profileHref", () => {
     assert.equal(profileHref("  prajwal  "), "/u/prajwal");
   });
 });
+
+// ── Backend optimization: the chain is one query, not N+1 ───────────────────
+
+describe("getChallengeChain", () => {
+  it("uses the recursive suggestion_chain RPC rather than sequential fetches", async () => {
+    // The old version fetched the leaf, read its parent_id, fetched the parent,
+    // up to ten times — an N+1 that got slower exactly when chains got longer.
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("lib/data/suggestions.ts", "utf8");
+    assert.match(src, /suggestion_chain/, "must call the single-query RPC");
+    assert.doesNotMatch(
+      src,
+      /for\s*\([^)]*\)\s*\{[^}]*await supabase[\s\S]{0,400}?from\("suggestions"\)/,
+      "must not loop sequential single-row fetches"
+    );
+  });
+
+  it("the RPC exists in the canonical schema and is recursive", async () => {
+    const { readFileSync } = await import("node:fs");
+    const schema = readFileSync("supabase/schema.sql", "utf8");
+    assert.match(schema, /create or replace function "public"\."suggestion_chain"/i);
+    assert.match(schema, /with recursive chain/i);
+    assert.match(schema, /c\.depth \+ 1/i);
+    assert.match(schema, /where c\.depth < 20/i);
+  });
+});

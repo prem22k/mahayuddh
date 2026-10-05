@@ -66,21 +66,44 @@ export async function getSuggestionById(id: string): Promise<Suggestion | null> 
   return data as Suggestion;
 }
 
-/** Walk parent links up (max 10) → oldest-first chain for the Chain ritual (§10). */
+/**
+ * Walk parent links up → oldest-first chain for the Chain ritual (§10).
+ *
+ * One recursive query, not up to ten sequential ones. The old version fetched
+ * the leaf, read its parent_id, fetched the parent, and so on — a textbook N+1
+ * that got slower exactly when the feature got better, because longer chains are
+ * the success case §10 measures.
+ *
+ * Profiles are joined in a second batched query rather than per row, for the same
+ * reason: the chain is small, but the pattern should not be N+1 shaped.
+ */
 export async function getChallengeChain(leafId: string): Promise<Suggestion[]> {
   const supabase = createClient();
-  const chain: Suggestion[] = [];
-  let current: string | null = leafId;
-  for (let i = 0; i < 10 && current; i++) {
-    const { data } = await supabase
-      .from("suggestions")
-      .select("*, from_profile:from_user (id, username, avatar_url), to_profile:to_user (id, username, avatar_url)")
-      .eq("id", current)
-      .maybeSingle();
-    if (!data) break;
-    const row = data as Suggestion;
-    chain.unshift(row);
-    current = row.parent_id;
+  const { data, error } = await supabase.rpc("suggestion_chain", { p_leaf_id: leafId });
+  if (error) {
+    throw new DataError("suggestions", "Couldn't load the challenge chain. Retry.", { cause: error });
+  }
+  const chain = (data ?? []) as Suggestion[];
+  if (chain.length === 0) return [];
+
+  // One batched profile lookup for the whole chain.
+  const ids = Array.from(
+    new Set(chain.flatMap((r) => [r.from_user, r.to_user]).filter(Boolean)),
+  ) as string[];
+  if (ids.length > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, username, avatar_url")
+      .in("id", ids);
+    const byId = new Map(((profiles ?? []) as { id: string; username: string; avatar_url: string | null }[]).map((p) => [p.id, p]));
+    for (const row of chain) {
+      const from = byId.get(row.from_user) ?? null;
+      const to = byId.get(row.to_user) ?? null;
+      // The embedded-profile shape the old per-row join produced. Kept so every
+      // caller that read from_profile/to_profile keeps working unchanged.
+      (row as unknown as { from_profile: unknown }).from_profile = from;
+      (row as unknown as { to_profile: unknown }).to_profile = to;
+    }
   }
   return chain;
 }
