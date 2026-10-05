@@ -26,7 +26,8 @@
     "test:integration:notebook": "node tests/integration/notebook.mjs",
     "test:integration:recommend": "node tests/integration/recommend.mjs",
     "test:ai:provider": "node --experimental-strip-types tests/ai/provider.mjs",
-    "test:ai:e2e": "node tests/ai/endToEnd.mjs"
+    "test:ai:e2e": "node tests/ai/endToEnd.mjs",
+    "test:integration:battles": "node tests/integration/battles.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

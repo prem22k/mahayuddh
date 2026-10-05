@@ -21,7 +21,13 @@ export async function logProblemEvent(params: {
     duration_sec: params.durationSec ?? null,
     metadata: { source: params.source ?? "self" },
   });
-  if (error) console.warn("logProblemEvent failed:", error.message);
+  if (!error) return;
+  // 23505 on (battle_id, kind) means the battle-end trigger already wrote this
+  // exact event, which is the normal case now rather than a failure: the trigger
+  // owns battle-derived history so a dropped client write cannot lose a solve.
+  // Warn on anything else, because that is still a lost event.
+  if (error.code === "23505" && params.battleId) return;
+  console.warn("logProblemEvent failed:", error.message);
 }
 
 export async function getProblemTimeline(

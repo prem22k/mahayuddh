@@ -80,6 +80,57 @@ COMMENT ON FUNCTION "public"."ai_calls_remaining"("p_squad" "uuid") IS '§45 cos
 
 
 
+CREATE OR REPLACE FUNCTION "public"."append_problem_event_on_battle_end"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+declare
+  v_kind text;
+begin
+  -- Only the two outcomes the client ever logged.
+  if new.outcome = 'solved' then
+    -- Same rule as the dock's wasSolved: a repeat solve is a revisit.
+    if exists (
+      select 1 from public.problem_events e
+      where e.user_id = new.user_id
+        and e.problem_slug = new.problem_slug
+        and e.kind = 'solved'
+    ) then
+      v_kind := 'revisited';
+    else
+      v_kind := 'solved';
+    end if;
+  elsif new.outcome = 'failed' then
+    v_kind := 'failed';
+  else
+    return new;
+  end if;
+
+  insert into public.problem_events (user_id, problem_slug, kind, battle_id, duration_sec, metadata)
+  select
+    new.user_id,
+    new.problem_slug,
+    v_kind,
+    new.id,
+    new.duration_sec,
+    jsonb_build_object('source', coalesce(new.evidence, 'none'))
+  where not exists (
+    select 1 from public.problem_events e
+    where e.battle_id = new.id and e.kind = v_kind
+  );
+
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."append_problem_event_on_battle_end"() OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."append_problem_event_on_battle_end"() IS 'Battle ends are the one place history must not depend on a best-effort client write. Exactly-once via problem_events_battle_once; manual toggles (battle_id NULL) are unaffected.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."assert_referral_referrer_is_member"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -3728,6 +3779,10 @@ CREATE INDEX IF NOT EXISTS "primers_pattern_idx" ON "public"."primers" USING "bt
 
 
 
+CREATE UNIQUE INDEX IF NOT EXISTS "problem_events_battle_once" ON "public"."problem_events" USING "btree" ("battle_id", "kind") WHERE ("battle_id" IS NOT NULL);
+
+
+
 CREATE INDEX IF NOT EXISTS "problem_events_slug_idx" ON "public"."problem_events" USING "btree" ("problem_slug", "created_at" DESC);
 
 
@@ -3881,6 +3936,10 @@ CREATE INDEX IF NOT EXISTS "validation_observations_category_idx" ON "public"."v
 
 
 CREATE INDEX IF NOT EXISTS "validation_observations_squad_idx" ON "public"."validation_observations" USING "btree" ("squad_id", "created_at" DESC);
+
+
+
+CREATE OR REPLACE TRIGGER "append_problem_event_on_battle_end" AFTER UPDATE OF "outcome" ON "public"."battles" FOR EACH ROW WHEN ((("old"."outcome" IS DISTINCT FROM "new"."outcome") AND ("new"."outcome" = ANY (ARRAY['solved'::"text", 'failed'::"text"])))) EXECUTE FUNCTION "public"."append_problem_event_on_battle_end"();
 
 
 
@@ -5617,6 +5676,12 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 GRANT ALL ON FUNCTION "public"."ai_calls_remaining"("p_squad" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."ai_calls_remaining"("p_squad" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."ai_calls_remaining"("p_squad" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."append_problem_event_on_battle_end"() TO "anon";
+GRANT ALL ON FUNCTION "public"."append_problem_event_on_battle_end"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."append_problem_event_on_battle_end"() TO "service_role";
 
 
 
