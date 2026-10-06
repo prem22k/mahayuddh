@@ -210,7 +210,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
           </div>
           <button
             onClick={onClose}
-            className="p-1 text-white/40 hover:text-white rounded-lg transition-colors cursor-pointer"
+            className="p-1 text-white/55 hover:text-white rounded-lg transition-colors cursor-pointer"
             aria-label="Close"
           >
             <X className="w-4 h-4" />
@@ -218,7 +218,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
         </div>
 
         {/* Tab Switcher */}
-        <p className="text-[11px] text-white/40 leading-relaxed mb-3">
+        <p className="text-[11px] text-white/55 leading-relaxed mb-3">
           Optional enhancement — Mahayuddh works fully without LeetCode. Connecting adds contest stats + solve evidence badges.{" "}
           <button type="button" onClick={handleRemoveSession} disabled={removingSession} className="text-[#fa586a] hover:underline font-semibold cursor-pointer">
             {removingSession ? "Removing…" : "Remove stored session"}
@@ -234,7 +234,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
             className={cn(
               "py-2 text-[11px] font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1",
               activeTab === "handle"
-                ? "bg-[#fa586a] text-white shadow-sm"
+                ? "btn-accent text-white shadow-sm"
                 : "text-white/50 hover:text-white"
             )}
           >
@@ -303,7 +303,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
             <button
               type="submit"
               disabled={submitting || !username.trim()}
-              className="w-full py-2.5 rounded-xl bg-[#fa586a] hover:bg-[#fa586a]/90 text-white font-bold text-xs shadow-glow transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-2.5 rounded-xl btn-accent text-white font-bold text-xs shadow-glow transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
             >
               {submitting ? (
                 <>
@@ -339,7 +339,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
                 <Bookmark className="w-3.5 h-3.5 text-[#fa586a]" />
                 <span>Option 1: Drag to Bookmarks Bar</span>
               </div>
-              <p className="text-[11px] text-white/40">
+              <p className="text-[11px] text-white/55">
                 Drag this button to your browser bookmarks bar once. Then click it while viewing LeetCode!
               </p>
               <div className="pt-1">
@@ -397,7 +397,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
         {/* ── Tab 3: Session Cookie Sync ── */}
         {activeTab === "session" && (
           <form onSubmit={handleSessionSync} className="space-y-4">
-            <p className="text-xs text-white/40 leading-relaxed">
+            <p className="text-xs text-white/55 leading-relaxed">
               Paste your <span className="text-white/80 font-mono">LEETCODE_SESSION</span> cookie from browser DevTools:
             </p>
 
@@ -442,7 +442,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
             <button
               type="submit"
               disabled={submitting || !sessionCookie.trim()}
-              className="w-full py-2.5 rounded-xl bg-[#fa586a] hover:bg-[#fa586a]/90 text-white font-bold text-xs shadow-glow transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-2.5 rounded-xl btn-accent text-white font-bold text-xs shadow-glow transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
             >
               {submitting ? (
                 <>

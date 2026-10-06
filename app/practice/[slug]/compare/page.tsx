@@ -71,7 +71,7 @@ export default function ComparePage() {
         <p className="text-xs text-[#ff453a]">{loadError}</p>
         <button
           onClick={load}
-          className="px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold cursor-pointer"
+          className="px-4 py-2 rounded-full btn-accent text-white text-xs font-bold cursor-pointer"
         >
           Retry
         </button>
@@ -86,7 +86,7 @@ export default function ComparePage() {
     <div className="space-y-8 select-none max-w-4xl">
       <Link
         href={`/practice/${slug}`}
-        className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white transition-colors"
+        className="flex items-center gap-1.5 text-xs text-white/55 hover:text-white transition-colors"
       >
         <ArrowLeft className="w-3.5 h-3.5" />
         <span>{title}</span>
@@ -99,7 +99,7 @@ export default function ComparePage() {
         <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
           How your squad solved {title}
         </h1>
-        <p className="text-xs text-white/40 max-w-2xl leading-relaxed">
+        <p className="text-xs text-white/55 max-w-2xl leading-relaxed">
           {comparison.total} shared {comparison.total === 1 ? "approach" : "approaches"},
           {comparison.techniqueCount > 0 ? ` using ${comparison.techniqueCount} different ` : " using "}
           {comparison.techniqueCount === 1 ? "technique" : "techniques"}. Read for the ideas, not the
@@ -114,13 +114,13 @@ export default function ComparePage() {
               ? "Nobody has shared an approach for this yet."
               : "Only one approach so far — nothing to compare against."}
           </p>
-          <p className="text-xs text-white/40 max-w-sm mx-auto">
+          <p className="text-xs text-white/55 max-w-sm mx-auto">
             Approaches are shared when their author chooses Squad or Public. Private ones stay
             private and never appear here.
           </p>
           <Link
             href={`/practice/${slug}#explain`}
-            className="inline-block px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold"
+            className="inline-block px-4 py-2 rounded-full btn-accent text-white text-xs font-bold"
           >
             Write yours
           </Link>
@@ -131,7 +131,7 @@ export default function ComparePage() {
             <section key={group.technique} className="space-y-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-sm font-bold text-white">{group.label}</h2>
-                <span className="text-[10px] text-white/30 font-mono">
+                <span className="text-[10px] text-white/50 font-mono">
                   {group.rows.length}{" "}
                   {group.rows.length === 1 ? "person" : "people"} solved it this way
                 </span>
@@ -199,7 +199,7 @@ function ApproachCard({ row, mine }: { row: CompareRow; mine: boolean }) {
       </p>
 
       {(row.time || row.space) && (
-        <div className="flex items-center gap-2 font-mono text-[11px] text-white/40">
+        <div className="flex items-center gap-2 font-mono text-[11px] text-white/55">
           {row.time && <span>time {row.time}</span>}
           {row.space && <span>· space {row.space}</span>}
         </div>
@@ -207,7 +207,7 @@ function ApproachCard({ row, mine }: { row: CompareRow; mine: boolean }) {
 
       {a.key_detail && (
         <p className="text-[11px] text-white/50">
-          <span className="text-white/35 font-semibold uppercase tracking-wider text-[9px] mr-1.5">
+          <span className="text-white/50 font-semibold uppercase tracking-wider text-[9px] mr-1.5">
             key detail
           </span>
           {a.key_detail}
@@ -215,7 +215,7 @@ function ApproachCard({ row, mine }: { row: CompareRow; mine: boolean }) {
       )}
       {a.edge_cases && (
         <p className="text-[11px] text-white/50">
-          <span className="text-white/35 font-semibold uppercase tracking-wider text-[9px] mr-1.5">
+          <span className="text-white/50 font-semibold uppercase tracking-wider text-[9px] mr-1.5">
             edge cases
           </span>
           {a.edge_cases}
@@ -223,7 +223,7 @@ function ApproachCard({ row, mine }: { row: CompareRow; mine: boolean }) {
       )}
       {a.mistakes && (
         <p className="text-[11px] text-white/50">
-          <span className="text-white/35 font-semibold uppercase tracking-wider text-[9px] mr-1.5">
+          <span className="text-white/50 font-semibold uppercase tracking-wider text-[9px] mr-1.5">
             mistakes
           </span>
           {a.mistakes}
@@ -234,7 +234,7 @@ function ApproachCard({ row, mine }: { row: CompareRow; mine: boolean }) {
         <div className="border-t border-white/[0.06] pt-2">
           <button
             onClick={() => setShowCode((v) => !v)}
-            className="text-[11px] font-bold text-white/45 hover:text-white flex items-center gap-1.5 cursor-pointer"
+            className="text-[11px] font-bold text-white/60 hover:text-white flex items-center gap-1.5 cursor-pointer"
           >
             {showCode ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
             {showCode ? "Hide code" : "Reveal code"}

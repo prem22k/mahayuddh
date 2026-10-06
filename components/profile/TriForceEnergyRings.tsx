@@ -131,7 +131,7 @@ export function TriForceEnergyRings({
           <span className="text-2xl sm:text-3xl font-black text-white leading-none tracking-tight">
             {totalSolved}
           </span>
-          <span className="text-[10px] uppercase font-bold tracking-widest text-white/40 mt-1">
+          <span className="text-[10px] uppercase font-bold tracking-widest text-white/55 mt-1">
             Solved
           </span>
         </div>
@@ -143,7 +143,7 @@ export function TriForceEnergyRings({
         <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-[#30d158]/20">
           <div className="w-2.5 h-2.5 rounded-full bg-[#30d158] shadow-[0_0_8px_#30d158]" />
           <div>
-            <div className="text-[10px] text-white/40 font-semibold uppercase">Easy</div>
+            <div className="text-[10px] text-white/55 font-semibold uppercase">Easy</div>
             <div className="text-sm font-bold text-white font-mono">{easy}</div>
           </div>
         </div>
@@ -152,7 +152,7 @@ export function TriForceEnergyRings({
         <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-[#ff9f0a]/20">
           <div className="w-2.5 h-2.5 rounded-full bg-[#ff9f0a] shadow-[0_0_8px_#ff9f0a]" />
           <div>
-            <div className="text-[10px] text-white/40 font-semibold uppercase">Medium</div>
+            <div className="text-[10px] text-white/55 font-semibold uppercase">Medium</div>
             <div className="text-sm font-bold text-white font-mono">{medium}</div>
           </div>
         </div>
@@ -161,7 +161,7 @@ export function TriForceEnergyRings({
         <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-[#fa586a]/20">
           <div className="w-2.5 h-2.5 rounded-full bg-[#fa586a] shadow-[0_0_8px_#fa586a]" />
           <div>
-            <div className="text-[10px] text-white/40 font-semibold uppercase">Hard</div>
+            <div className="text-[10px] text-white/55 font-semibold uppercase">Hard</div>
             <div className="text-sm font-bold text-white font-mono">{hard}</div>
           </div>
         </div>

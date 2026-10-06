@@ -12,7 +12,7 @@ export default function ProfilePage() {
           What have I become good at?
         </div>
         <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">Profile</h1>
-        <p className="text-xs text-white/40 mt-1">
+        <p className="text-xs text-white/55 mt-1">
           Your learning journey — battles, patterns, approaches, improvements — will live here. For now:
         </p>
       </div>
@@ -20,11 +20,11 @@ export default function ProfilePage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Link href="/" className="p-5 rounded-3xl bg-white/[0.03] border border-white/[0.08] hover:border-white/[0.15] transition-all">
           <div className="text-sm font-bold text-white">Open your Warrior Dossier →</div>
-          <p className="text-[11px] text-white/40 mt-1">Arena → Your Progress → Warrior Dossier. Stats, radar, history.</p>
+          <p className="text-[11px] text-white/55 mt-1">Arena → Your Progress → Warrior Dossier. Stats, radar, history.</p>
         </Link>
         <Link href="/notebook" className="p-5 rounded-3xl bg-white/[0.03] border border-white/[0.08] hover:border-white/[0.15] transition-all">
           <div className="text-sm font-bold text-white">What do I know? →</div>
-          <p className="text-[11px] text-white/40 mt-1">Your shared templates and interview logs in the vault.</p>
+          <p className="text-[11px] text-white/55 mt-1">Your shared templates and interview logs in the vault.</p>
         </Link>
       </div>
     </div>

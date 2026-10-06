@@ -349,7 +349,7 @@ export default function SuggestionsPage() {
           <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
             Suggestion Box
           </h1>
-          <p className="text-xs text-white/40 mt-1">
+          <p className="text-xs text-white/55 mt-1">
             Challenge squad mates with curated problems, hints, and automated sync verification.
           </p>
         </div>
@@ -361,7 +361,7 @@ export default function SuggestionsPage() {
             setPassParent(null);
             setIsModalOpen(true);
           }}
-          className="px-4 py-2 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white font-semibold text-xs flex items-center gap-1.5 shadow-[0_0_20px_rgba(250,88,106,0.35)] self-start md:self-auto transition-all cursor-pointer"
+          className="px-4 py-2 rounded-full btn-accent text-white font-semibold text-xs flex items-center gap-1.5 shadow-[0_0_20px_rgba(250,88,106,0.35)] self-start md:self-auto transition-all cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>Challenge a Friend</span>
@@ -388,7 +388,7 @@ export default function SuggestionsPage() {
             "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
             activeTab === "all"
               ? "bg-white/[0.12] text-white shadow-sm"
-              : "text-white/40 hover:text-white/80"
+              : "text-white/55 hover:text-white/80"
           )}
         >
           All ({suggestions.length})
@@ -399,13 +399,13 @@ export default function SuggestionsPage() {
             className={cn(
               "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5",
               activeTab === "for_you"
-                ? "bg-[#fa586a]/20 border border-[#fa586a]/30 text-white shadow-sm"
-                : "text-white/40 hover:text-white/80"
+                ? "btn-accent border border-[#fa586a]/30 text-white shadow-sm"
+                : "text-white/55 hover:text-white/80"
             )}
           >
             <span>Targeting You</span>
             {forYouCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-[#fa586a] text-white font-bold text-[10px]">
+              <span className="px-1.5 py-0.2 rounded-full btn-accent text-white font-bold text-[10px]">
                 {forYouCount}
               </span>
             )}
@@ -417,7 +417,7 @@ export default function SuggestionsPage() {
             "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
             activeTab === "pending"
               ? "bg-white/[0.12] text-white shadow-sm"
-              : "text-white/40 hover:text-white/80"
+              : "text-white/55 hover:text-white/80"
           )}
         >
           Pending ({suggestions.filter((s) => s.status === "pending").length})
@@ -428,7 +428,7 @@ export default function SuggestionsPage() {
             "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
             activeTab === "completed"
               ? "bg-white/[0.12] text-white shadow-sm"
-              : "text-white/40 hover:text-white/80"
+              : "text-white/55 hover:text-white/80"
           )}
         >
           Completed ({suggestions.filter((s) => s.status === "completed").length})
@@ -450,7 +450,7 @@ export default function SuggestionsPage() {
         <PageLoader label="Loading challenges..." className="h-60" />
       ) : filteredList.length === 0 ? (
         <div className="p-12 text-center space-y-3 bg-[#1c1c1e]/60 rounded-2xl border border-white/[0.06]">
-          <p className="text-white/40 text-xs">
+          <p className="text-white/55 text-xs">
             {activeTab === "for_you"
               ? "No challenges yet. Solve a battle and challenge a friend — theirs will land here."
               : suggestions.length === 0
@@ -483,12 +483,12 @@ export default function SuggestionsPage() {
                       <span className="text-white font-bold">
                         @{item.from_profile?.username || "Member"}
                       </span>
-                      <ArrowRight className="w-3 h-3 text-white/30" />
+                      <ArrowRight className="w-3 h-3 text-white/50" />
                       <span className="text-white font-bold">
                         @{item.to_profile?.username || "Member"}
                       </span>
                       {isTarget && (
-                        <span className="px-1.5 py-0.2 rounded-full bg-[#fa586a] text-white text-[9px] font-black uppercase tracking-wider">
+                        <span className="px-1.5 py-0.2 rounded-full btn-accent text-white text-[9px] font-black uppercase tracking-wider">
                           YOU
                         </span>
                       )}
@@ -516,7 +516,7 @@ export default function SuggestionsPage() {
                       </span>
                     )}
                     {item.deadline_at && item.status === "pending" && (
-                      <span className="text-[10px] text-white/40 font-mono">
+                      <span className="text-[10px] text-white/55 font-mono">
                         due {new Date(item.deadline_at).toLocaleDateString()}
                       </span>
                     )}
@@ -528,7 +528,7 @@ export default function SuggestionsPage() {
                     </div>
                   )}
                   {item.spoiler && !isTarget && !isCompleted && (
-                    <div className="mt-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] text-xs text-white/30 italic">
+                    <div className="mt-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] text-xs text-white/50 italic">
                       Hidden hint — reveals when accepted.
                     </div>
                   )}
@@ -563,7 +563,7 @@ export default function SuggestionsPage() {
                         </button>
                         <button
                           onClick={() => handleDecline(item)}
-                          className="px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/40 hover:text-white font-semibold transition-colors text-[11px] cursor-pointer"
+                          className="px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/55 hover:text-white font-semibold transition-colors text-[11px] cursor-pointer"
                         >
                           Decline
                         </button>
@@ -601,7 +601,7 @@ export default function SuggestionsPage() {
 
                     <button
                       onClick={() => handleCopyLink(item)}
-                      className="p-1.5 rounded-full text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
+                      className="p-1.5 rounded-full text-white/55 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
                       title="Copy challenge link (nudge them on WhatsApp)"
                     >
                       {copiedLinkId === item.id ? <Check className="w-3.5 h-3.5 text-[#30d158]" /> : <Link2 className="w-3.5 h-3.5" />}
@@ -624,7 +624,7 @@ export default function SuggestionsPage() {
           panelClassName="shadow-modal p-6"
         >
             <h2 className="text-xl font-bold text-white mb-1">{passParent ? "Pass the Challenge" : "Challenge a Friend"}</h2>
-            <p className="text-xs text-white/40 mb-5">
+            <p className="text-xs text-white/55 mb-5">
               {passParent
                 ? `Forwarding @${passParent.from_profile?.username || "a squad mate"}'s ${passParent.problem_title} challenge — the chain grows.`
                 : "I solved X → I challenge you to solve X. Async by default; no spoiler unless you say so."}
@@ -746,7 +746,7 @@ export default function SuggestionsPage() {
                 </div>
               </div>
 
-              <label className="flex items-start gap-2.5 text-[11px] text-white/40 cursor-pointer">
+              <label className="flex items-start gap-2.5 text-[11px] text-white/55 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={spoiler}
@@ -772,7 +772,7 @@ export default function SuggestionsPage() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-2 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white text-xs font-semibold shadow-glow transition-all disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-2 rounded-full btn-accent text-white text-xs font-semibold shadow-glow transition-all disabled:opacity-50 cursor-pointer"
                 >
                   {submitting ? "Sending..." : "Send Challenge"}
                 </button>

@@ -131,7 +131,7 @@ export function CreateListModal({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-white/40 hover:text-white rounded-lg transition-colors cursor-pointer"
+            className="p-1.5 text-white/55 hover:text-white rounded-lg transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -185,7 +185,7 @@ export function CreateListModal({
                 <button
                   type="button"
                   onClick={() => setSelectedSlugs([])}
-                  className="text-[11px] text-white/40 hover:text-[#ff453a] transition-colors"
+                  className="text-[11px] text-white/55 hover:text-[#ff453a] transition-colors"
                 >
                   Clear all
                 </button>
@@ -194,7 +194,7 @@ export function CreateListModal({
 
             {/* Problem Search Bar */}
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-white/30 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-3.5 h-3.5 text-white/50 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={searchQuery}
@@ -207,12 +207,12 @@ export function CreateListModal({
             {/* Problem Selection List */}
             <div className="max-h-48 overflow-y-auto rounded-xl border border-white/[0.06] bg-black/30 divide-y divide-white/[0.03] p-1">
               {loadingProblems ? (
-                <div className="p-4 text-center text-white/40 text-xs flex items-center justify-center gap-2">
+                <div className="p-4 text-center text-white/55 text-xs flex items-center justify-center gap-2">
                   <Spinner size="sm" tone="soft" />
                   <span>Loading problems...</span>
                 </div>
               ) : filteredProblems.length === 0 ? (
-                <div className="p-4 text-center text-white/40 text-xs">
+                <div className="p-4 text-center text-white/55 text-xs">
                   No problems match your query.
                 </div>
               ) : (
@@ -225,7 +225,7 @@ export function CreateListModal({
                       className={cn(
                         "flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors",
                         isSelected
-                          ? "bg-[#fa586a]/15 text-white"
+                          ? "btn-accent text-white"
                           : "hover:bg-white/[0.04] text-white/70"
                       )}
                     >
@@ -234,7 +234,7 @@ export function CreateListModal({
                           className={cn(
                             "w-4 h-4 rounded flex items-center justify-center border text-[10px] transition-colors shrink-0",
                             isSelected
-                              ? "bg-[#fa586a] border-[#fa586a] text-white"
+                              ? "btn-accent border-[#fa586a] text-white"
                               : "border-white/20 text-transparent"
                           )}
                         >
@@ -250,7 +250,7 @@ export function CreateListModal({
                           {p.difficulty}
                         </span>
                       </div>
-                      <span className="text-[10px] text-white/30 shrink-0 pl-2">
+                      <span className="text-[10px] text-white/50 shrink-0 pl-2">
                         {p.category}
                       </span>
                     </div>
@@ -263,7 +263,7 @@ export function CreateListModal({
 
         {/* Footer */}
         <div className="p-4 bg-black/40 border-t border-white/[0.06] flex items-center justify-between">
-          <span className="text-xs text-white/40">
+          <span className="text-xs text-white/55">
             {selectedSlugs.length} {selectedSlugs.length === 1 ? "problem" : "problems"} included
           </span>
           <div className="flex items-center gap-2">
@@ -277,7 +277,7 @@ export function CreateListModal({
             <button
               onClick={handleCreate}
               disabled={isSubmitting || !title.trim()}
-              className="px-4 py-1.5 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-glow cursor-pointer flex items-center gap-1.5"
+              className="px-4 py-1.5 rounded-full btn-accent text-white text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-glow cursor-pointer flex items-center gap-1.5"
             >
               {isSubmitting ? (
                 <>

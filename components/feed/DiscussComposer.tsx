@@ -86,13 +86,13 @@ export function DiscussComposer({
       <form onSubmit={submit} className="space-y-4">
         <div>
           <h2 className="text-lg font-bold text-white">Start a discussion</h2>
-          <p className="text-[11px] text-white/40 mt-1">
+          <p className="text-[11px] text-white/55 mt-1">
             Problem-linked and pattern-linked, or it won&apos;t be findable later.
           </p>
         </div>
 
         <label className="block space-y-1">
-          <span className="text-[10px] uppercase tracking-wider text-white/40">
+          <span className="text-[10px] uppercase tracking-wider text-white/55">
             Problem slug
           </span>
           <input
@@ -104,7 +104,7 @@ export function DiscussComposer({
         </label>
 
         <label className="block space-y-1">
-          <span className="text-[10px] uppercase tracking-wider text-white/40">
+          <span className="text-[10px] uppercase tracking-wider text-white/55">
             Patterns (comma separated)
           </span>
           <input
@@ -116,7 +116,7 @@ export function DiscussComposer({
         </label>
 
         <label className="block space-y-1">
-          <span className="text-[10px] uppercase tracking-wider text-white/40">
+          <span className="text-[10px] uppercase tracking-wider text-white/55">
             What did you try, and what should the reader try?
           </span>
           <textarea
@@ -129,7 +129,7 @@ export function DiscussComposer({
         </label>
 
         <div className="space-y-2">
-          <span className="text-[10px] uppercase tracking-wider text-white/40">Who sees it</span>
+          <span className="text-[10px] uppercase tracking-wider text-white/55">Who sees it</span>
           <div className="flex gap-2">
             {(["squad", "global"] as const).map((v) => (
               <button
@@ -139,7 +139,7 @@ export function DiscussComposer({
                 className={`px-3 py-1.5 rounded-full text-xs font-bold capitalize transition-all cursor-pointer ${
                   visibility === v
                     ? "bg-white/[0.12] text-white"
-                    : "bg-white/[0.04] text-white/40 hover:text-white/70"
+                    : "bg-white/[0.04] text-white/55 hover:text-white/70"
                 }`}
               >
                 {v}
@@ -161,7 +161,7 @@ export function DiscussComposer({
         {/* The verdict is shown as guidance, not as an error. It is a preview of
             a rule the database will apply for real. */}
         {!verdict.ok && body.length > 0 && (
-          <p className="text-[11px] text-white/40">{draftMessage(verdict)}</p>
+          <p className="text-[11px] text-white/55">{draftMessage(verdict)}</p>
         )}
 
         {error && (
@@ -181,7 +181,7 @@ export function DiscussComposer({
           <button
             type="submit"
             disabled={!verdict.ok || globalBlocked || busy}
-            className="px-5 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+            className="px-5 py-2 rounded-full btn-accent text-white text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {busy && <Spinner size="xs" tone="inverse" />}
             Post

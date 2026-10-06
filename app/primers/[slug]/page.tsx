@@ -65,7 +65,7 @@ export default function PrimerPage() {
     return (
       <div className="p-12 text-center space-y-3">
         <p className="text-sm font-bold text-white">Primer not found.</p>
-        <Link href="/primers" className="inline-block px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold">All primers</Link>
+        <Link href="/primers" className="inline-block px-4 py-2 rounded-full btn-accent text-white text-xs font-bold">All primers</Link>
       </div>
     );
   }
@@ -77,7 +77,7 @@ export default function PrimerPage() {
       <Suspense fallback={null}>
         <TrackVisit artifact={`primer:${primer.slug}`} />
       </Suspense>
-      <Link href="/primers" className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white transition-colors">
+      <Link href="/primers" className="flex items-center gap-1.5 text-xs text-white/55 hover:text-white transition-colors">
         <ArrowLeft className="w-3.5 h-3.5" />
         <span>All primers</span>
       </Link>
@@ -85,7 +85,7 @@ export default function PrimerPage() {
       <div>
         <div className="text-[11px] font-bold text-[#fa586a] uppercase tracking-widest">Before solving · {primer.pattern}</div>
         <h1 className="text-3xl font-extrabold text-white tracking-tight mt-1">{primer.title}</h1>
-        <p className="text-[11px] text-white/40 mt-1">5–10 minutes. Then go use it immediately.</p>
+        <p className="text-[11px] text-white/55 mt-1">5–10 minutes. Then go use it immediately.</p>
       </div>
 
       <section className="p-5 rounded-3xl bg-white/[0.03] border border-white/[0.08] space-y-2">
@@ -136,7 +136,7 @@ export default function PrimerPage() {
           {starters.map((s) => (
             <div key={s.title_slug} className="flex items-center justify-between gap-2">
               <Link href={`/practice/${s.title_slug}`} className="text-xs font-semibold text-white hover:text-[#fa586a] transition-colors">
-                {s.title} <span className="text-white/30 font-normal">· {s.difficulty}</span>
+                {s.title} <span className="text-white/50 font-normal">· {s.difficulty}</span>
               </Link>
             </div>
           ))}
@@ -146,7 +146,7 @@ export default function PrimerPage() {
             onClick={() =>
               startSolving({ id: first.question_id || first.title_slug, title: first.title, slug: first.title_slug, difficulty: first.difficulty, category: primer.pattern })
             }
-            className="w-full py-3 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
+            className="w-full py-3 rounded-full btn-accent text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
             <span>START PROBLEMS</span>

@@ -248,7 +248,7 @@ function SheetContent() {
           <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
             {title}
           </h1>
-          <p className="text-xs text-white/40 mt-1">
+          <p className="text-xs text-white/55 mt-1">
             {list?.description || "Master core algorithmic problem patterns with real-time interactive tracking."}
           </p>
         </div>
@@ -256,7 +256,7 @@ function SheetContent() {
         {/* Search */}
         <div className="flex items-center gap-3">
           <div className="relative">
-            <Search className="w-3.5 h-3.5 text-white/30 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-white/50 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -271,12 +271,12 @@ function SheetContent() {
       <div className="p-6 rounded-3xl bg-[#1c1c1e]/70 border border-white/[0.08] backdrop-blur-xl shadow-subtle space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-white/40 mb-1">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-white/55 mb-1">
               Overall Roadmap Mastery
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl md:text-3xl font-black text-white">{percentage}%</span>
-              <span className="text-xs text-white/40">
+              <span className="text-xs text-white/55">
                 ({solvedCount} / {totalCount} Solved)
               </span>
             </div>
@@ -318,7 +318,7 @@ function SheetContent() {
               "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
               statusFilter === "all"
                 ? "bg-white/[0.12] text-white shadow-sm"
-                : "text-white/40 hover:text-white/80"
+                : "text-white/55 hover:text-white/80"
             )}
           >
             All ({totalCount})
@@ -329,7 +329,7 @@ function SheetContent() {
               "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5",
               statusFilter === "solved"
                 ? "bg-[#30d158]/20 text-[#30d158] border border-[#30d158]/30 shadow-sm"
-                : "text-white/40 hover:text-white/80"
+                : "text-white/55 hover:text-white/80"
             )}
           >
             <CheckCircle2 className="w-3 h-3" />
@@ -341,7 +341,7 @@ function SheetContent() {
               "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5",
               statusFilter === "attempted"
                 ? "bg-[#ff9f0a]/20 text-[#ff9f0a] border border-[#ff9f0a]/30 shadow-sm"
-                : "text-white/40 hover:text-white/80"
+                : "text-white/55 hover:text-white/80"
             )}
           >
             <Clock className="w-3 h-3" />
@@ -353,7 +353,7 @@ function SheetContent() {
               "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5",
               statusFilter === "todo"
                 ? "bg-white/[0.12] text-white shadow-sm"
-                : "text-white/40 hover:text-white/80"
+                : "text-white/55 hover:text-white/80"
             )}
           >
             <Circle className="w-3 h-3" />
@@ -371,7 +371,7 @@ function SheetContent() {
                 "px-3 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer",
                 selectedCategory === category
                   ? "bg-white/[0.12] text-white shadow-sm"
-                  : "bg-white/[0.03] text-white/40 hover:text-white/80 border border-white/[0.06]"
+                  : "bg-white/[0.03] text-white/55 hover:text-white/80 border border-white/[0.06]"
               )}
             >
               {category}
@@ -383,7 +383,7 @@ function SheetContent() {
       {/* ── Problem Groupings & Matrix Table ── */}
       <div className="space-y-6">
         {problemsByCategory.length === 0 ? (
-          <div className="p-12 text-center text-white/40 text-xs bg-[#1c1c1e]/60 rounded-2xl border border-white/[0.06]">
+          <div className="p-12 text-center text-white/55 text-xs bg-[#1c1c1e]/60 rounded-2xl border border-white/[0.06]">
             No problems match your selected filters.
           </div>
         ) : (
@@ -404,7 +404,7 @@ function SheetContent() {
                   className="px-6 py-4 border-b border-white/[0.06] bg-white/[0.02] flex items-center justify-between cursor-pointer hover:bg-white/[0.04] transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <button className="text-white/40 hover:text-white transition-colors">
+                    <button className="text-white/55 hover:text-white transition-colors">
                       {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
                     </button>
                     <h3 className="text-sm md:text-base font-bold text-white tracking-tight">
@@ -427,7 +427,7 @@ function SheetContent() {
                     </button>
                     <button
                       onClick={() => handleBatchToggleTopic(group.category, "unsolved")}
-                      className="px-2 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-[10px] font-bold text-white/40 hover:text-white/70 transition-all flex items-center gap-1 cursor-pointer"
+                      className="px-2 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-[10px] font-bold text-white/55 hover:text-white/70 transition-all flex items-center gap-1 cursor-pointer"
                       title="Reset section to Todo"
                     >
                       <RotateCcw className="w-3 h-3" />
@@ -466,7 +466,7 @@ function SheetContent() {
                             onClick={() => handleStartSolving(problem)}
                             className="col-span-7 md:col-span-8 flex items-center gap-3 truncate cursor-pointer"
                           >
-                            <span className="font-mono text-[11px] text-white/30 shrink-0">
+                            <span className="font-mono text-[11px] text-white/50 shrink-0">
                               {idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
                             </span>
                             <span
@@ -495,7 +495,7 @@ function SheetContent() {
                               className={cn(
                                 "px-3 py-1.5 rounded-full text-[11px] font-semibold flex items-center gap-1.5 transition-all cursor-pointer",
                                 isCurrentActive
-                                  ? "bg-[#fa586a] text-white shadow-glow"
+                                  ? "btn-accent text-white shadow-glow"
                                   : "bg-white/[0.04] text-white/60 hover:text-white hover:bg-white/[0.08] border border-white/[0.06]"
                               )}
                             >
@@ -515,7 +515,7 @@ function SheetContent() {
                             <Link
                               href={`/practice/${problem.title_slug}`}
                               title={`History and approaches for ${problem.title}`}
-                              className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors text-[11px] font-bold font-mono"
+                              className="p-1.5 rounded-lg text-white/55 hover:text-white hover:bg-white/[0.06] transition-colors text-[11px] font-bold font-mono"
                             >
                               →
                             </Link>

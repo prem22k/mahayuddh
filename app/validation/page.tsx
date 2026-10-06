@@ -106,7 +106,7 @@ export default function ValidationPage() {
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold">Validation</h1>
         <p className="text-sm text-slate-400">
-          Step 27 · Bible §58 gates, §59 observations, §60 triage, §76 review.
+          Live quality gates, observations, triage, and review — read from the database.
         </p>
         <p className="text-sm text-slate-500">
           These gates do not replace two weeks with real squads. They make the answers that

@@ -55,7 +55,7 @@ export default function ApproachPage() {
         <p className="text-xs text-[#ff453a]">{loadError}</p>
         <button
           onClick={load}
-          className="px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold cursor-pointer"
+          className="px-4 py-2 rounded-full btn-accent text-white text-xs font-bold cursor-pointer"
         >
           Retry
         </button>
@@ -66,7 +66,7 @@ export default function ApproachPage() {
     return (
       <div className="p-12 text-center space-y-3">
         <p className="text-sm font-bold text-white">Approach not found.</p>
-        <p className="text-xs text-white/40">
+        <p className="text-xs text-white/55">
           It may be private to its author, or deleted.
         </p>
         <Link href="/practice" className="inline-block px-4 py-2 rounded-full bg-white/[0.06] border border-white/[0.1] text-white text-xs font-bold">
@@ -93,7 +93,7 @@ export default function ApproachPage() {
   const Row = ({ label, value }: { label: string; value: string | null }) =>
     value ? (
       <div className="grid grid-cols-[90px_1fr] gap-3 py-2 border-t border-white/[0.04]">
-        <span className="text-[11px] font-semibold text-white/40 uppercase tracking-wider">
+        <span className="text-[11px] font-semibold text-white/55 uppercase tracking-wider">
           {label}
         </span>
         <span className="text-xs text-white/70 whitespace-pre-wrap leading-relaxed">
@@ -106,7 +106,7 @@ export default function ApproachPage() {
     <div className="space-y-6 select-none max-w-3xl">
       <Link
         href={`/practice/${approach.problem_slug}`}
-        className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white transition-colors"
+        className="flex items-center gap-1.5 text-xs text-white/55 hover:text-white transition-colors"
       >
         <ArrowLeft className="w-3.5 h-3.5" />
         <span>{approach.problem_slug}</span>
@@ -147,7 +147,7 @@ export default function ApproachPage() {
         {approach.code && (
           <div className="mt-4 border-t border-white/[0.06] pt-3">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-semibold text-white/40 uppercase tracking-wider">
+              <span className="text-[11px] font-semibold text-white/55 uppercase tracking-wider">
                 Code
               </span>
               {!revealCode && (
@@ -231,7 +231,7 @@ export default function ApproachPage() {
                 await deleteApproach(approach.id);
                 load();
               }}
-              className="p-2 rounded-full text-white/30 hover:text-[#ff453a] cursor-pointer"
+              className="p-2 rounded-full text-white/50 hover:text-[#ff453a] cursor-pointer"
               title="Delete approach"
             >
               <Trash2 className="w-4 h-4" />

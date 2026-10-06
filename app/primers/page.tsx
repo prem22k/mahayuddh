@@ -12,7 +12,7 @@ export default function PrimersPage() {
           Learn before battle
         </div>
         <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">Pattern Primers</h1>
-        <p className="text-xs text-white/40 mt-1">
+        <p className="text-xs text-white/55 mt-1">
           5–10 minute reads. One concept, immediately usable. Skim one, then start battling.
         </p>
       </div>

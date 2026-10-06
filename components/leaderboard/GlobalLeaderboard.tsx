@@ -12,6 +12,7 @@ import {
 } from "@/lib/data/leaderboard";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { PageLoader } from "@/components/ui/PageLoader";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 
 /**
  * Global leaderboard segments (§34).
@@ -65,25 +66,17 @@ export function GlobalLeaderboard() {
 
   return (
     <div className="space-y-4 select-none">
-      <div className="flex items-center gap-2 flex-wrap">
-        {LEADERBOARD_SEGMENTS.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => {
-              setSegment(s.id);
-              setPage(0);
-            }}
-            title={s.ranks}
-            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
-              segment === s.id
-                ? "bg-white/[0.12] text-white"
-                : "bg-white/[0.04] text-white/40 hover:text-white/70"
-            }`}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        label="Leaderboard segment"
+        value={segment}
+        size="sm"
+        wrap
+        onChange={(v) => {
+          setSegment(v);
+          setPage(0);
+        }}
+        options={LEADERBOARD_SEGMENTS.map((sg) => ({ value: sg.id, label: sg.label, title: sg.ranks }))}
+      />
 
       {segment === "pattern" && (
         <div className="flex items-center gap-2">
@@ -93,12 +86,13 @@ export function GlobalLeaderboard() {
               setPattern(e.target.value);
               setPage(0);
             }}
+            aria-label="Pattern to rank by, for example Graphs"
             placeholder="Pattern, e.g. Graphs"
-            className="px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-xs text-white placeholder:text-white/20 focus:outline-none focus:border-white/20"
+            className="px-3 py-1.5 min-h-11 rounded-full bg-white/[0.04] border border-white/[0.08] text-xs text-white placeholder:text-white/55 focus:border-white/20"
           />
           <button
             onClick={() => void load()}
-            className="px-3 py-1.5 rounded-full bg-white/[0.06] text-[11px] font-bold text-white/70 hover:text-white cursor-pointer"
+            className="px-3 py-1.5 min-h-11 rounded-full bg-white/[0.06] text-[11px] font-bold text-white/70 hover:text-white cursor-pointer flex items-center"
           >
             Apply
           </button>
@@ -107,7 +101,7 @@ export function GlobalLeaderboard() {
 
       {/* The ranking basis is stated, always. */}
       {meta && (
-        <p className="text-[11px] text-white/30">
+        <p className="text-[11px] text-white/50">
           {meta.ranks}.
           {isLifetimeView(segment) &&
             " Lifetime totals — this one is honest about being a long-run tally, which is why it is not the default view."}
@@ -130,7 +124,7 @@ export function GlobalLeaderboard() {
         <PageLoader label="Loading..." className="h-32" />
       ) : rows.length === 0 ? (
         <div className="p-10 text-center rounded-3xl bg-white/[0.02] border border-white/[0.06]">
-          <p className="text-xs text-white/40">
+          <p className="text-xs text-white/55">
             {segment === "pattern"
               ? "Nobody has logged a solve on that pattern yet. Try a broader pattern name."
               : "Nobody has anything recorded in this view yet. It fills up as people log activity — nothing here is back-filled."}
@@ -157,11 +151,11 @@ export function GlobalLeaderboard() {
               <div className="flex-1 min-w-0">
                 <Link
                   href={profileHref(r.username)}
-                  className="text-xs font-bold text-white hover:text-[#fa586a] transition-colors"
+                  className="inline-block text-xs font-bold text-white hover:text-[#fa586a] transition-colors py-2.5 -my-1"
                 >
                   @{r.username}
                 </Link>
-                <p className="text-[10px] text-white/30">{r.segment_label}</p>
+                <p className="text-[10px] text-white/50">{r.segment_label}</p>
               </div>
             </div>
           ))}

@@ -188,7 +188,7 @@ export default function ProblemPage() {
     return (
       <div role="alert" className="p-12 text-center space-y-3">
         <p className="text-xs text-[#ff453a]">{loadError}</p>
-        <button onClick={load} className="px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold cursor-pointer">Retry</button>
+        <button onClick={load} className="px-4 py-2 rounded-full btn-accent text-white text-xs font-bold cursor-pointer">Retry</button>
       </div>
     );
   }
@@ -197,7 +197,7 @@ export default function ProblemPage() {
 
   return (
     <div className="space-y-8 select-none max-w-3xl">
-      <Link href="/practice" className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white transition-colors">
+      <Link href="/practice" className="flex items-center gap-1.5 text-xs text-white/55 hover:text-white transition-colors">
         <ArrowLeft className="w-3.5 h-3.5" />
         <span>Practice</span>
       </Link>
@@ -211,13 +211,13 @@ export default function ProblemPage() {
           )}
           {(problem?.topics ?? []).slice(0, 3).map((t) => (
             <Link key={t} href={`/patterns/${encodeURIComponent(t)}`}
-              className="px-2.5 py-0.5 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-[10px] text-white/60 hover:text-white transition-all">
+              className="px-2.5 py-0.5 min-h-11 md:min-h-0 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-[10px] text-white/60 hover:text-white transition-colors inline-flex items-center">
               {t} →
             </Link>
           ))}
         </div>
         <h1 className="text-3xl font-extrabold text-white tracking-tight mt-2">{title}</h1>
-        <p className="text-[11px] text-white/40 mt-1">
+        <p className="text-[11px] text-white/55 mt-1">
           {status === "solved" ? "Solved — now explain it, challenge someone, or revisit it." : status === "attempted" ? "Attempted — finish the battle." : "Unattempted — start your first battle."}
         </p>
       </div>
@@ -225,29 +225,29 @@ export default function ProblemPage() {
       <div className="flex items-center gap-2 flex-wrap">
         <button
           onClick={() => problem && startSolving({ id: problem.question_id || slug, title, slug, difficulty: problem.difficulty || "Medium", category: problem.topics?.[0] || "General" })}
-          className="px-4 py-2 rounded-full bg-white text-black hover:bg-white/90 font-bold text-xs flex items-center gap-2 cursor-pointer"
+          className="px-4 py-2 min-h-11 rounded-full bg-white text-black hover:bg-white/90 font-bold text-xs flex items-center gap-2 cursor-pointer"
         >
           <Play className="w-3.5 h-3.5 fill-current" />
           <span>{status === "solved" ? "Battle again" : "Start battle"}</span>
         </button>
         <ProblemLink slug={slug} className="p-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-white/70 border border-white/[0.08]" />
         {user && status !== "solved" && (
-          <button onClick={() => handleStatus("solved")} className="px-4 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-white text-xs font-bold cursor-pointer">
+          <button onClick={() => handleStatus("solved")} className="px-4 py-2 min-h-11 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-white text-xs font-bold cursor-pointer flex items-center">
             Mark solved
           </button>
         )}
         {user && status !== "attempted" && status !== "solved" && (
-          <button onClick={() => handleStatus("attempted")} className="px-4 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-white/70 text-xs font-bold cursor-pointer">
+          <button onClick={() => handleStatus("attempted")} className="px-4 py-2 min-h-11 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-white/70 text-xs font-bold cursor-pointer flex items-center">
             Mark attempted
           </button>
         )}
-        <Link href="/challenges" className="px-4 py-2 rounded-full bg-[#fa586a]/15 hover:bg-[#fa586a]/25 border border-[#fa586a]/30 text-[#fa586a] text-xs font-bold transition-all">
+        <Link href="/challenges" className="px-4 py-2 min-h-11 rounded-full bg-[#fa586a]/15 hover:bg-[#fa586a]/25 border border-[#fa586a]/30 text-[#fa586a] text-xs font-bold transition-colors flex items-center">
           Challenge someone
         </Link>
         {user && (
           <button
             onClick={async () => setBookmarked(await toggleBookmark(slug))}
-            className={cn("px-4 py-2 rounded-full border text-xs font-bold transition-all cursor-pointer",
+            className={cn("px-4 py-2 min-h-11 rounded-full border text-xs font-bold transition-colors cursor-pointer flex items-center",
               bookmarked
                 ? "bg-[#ffd60a]/15 border-[#ffd60a]/40 text-[#ffd60a]"
                 : "bg-white/[0.06] border-white/[0.08] text-white/60 hover:text-white")}
@@ -260,7 +260,7 @@ export default function ProblemPage() {
 
       {/* ── Before: learn the pattern (Bible §14) ── */}      {primers.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-sm font-bold text-white">Learn first <span className="text-white/30 font-normal text-[11px]">· before solving</span></h2>
+          <h2 className="text-sm font-bold text-white">Learn first <span className="text-white/50 font-normal text-[11px]">· before solving</span></h2>
           {primers.slice(0, 2).map((p) => (
             <Link key={p.slug} href={`/primers/${p.slug}`}
               className="block p-4 rounded-2xl bg-[#0a84ff]/[0.06] hover:bg-[#0a84ff]/[0.1] border border-[#0a84ff]/25 transition-all">
@@ -275,7 +275,7 @@ export default function ProblemPage() {
       <section className="space-y-3">
         <h2 className="text-sm font-bold text-white">Your history</h2>
         {timeline.length === 0 ? (
-          <p className="text-xs text-white/30 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
+          <p className="text-xs text-white/50 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
             No battles recorded yet. Your attempts, solves, revisits, and explanations will form a timeline here — not just a green checkbox.
           </p>
         ) : (
@@ -286,9 +286,9 @@ export default function ProblemPage() {
               return (
                 <div key={ev.id} className="flex items-center gap-2.5 p-3 rounded-2xl bg-white/[0.02] border border-white/[0.06] text-xs flex-wrap">
                   <span className={cn("px-2 py-0.5 rounded-full border text-[10px] font-bold", k.cls)}>{k.label}</span>
-                  <span className="text-white/40 font-mono">{new Date(ev.created_at).toLocaleDateString()}</span>
+                  <span className="text-white/55 font-mono">{new Date(ev.created_at).toLocaleDateString()}</span>
                   {ev.duration_sec != null && <span className="text-white/60 font-mono">{fmtDur(ev.duration_sec)}</span>}
-                  <span className="text-[10px] text-white/30" title="Verified solve = LeetCode evidence supports the event. Self-reported = you marked it. Neither proves learning — explanations and reattempts do.">
+                  <span className="text-[10px] text-white/50" title="Verified solve = LeetCode evidence supports the event. Self-reported = you marked it. Neither proves learning — explanations and reattempts do.">
                     {source === "leetcode" ? "· LeetCode evidence" : "· Self-reported"}
                   </span>
                 </div>
@@ -300,9 +300,9 @@ export default function ProblemPage() {
 
       {/* ── Approaches (After solving — Bible §13) ── */}
       <section className="space-y-3">
-        <h2 className="text-sm font-bold text-white">Approaches <span className="text-white/30 font-normal text-[11px]">· after solving — what worked</span></h2>
+        <h2 className="text-sm font-bold text-white">Approaches <span className="text-white/50 font-normal text-[11px]">· after solving — what worked</span></h2>
         {approaches.length === 0 ? (
-          <p className="text-xs text-white/30 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
+          <p className="text-xs text-white/50 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
             No approaches yet. After you solve, write the core idea — your future self and your squad will thank you.
           </p>
         ) : (
@@ -312,7 +312,7 @@ export default function ProblemPage() {
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="text-xs font-semibold text-white">@{a.author?.username || "you"}</span>
                   <span className="flex items-center gap-2">
-                    <span className="text-[10px] text-white/30 uppercase">{a.visibility}</span>
+                    <span className="text-[10px] text-white/50 uppercase">{a.visibility}</span>
                     <button
                       onClick={async () => {
                         if (await copyText(a.core_idea)) {
@@ -320,7 +320,7 @@ export default function ProblemPage() {
                           setTimeout(() => setCopiedId(null), 2000);
                         }
                       }}
-                      className="p-1.5 rounded-full text-white/40 hover:text-white hover:bg-white/[0.06] cursor-pointer" title="Copy approach"
+                      className="w-11 h-11 md:w-7 md:h-7 rounded-full text-white/55 hover:text-white hover:bg-white/[0.06] cursor-pointer flex items-center justify-center" aria-label="Copy approach"
                     >
                       {copiedId === a.id ? <Check className="w-3.5 h-3.5 text-[#30d158]" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
@@ -341,7 +341,7 @@ export default function ProblemPage() {
                     </button>
                     {a.user_id === user?.id && (
                       <button onClick={async () => { await deleteApproach(a.id); setApproaches(await getApproachesForProblem(slug).catch(() => [])); }}
-                        className="p-1.5 rounded-full text-white/30 hover:text-[#ff453a] cursor-pointer" title="Delete approach">
+                        className="w-11 h-11 md:w-7 md:h-7 rounded-full text-white/50 hover:text-[#ff453a] cursor-pointer flex items-center justify-center" aria-label="Delete approach">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
@@ -349,10 +349,10 @@ export default function ProblemPage() {
                 </div>
                 <p className="text-xs text-white/70 leading-relaxed">{a.core_idea}</p>
                 {(a.complexity_time || a.complexity_space) && (
-                  <p className="text-[11px] text-white/40 font-mono">{a.complexity_time || "?"} · {a.complexity_space || "?"}</p>
+                  <p className="text-[11px] text-white/55 font-mono">{a.complexity_time || "?"} · {a.complexity_space || "?"}</p>
                 )}
                 {(a.key_detail || a.edge_cases || a.mistakes || a.code) && (
-                  <p className="text-[11px] text-white/35">
+                  <p className="text-[11px] text-white/50">
                     Has full detail — key cases, mistakes and code.
                   </p>
                 )}
@@ -390,14 +390,15 @@ export default function ProblemPage() {
             {formError && <div className="text-xs text-[#ff453a]">{formError}</div>}
             <textarea value={coreIdea} onChange={(e) => setCoreIdea(e.target.value)} rows={3} maxLength={5000}
               placeholder="Core idea in 2–4 sentences. What was the key insight?"
-              className="w-full bg-white/[0.04] border border-white/[0.06] rounded-xl p-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 resize-y" />
+              className="w-full bg-white/[0.04] border border-white/[0.06] rounded-xl p-2.5 text-xs text-white placeholder:text-white/55 focus:border-[#fa586a]/60 resize-y" />
 
             {/* Everything below is optional. Core idea alone is a complete approach;
                 the rest is what makes it teachable to somebody else. */}
             <button
               type="button"
+              aria-expanded={expanded}
               onClick={() => setExpanded((v) => !v)}
-              className="text-[11px] font-bold text-white/50 hover:text-white cursor-pointer"
+              className="text-[11px] font-bold text-white/55 hover:text-white cursor-pointer"
             >
               {expanded ? "− Fewer details" : "+ Add complexity, key detail, edge cases, mistakes, code"}
             </button>
@@ -405,59 +406,60 @@ export default function ProblemPage() {
             {expanded && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <label className="block">
-                  <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">Pattern</span>
+                  <span className="text-[10px] font-semibold text-white/55 uppercase tracking-wider">Pattern</span>
                   <input value={aPattern} onChange={(e) => setAPattern(e.target.value)} maxLength={80}
                     placeholder="e.g. Two Pointers"
-                    className="w-full mt-1 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-[11px] text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60" />
+                    className="w-full mt-1 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-[11px] text-white placeholder:text-white/55 focus:border-[#fa586a]/60" />
                 </label>
                 <label className="block">
-                  <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">Time</span>
+                  <span className="text-[10px] font-semibold text-white/55 uppercase tracking-wider">Time</span>
                   <input value={aTime} onChange={(e) => setATime(e.target.value)} maxLength={40}
                     placeholder="e.g. O(n)"
-                    className="w-full mt-1 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-[11px] text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 font-mono" />
+                    className="w-full mt-1 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-[11px] text-white placeholder:text-white/55 focus:border-[#fa586a]/60 font-mono" />
                 </label>
                 <label className="block">
-                  <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">Space</span>
+                  <span className="text-[10px] font-semibold text-white/55 uppercase tracking-wider">Space</span>
                   <input value={aSpace} onChange={(e) => setASpace(e.target.value)} maxLength={40}
                     placeholder="e.g. O(1)"
-                    className="w-full mt-1 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-[11px] text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 font-mono" />
+                    className="w-full mt-1 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-[11px] text-white placeholder:text-white/55 focus:border-[#fa586a]/60 font-mono" />
                 </label>
                 <label className="block">
-                  <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">Key detail</span>
+                  <span className="text-[10px] font-semibold text-white/55 uppercase tracking-wider">Key detail</span>
                   <input value={aKeyDetail} onChange={(e) => setAKeyDetail(e.target.value)} maxLength={500}
                     placeholder="The one thing that makes it work"
-                    className="w-full mt-1 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-[11px] text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60" />
+                    className="w-full mt-1 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-[11px] text-white placeholder:text-white/55 focus:border-[#fa586a]/60" />
                 </label>
                 <label className="block">
-                  <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">Edge cases</span>
+                  <span className="text-[10px] font-semibold text-white/55 uppercase tracking-wider">Edge cases</span>
                   <input value={aEdgeCases} onChange={(e) => setAEdgeCases(e.target.value)} maxLength={1000}
                     placeholder="Empty input, duplicates, single element…"
-                    className="w-full mt-1 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-[11px] text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60" />
+                    className="w-full mt-1 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-[11px] text-white placeholder:text-white/55 focus:border-[#fa586a]/60" />
                 </label>
                 <label className="block">
-                  <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">Mistakes</span>
+                  <span className="text-[10px] font-semibold text-white/55 uppercase tracking-wider">Mistakes</span>
                   <input value={aMistakes} onChange={(e) => setAMistakes(e.target.value)} maxLength={1000}
                     placeholder="What you got wrong first"
-                    className="w-full mt-1 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-[11px] text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60" />
+                    className="w-full mt-1 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-[11px] text-white placeholder:text-white/55 focus:border-[#fa586a]/60" />
                 </label>
                 <label className="block sm:col-span-2">
-                  <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">Code (20k max)</span>
+                  <span className="text-[10px] font-semibold text-white/55 uppercase tracking-wider">Code (20k max)</span>
                   <textarea value={aCode} onChange={(e) => setACode(e.target.value)} rows={4} maxLength={20000}
                     placeholder="Your final solution. Blurred for readers until they reveal it."
-                    className="w-full mt-1 bg-white/[0.04] border border-white/[0.06] rounded-lg p-2.5 text-[11px] font-mono text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 resize-y" />
+                    className="w-full mt-1 bg-white/[0.04] border border-white/[0.06] rounded-lg p-2.5 text-[11px] font-mono text-white placeholder:text-white/55 focus:border-[#fa586a]/60 resize-y" />
                 </label>
               </div>
             )}
 
             <div className="flex items-center gap-2 flex-wrap">
               <select value={visibility} onChange={(e) => setVisibility(e.target.value as ApproachVisibility)}
+                aria-label="Who can read this approach"
                 className="bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1.5 text-[11px] text-white cursor-pointer">
                 <option value="private">Private (default)</option>
                 <option value="squad">Squad</option>
                 <option value="public">Public</option>
               </select>
               <button type="submit" disabled={saving || !coreIdea.trim()}
-                className="px-4 py-1.5 rounded-full bg-[#fa586a] text-white text-[11px] font-bold disabled:opacity-40 cursor-pointer">
+                className="px-4 py-1.5 rounded-full btn-accent text-white text-[11px] font-bold disabled:opacity-40 cursor-pointer">
                 {saving ? "Saving…" : "Save approach"}
               </button>
             </div>
@@ -532,7 +534,7 @@ export default function ProblemPage() {
       {/* ── Your attempts (During — Bible §15) ── */}
       {battles.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-sm font-bold text-white">Your attempts <span className="text-white/30 font-normal text-[11px]">· private sessions</span></h2>
+          <h2 className="text-sm font-bold text-white">Your attempts <span className="text-white/50 font-normal text-[11px]">· private sessions</span></h2>
           {battles.map((b) => (
             <div key={b.id} className="flex items-center gap-2.5 p-3 rounded-2xl bg-white/[0.02] border border-white/[0.06] text-xs flex-wrap">
               <span className={cn("px-2 py-0.5 rounded-full border text-[10px] font-bold",
@@ -541,9 +543,9 @@ export default function ProblemPage() {
                 : "bg-white/[0.05] text-white/50 border-white/[0.1]")}>
                 {b.outcome}
               </span>
-              <span className="text-white/40 font-mono">{new Date(b.started_at).toLocaleDateString()}</span>
+              <span className="text-white/55 font-mono">{new Date(b.started_at).toLocaleDateString()}</span>
               {b.duration_sec != null && <span className="text-white/60 font-mono">{fmtDur(b.duration_sec)}</span>}
-              {b.evidence === "leetcode" && <span className="text-[10px] text-white/30">· LeetCode evidence</span>}
+              {b.evidence === "leetcode" && <span className="text-[10px] text-white/50">· LeetCode evidence</span>}
             </div>
           ))}
         </section>
@@ -567,7 +569,7 @@ export default function ProblemPage() {
               {c.beat_time && c.sender_time_sec != null && (
                 <span className="text-[#0a84ff] font-mono"> · beat {fmtDur(c.sender_time_sec)}</span>
               )}
-              <span className="text-white/30"> →</span>
+              <span className="text-white/50"> →</span>
             </Link>
           ))}
         </section>

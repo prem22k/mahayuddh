@@ -61,7 +61,7 @@ export function InviteLink({ squadId, squadName }: { squadId: string; squadName:
   if (error) {
     return (
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] text-white/35">{error}</p>
+        <p className="text-[11px] text-white/50">{error}</p>
         <button
           onClick={() => void load()}
           className="px-3 py-1 rounded-full bg-white/[0.06] text-[11px] font-bold text-white/60 hover:text-white cursor-pointer shrink-0"
@@ -114,7 +114,7 @@ export function InviteLink({ squadId, squadName }: { squadId: string; squadName:
       </div>
 
       {/* Opens next to joins, because the gap between them is the useful part. */}
-      <p className="text-[11px] text-white/35">
+      <p className="text-[11px] text-white/50">
         {totals.joins > 0
           ? `${totals.joins} ${totals.joins === 1 ? "person has" : "people have"} joined through your links (${totals.opens} ${totals.opens === 1 ? "open" : "opens"}).`
           : totals.opens > 0

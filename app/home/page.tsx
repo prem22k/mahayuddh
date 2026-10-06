@@ -79,7 +79,7 @@ export default function ArenaPage() {
   // for every solo user and every multi-squad user).
   const [squadMemberIds, setSquadMemberIds] = useState<string[]>([]);
 
-  const currentDisplayName = profile?.username || user?.email?.split("@")[0] || "Squad Member";
+  
 
   useEffect(() => {
     async function loadArenaData() {
@@ -170,35 +170,9 @@ export default function ArenaPage() {
     <div className="space-y-10 select-none">
       {/* ── Header ── */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <div className="text-[11px] font-bold text-[#fa586a] tracking-[0.2em] uppercase mb-1">
-            Developer Squad
-          </div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
-            Arena
-          </h1>
-        </div>
-
-        {/* Currently Active User Status Pill */}
-        <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/[0.04] border border-white/[0.08] self-start md:self-auto shadow-sm backdrop-blur-xl">
-          <div className="w-6 h-6 rounded-full bg-[#fa586a]/20 flex items-center justify-center font-bold text-[10px] text-white shrink-0 overflow-hidden border border-[#fa586a]/30">
-            {profile?.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={profile.avatar_url}
-                alt={currentDisplayName}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              currentDisplayName.charAt(0).toUpperCase()
-            )}
-          </div>
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#30d158] animate-pulse" />
-            <span className="font-semibold text-white truncate max-w-[140px]">@{currentDisplayName}</span>
-            <span className="text-white/40 text-[11px]">online</span>
-          </div>
-        </div>
+        <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
+          Arena
+        </h1>
       </div>
 
       {/* ── 1. APPLE MUSIC EDITORIAL SPOTLIGHT (TOP PICKS) ── */}
@@ -219,11 +193,11 @@ export default function ArenaPage() {
             <h2 className="text-xl font-bold text-white tracking-tight">
               Top Picks for Squad
             </h2>
-            <p className="text-xs text-white/40 mt-0.5">
+            <p className="text-xs text-white/55 mt-0.5">
               Daily problem spotlight, active streak flame, and standings.
             </p>
           </div>
-          <span className="text-[11px] font-semibold text-white/40 uppercase tracking-wider font-mono">
+          <span className="text-[11px] font-semibold text-white/55 uppercase tracking-wider font-mono">
             Editorial
           </span>
         </div>
@@ -271,7 +245,7 @@ export default function ArenaPage() {
               <div className="text-xs font-semibold text-white/80 mt-1">
                 Combined Squad Fire
               </div>
-              <p className="text-[11px] text-white/50 mt-1 line-clamp-2">
+              <p className="text-[11px] text-white/65 mt-1 line-clamp-2">
                 {streakLeader && streakLeader.streak > 0
                   ? `@${streakLeader.username} leads with ${streakLeader.streak}d flame`
                   : "Solve a problem today to spark the streak"}
@@ -310,7 +284,7 @@ export default function ArenaPage() {
               <div className="text-xs font-semibold text-white/80 mt-1">
                 Top Rating Standing
               </div>
-              <p className="text-[11px] text-white/50 mt-1 line-clamp-2">
+              <p className="text-[11px] text-white/65 mt-1 line-clamp-2">
                 {topMember ? `@${topMember.username} holds the crown` : "Compete in weekly LeetCode contests"}
               </p>
             </div>
@@ -347,7 +321,7 @@ export default function ArenaPage() {
               <div className="text-xs font-semibold text-white/80 mt-1">
                 Active Peer Challenges
               </div>
-              <p className="text-[11px] text-white/50 mt-1 line-clamp-2">
+              <p className="text-[11px] text-white/65 mt-1 line-clamp-2">
                 {suggestionsCount > 0
                   ? "Solve peer challenges and verify your algorithmic intuition"
                   : "Challenge your squad with tough interview questions"}
@@ -371,7 +345,7 @@ export default function ArenaPage() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold text-white tracking-tight">Your Progress</h2>
-              <p className="text-xs text-white/40 mt-0.5">Live catalog completion and combat readiness.</p>
+              <p className="text-xs text-white/55 mt-0.5">Live catalog completion and combat readiness.</p>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -402,6 +376,10 @@ export default function ArenaPage() {
                 color: "#30d158",
                 aura: "apple-card-emerald",
                 icon: CheckCircle2,
+                // Only the two user-progress figures are progress. The catalog
+                // size is a constant, so a bar for it is always 100% and reads
+                // as achievement the person never earned.
+                progress: true,
               },
               {
                 label: "Currently Attempting",
@@ -410,6 +388,7 @@ export default function ArenaPage() {
                 color: "#ff9f0a",
                 aura: "apple-card-amber",
                 icon: Sparkles,
+                progress: true,
               },
               {
                 label: "Total Problem Catalog",
@@ -418,6 +397,8 @@ export default function ArenaPage() {
                 color: "#fa586a",
                 aura: "apple-card-crimson",
                 icon: Trophy,
+                progress: false,
+                footer: `across ${topics.length} patterns`,
               },
             ].map((stat) => {
               const pct = stat.total > 0 ? Math.round((stat.value / stat.total) * 100) : 0;
@@ -432,7 +413,7 @@ export default function ArenaPage() {
                   )}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider">
+                    <span className="text-[11px] font-bold text-white/60 uppercase tracking-wider">
                       {stat.label}
                     </span>
                     <Icon className="w-4 h-4" style={{ color: stat.color }} />
@@ -442,19 +423,25 @@ export default function ArenaPage() {
                     <div className="text-3xl font-black text-white font-mono leading-none">
                       {stat.value.toLocaleString()}
                     </div>
-                    {stat.label !== "Total Problem Catalog" && (
-                      <div className="text-[11px] text-white/40 mt-1 font-mono">
+                    {stat.progress && (
+                      <div className="text-[11px] text-white/55 mt-1 font-mono">
                         {pct}% of catalog completed
                       </div>
                     )}
                   </div>
 
-                  <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{ width: `${pct}%`, backgroundColor: stat.color }}
-                    />
-                  </div>
+                  {stat.progress ? (
+                    <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${pct}%`, backgroundColor: stat.color }}
+                      />
+                    </div>
+                  ) : (
+                    /* Same slot, real information: the catalog size is not
+                       progress, so it gets a fact instead of a 100% bar. */
+                    <div className="text-[11px] text-white/55 font-mono">{stat.footer}</div>
+                  )}
                 </div>
               );
             })}
@@ -469,7 +456,7 @@ export default function ArenaPage() {
             <h2 className="text-xl font-bold text-white tracking-tight">
               Browse Topics
             </h2>
-            <p className="text-xs text-white/40 mt-0.5">
+            <p className="text-xs text-white/55 mt-0.5">
               {catalogTotal > 0
                 ? `${catalogTotal.toLocaleString()} problems organized across ${topics.length} DSA patterns`
                 : "Structured patterns backed by roadmaps"}

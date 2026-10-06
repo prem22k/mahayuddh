@@ -100,7 +100,7 @@ export function HomeSquadPanels() {
       <div className="lg:col-span-1 rounded-3xl p-6 bg-white/[0.02] border border-white/[0.06] space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-white tracking-tight">Your Squad</h2>
-          <Users className="w-4 h-4 text-white/30" />
+          <Users className="w-4 h-4 text-white/50" />
         </div>
 
         {squadId ? (
@@ -126,12 +126,12 @@ export function HomeSquadPanels() {
                     }}
                   />
                 </div>
-                <p className="text-[11px] text-white/40 font-mono">
+                <p className="text-[11px] text-white/60 font-mono">
                   {goal.done} / {goal.target} solved
                 </p>
               </div>
             ) : (
-              <p className="text-xs text-white/40">
+              <p className="text-xs text-white/60">
                 No active squad goal yet. Set one so the Daily Battle can match its pattern.
               </p>
             )}
@@ -146,7 +146,7 @@ export function HomeSquadPanels() {
         ) : (
           /* Solo empty state teaches the next action (Bible Principle 9). */
           <div className="space-y-3">
-            <p className="text-xs text-white/40">
+            <p className="text-xs text-white/60">
               You&apos;re solving solo. A squad turns solves into challenges — the thing that makes
               you come back.
             </p>
@@ -176,14 +176,14 @@ export function HomeSquadPanels() {
             </p>
             <Link
               href="/challenges"
-              className="inline-block px-4 py-2 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white text-xs font-bold transition-all"
+              className="inline-block px-4 py-2 rounded-full btn-accent text-white text-xs font-bold transition-all"
             >
               Accept and solve
             </Link>
           </>
         ) : (
           <div className="space-y-3">
-            <p className="text-xs text-white/40">
+            <p className="text-xs text-white/60">
               Nothing waiting on you. Solve a battle and challenge a friend — theirs will land here.
             </p>
             <Link
@@ -200,12 +200,12 @@ export function HomeSquadPanels() {
       <div className="lg:col-span-1 rounded-3xl p-6 bg-white/[0.02] border border-white/[0.06] space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-white tracking-tight">Feed</h2>
-          <TrendingDown className="w-4 h-4 text-white/30 rotate-180" />
+          <TrendingDown className="w-4 h-4 text-white/50 rotate-180" />
         </div>
 
         {feed.length === 0 ? (
           <div className="space-y-3">
-            <p className="text-xs text-white/40">
+            <p className="text-xs text-white/60">
               {squadId
                 ? "Quiet so far. Every solve you log shows up here for the squad."
                 : "Join or create a squad to see what your people are solving."}

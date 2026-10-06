@@ -102,7 +102,7 @@ export function ProblemStatusCell({
           "bg-[#ff9f0a]/15 text-[#ff9f0a] border border-[#ff9f0a]/35 hover:bg-[#ff9f0a]/25 shadow-[0_0_12px_rgba(255,159,10,0.2)]",
         !isSolved &&
           !isAttempted &&
-          "bg-white/[0.03] text-white/35 border border-white/[0.08] hover:border-white/20 hover:text-white/80 hover:bg-white/[0.06]",
+          "bg-white/[0.03] text-white/50 border border-white/[0.08] hover:border-white/20 hover:text-white/80 hover:bg-white/[0.06]",
         animating && "scale-110"
       )}
     >
@@ -133,23 +133,23 @@ export function ProblemStatusCell({
       {slug && previewOpen && preview && (
         <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-56 rounded-2xl bg-[#1c1c1e]/95 backdrop-blur-2xl border border-white/[0.1] shadow-[0_12px_40px_rgba(0,0,0,0.5)] p-3 text-left pointer-events-none">
           {!hasHistory ? (
-            <span className="block text-[11px] text-white/35">
+            <span className="block text-[11px] text-white/50">
               No history yet. First solve starts the timeline.
             </span>
           ) : (
             <>
-              <span className="block text-[10px] font-bold text-white/40 uppercase tracking-wider mb-1.5">
+              <span className="block text-[10px] font-bold text-white/55 uppercase tracking-wider mb-1.5">
                 Your history
               </span>
               <span className="flex flex-col gap-1">
                 {preview.events.map((e) => (
                   <span key={e.id} className="block text-[10px] text-white/60 leading-tight">
-                    <span className="text-white/35 font-mono">
+                    <span className="text-white/50 font-mono">
                       {new Date(e.created_at).toLocaleDateString()}
                     </span>{" "}
                     {EVENT_LABEL[e.kind] ?? e.kind}
                     {e.duration_sec != null && (
-                      <span className="text-white/35 font-mono">
+                      <span className="text-white/50 font-mono">
                         {" "}
                         · {formatSeconds(e.duration_sec)}
                       </span>

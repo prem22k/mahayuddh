@@ -179,7 +179,7 @@ export function UserStatsDossierModal({
                     href={`https://leetcode.com/${profile.leetcode_username}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-white/40 hover:text-white transition-colors"
+                    className="text-white/55 hover:text-white transition-colors"
                     title="View Official LeetCode Profile"
                   >
                     <ExternalLink className="w-4 h-4" />
@@ -206,7 +206,7 @@ export function UserStatsDossierModal({
           {/* Close Button */}
           <button
             onClick={onClose}
-            className="p-1.5 rounded-xl text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
+            className="p-1.5 rounded-xl text-white/55 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
             aria-label="Close dossier"
           >
             <X className="w-5 h-5" />
@@ -222,7 +222,7 @@ export function UserStatsDossierModal({
                 "px-4 py-2 text-xs font-bold border-b-2 transition-all cursor-pointer",
                 activeTab === "overview"
                   ? "border-[#fa586a] text-white"
-                  : "border-transparent text-white/40 hover:text-white/80"
+                  : "border-transparent text-white/55 hover:text-white/80"
               )}
             >
               Overview & Matrix
@@ -233,7 +233,7 @@ export function UserStatsDossierModal({
                 "px-4 py-2 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5",
                 activeTab === "radar"
                   ? "border-[#fa586a] text-white"
-                  : "border-transparent text-white/40 hover:text-white/80"
+                  : "border-transparent text-white/55 hover:text-white/80"
               )}
             >
               <Activity className="w-3.5 h-3.5" />
@@ -257,52 +257,52 @@ export function UserStatsDossierModal({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {/* Power Level */}
             <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex flex-col justify-between">
-              <div className="flex items-center justify-between text-white/40 text-[11px] font-semibold uppercase">
+              <div className="flex items-center justify-between text-white/55 text-[11px] font-semibold uppercase">
                 <span>Power Level</span>
                 <Zap className="w-3.5 h-3.5 text-[#ffd60a]" />
               </div>
               <div className="text-2xl font-black text-white font-mono mt-2">
                 {powerLevel.toLocaleString()}
               </div>
-              <div className="text-[10px] text-white/40 mt-0.5">Combat Potential</div>
+              <div className="text-[10px] text-white/55 mt-0.5">Combat Potential</div>
             </div>
 
             {/* Contest Rating */}
             <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex flex-col justify-between">
-              <div className="flex items-center justify-between text-white/40 text-[11px] font-semibold uppercase">
+              <div className="flex items-center justify-between text-white/55 text-[11px] font-semibold uppercase">
                 <span>Contest Rating</span>
                 <Trophy className="w-3.5 h-3.5 text-[#bf5af2]" />
               </div>
               <div className="text-2xl font-black text-white font-mono mt-2">
                 {rating == null ? "—" : Math.round(rating)}
               </div>
-              <div className="text-[10px] text-white/40 mt-0.5">{tier.tier} Division</div>
+              <div className="text-[10px] text-white/55 mt-0.5">{tier.tier} Division</div>
             </div>
 
             {/* Current Streak */}
             <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex flex-col justify-between">
-              <div className="flex items-center justify-between text-white/40 text-[11px] font-semibold uppercase">
+              <div className="flex items-center justify-between text-white/55 text-[11px] font-semibold uppercase">
                 <span>Current Streak</span>
                 <Flame className="w-3.5 h-3.5 text-[#fa586a]" />
               </div>
               <div className="text-2xl font-black text-white font-mono mt-2">
                 {effectiveCurrentStreak} <span className="text-xs font-normal text-white/50">days</span>
               </div>
-              <div className="text-[10px] text-white/40 mt-0.5">
+              <div className="text-[10px] text-white/55 mt-0.5">
                 {effectiveCurrentStreak > 0 ? "Active Flame 🔥" : "Streak Idle"}
               </div>
             </div>
 
             {/* All-Time Max Streak */}
             <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex flex-col justify-between">
-              <div className="flex items-center justify-between text-white/40 text-[11px] font-semibold uppercase">
+              <div className="flex items-center justify-between text-white/55 text-[11px] font-semibold uppercase">
                 <span>Max Streak</span>
                 <Award className="w-3.5 h-3.5 text-[#30d158]" />
               </div>
               <div className="text-2xl font-black text-white font-mono mt-2">
                 {effectiveMaxStreak} <span className="text-xs font-normal text-white/50">days</span>
               </div>
-              <div className="text-[10px] text-white/40 mt-0.5">Personal Record</div>
+              <div className="text-[10px] text-white/55 mt-0.5">Personal Record</div>
             </div>
           </div>
 
@@ -334,7 +334,7 @@ export function UserStatsDossierModal({
                     <Calendar className="w-3.5 h-3.5 text-[#64d2ff]" />
                     <span>7-Day Activity Pulse</span>
                   </div>
-                  <p className="text-[11px] text-white/40 mt-0.5">
+                  <p className="text-[11px] text-white/55 mt-0.5">
                     {hasActivity
                       ? `Total Active Days Recorded: ${streakStats.totalActiveDays}`
                       : "No activity recorded yet — solve your first problem to light the pulse."}
@@ -345,7 +345,7 @@ export function UserStatsDossierModal({
                 <div className="flex items-center gap-2">
                   {streakStats.recentActiveDays.map((active, idx) => (
                     <div key={idx} className="flex flex-col items-center gap-1">
-                      <span className="text-[9px] font-mono text-white/30">{daysOfWeek[idx]}</span>
+                      <span className="text-[9px] font-mono text-white/50">{daysOfWeek[idx]}</span>
                       <div
                         className={cn(
                           "w-5 h-5 rounded-md flex items-center justify-center transition-all",
@@ -387,7 +387,7 @@ export function UserStatsDossierModal({
                             </span>
                           )}
                         </div>
-                        <div className="text-[11px] text-white/40 truncate mt-0.5">{a.desc}</div>
+                        <div className="text-[11px] text-white/55 truncate mt-0.5">{a.desc}</div>
                       </div>
                     </div>
                   ))}
@@ -400,7 +400,7 @@ export function UserStatsDossierModal({
               <div className="w-full flex items-center justify-between mb-4">
                 <div>
                   <div className="text-sm font-bold text-white">Algorithmic Combat Radar</div>
-                  <p className="text-[11px] text-white/40">
+                  <p className="text-[11px] text-white/55">
                     {totalSolved > 0
                       ? "6-Pillar Domain Mastery plotted from your roadmap submissions"
                       : "Solve roadmap problems to populate your combat radar."}
@@ -417,7 +417,7 @@ export function UserStatsDossierModal({
         </div>
 
         {/* ── Modal Footer ── */}
-        <div className="p-4 bg-black/50 border-t border-white/[0.06] flex items-center justify-between text-xs text-white/40">
+        <div className="p-4 bg-black/50 border-t border-white/[0.06] flex items-center justify-between text-xs text-white/55">
           <div className="flex items-center gap-2">
             <Shield className="w-3.5 h-3.5 text-[#fa586a]" />
             <span>Mahayuddh Tactical Dossier</span>

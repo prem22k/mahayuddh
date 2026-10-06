@@ -84,7 +84,7 @@ export default function PatternPage() {
     return (
       <div role="alert" className="p-12 text-center space-y-3">
         <p className="text-xs text-[#ff453a]">{loadError}</p>
-        <Link href="/practice" className="inline-block px-4 py-2 rounded-full bg-[var(--accent-strong)] text-white text-xs font-bold">Practice</Link>
+        <Link href="/practice" className="inline-block px-4 py-2 rounded-full btn-accent text-white text-xs font-bold">Practice</Link>
       </div>
     );
   }

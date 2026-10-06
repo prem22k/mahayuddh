@@ -50,7 +50,7 @@ export default function SquadWallPage() {
     return (
       <div role="alert" className="p-12 text-center space-y-3">
         <p className="text-xs text-[#ff453a]">{loadError}</p>
-        <button onClick={load} className="px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold cursor-pointer">
+        <button onClick={load} className="px-4 py-2 rounded-full btn-accent text-white text-xs font-bold cursor-pointer">
           Retry
         </button>
       </div>
@@ -59,7 +59,7 @@ export default function SquadWallPage() {
 
   return (
     <div className="space-y-6 select-none max-w-2xl">
-      <Link href="/squad" className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white transition-colors">
+      <Link href="/squad" className="flex items-center gap-1.5 text-xs text-white/55 hover:text-white transition-colors">
         <ArrowLeft className="w-3.5 h-3.5" />
         <span>{squadName}</span>
       </Link>
@@ -71,7 +71,7 @@ export default function SquadWallPage() {
         <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight mt-1">
           Wall
         </h1>
-        <p className="text-xs text-white/40 mt-2 max-w-xl leading-relaxed">
+        <p className="text-xs text-white/55 mt-2 max-w-xl leading-relaxed">
           Milestones are written by the database when the event happens, so nothing here can be
           back-dated into looking better than it was.
         </p>
@@ -80,7 +80,7 @@ export default function SquadWallPage() {
       {items.length === 0 ? (
         <div className="p-12 text-center space-y-3 rounded-3xl bg-white/[0.02] border border-white/[0.06]">
           <p className="text-sm font-bold text-white">Nothing on the wall yet.</p>
-          <p className="text-xs text-white/40 max-w-sm mx-auto">
+          <p className="text-xs text-white/55 max-w-sm mx-auto">
             The first entry appears when somebody joins, solves, or challenges a squad mate.
           </p>
           <Link href="/practice" className="inline-block px-4 py-2 rounded-full bg-white/[0.06] border border-white/[0.1] text-white text-xs font-bold">

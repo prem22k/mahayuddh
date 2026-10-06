@@ -121,7 +121,7 @@ export function NotificationBell() {
       >
         <Bell className="w-4 h-4" />
         {unread > 0 && (
-          <span className="absolute top-1.5 right-1.5 min-w-[14px] h-[14px] px-1 rounded-full bg-[#fa586a] text-white text-[9px] font-black flex items-center justify-center">
+          <span className="absolute top-1.5 right-1.5 min-w-[14px] h-[14px] px-1 rounded-full btn-accent text-white text-[9px] font-black flex items-center justify-center">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -137,13 +137,13 @@ export function NotificationBell() {
           />
           <div className="absolute right-0 top-full mt-1 z-20 w-[20rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-white/[0.08] bg-[#0e0e0e] shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06]">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-white/35">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">
                 Notifications
               </span>
               {unread > 0 && (
                 <button
                   onClick={() => void markAllRead().then(refresh)}
-                  className="text-[10px] font-bold text-white/35 hover:text-white cursor-pointer"
+                  className="text-[10px] font-bold text-white/50 hover:text-white cursor-pointer"
                 >
                   Mark all read
                 </button>
@@ -151,9 +151,9 @@ export function NotificationBell() {
             </div>
 
             {loading && items.length === 0 ? (
-              <p className="px-4 py-6 text-[11px] text-white/30 text-center">Loading…</p>
+              <p className="px-4 py-6 text-[11px] text-white/50 text-center">Loading…</p>
             ) : items.length === 0 ? (
-              <p className="px-4 py-6 text-[11px] text-white/30 text-center">
+              <p className="px-4 py-6 text-[11px] text-white/50 text-center">
                 Nothing here. Notifications only arrive when there is something to do.
               </p>
             ) : (
@@ -177,7 +177,7 @@ export function NotificationBell() {
                         )}
                         <div className="min-w-0">
                           <p className="text-[11px] font-bold text-white">{n.title}</p>
-                          {n.body && <p className="text-[11px] text-white/45 mt-0.5">{n.body}</p>}
+                          {n.body && <p className="text-[11px] text-white/60 mt-0.5">{n.body}</p>}
                           <p className="text-[10px] text-white/25 mt-1">
                             {new Date(n.created_at).toLocaleDateString()} · {n.kind}
                           </p>
@@ -191,7 +191,7 @@ export function NotificationBell() {
 
             {/* Push permission, with the bell. One concept, one control. */}
             <div className="border-t border-white/[0.06] px-4 py-2.5 flex items-center justify-between gap-3">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-white/35">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">
                 Push alerts
               </span>
               <button
@@ -200,7 +200,7 @@ export function NotificationBell() {
                 className={
                   pushGranted
                     ? "flex items-center gap-1.5 text-[10px] font-bold text-[#fa586a] hover:opacity-80 transition-opacity cursor-pointer"
-                    : "text-[10px] font-bold text-white/35 hover:text-white transition-colors cursor-pointer"
+                    : "text-[10px] font-bold text-white/50 hover:text-white transition-colors cursor-pointer"
                 }
               >
                 {pushGranted ? (

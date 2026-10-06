@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Spinner } from "@/components/ui/Spinner";
 import { PageLoader } from "@/components/ui/PageLoader";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { track, consumeSource, peekSource } from "@/lib/analytics";
 import { safeNext } from "@/lib/safeNext";
 import { cn } from "@/lib/utils";
@@ -118,7 +119,14 @@ function LoginForm() {
         });
 
         if (error) {
-          setErrorMsg(error.message);
+          // Never surface the provider string verbatim: it names neither the
+          // problem nor the fix, and "Invalid login credentials" used to be the
+          // only thing a wrong password ever said.
+          setErrorMsg(
+            /invalid/i.test(error.message)
+              ? "That email and password don't match an account. Check for typos, or join the squad to create one."
+              : "Sign in failed. Check your connection and try again."
+          );
           setLoading(false);
           return;
         }
@@ -152,7 +160,11 @@ function LoginForm() {
         });
 
         if (authError) {
-          setErrorMsg(authError.message);
+          setErrorMsg(
+            /already registered|already exists/i.test(authError.message)
+              ? "An account already uses that email. Sign in instead, or reset the password."
+              : "Couldn't create the account. Check the email format and try again."
+          );
           setLoading(false);
           return;
         }
@@ -254,13 +266,13 @@ function LoginForm() {
     return (
       <div className="min-h-screen bg-black flex flex-col justify-center items-center gap-3">
         <Spinner size="xl" />
-        <span className="text-xs text-white/40 font-medium">Entering Arena...</span>
+        <span className="text-xs text-white/55 font-medium">Entering Arena...</span>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-black flex flex-col justify-center items-center p-4 selection:bg-[#fa586a] selection:text-white relative overflow-hidden select-none">
+    <div className="min-h-screen bg-black flex flex-col justify-center items-center p-4 selection:bg-[var(--accent-strong)] selection:text-white relative overflow-hidden select-none">
       {/* ── Apple Music ambient liquid glow backdrops ── */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/4 w-[600px] h-[600px] bg-[#fa586a]/10 rounded-full blur-[140px]" />
@@ -279,7 +291,7 @@ function LoginForm() {
             </h1>
             <div className="h-[2px] w-14 bg-gradient-to-r from-[#fa586a] via-[#fa586a]/60 to-transparent mx-auto mt-2.5 rounded-full" />
           </div>
-          <p className="text-[11px] text-white/40 tracking-[0.22em] uppercase font-medium mt-3">
+          <p className="text-[11px] text-white/55 tracking-[0.22em] uppercase font-medium mt-3">
             Developer Squad Arena
           </p>
           <p className="text-xs text-white/50 mt-3 max-w-xs mx-auto leading-relaxed">
@@ -288,7 +300,7 @@ function LoginForm() {
           {/* Attribution is shown, not hidden. A visitor who arrived from a
               shared artifact should be able to see that we know it. */}
           {source && (
-            <p className="text-[10px] text-white/25 mt-3 font-mono">
+            <p className="text-[10px] text-white/55 mt-3 font-mono">
               arrived from {source}
             </p>
           )}
@@ -297,37 +309,19 @@ function LoginForm() {
         {/* ── Frosted Glass Auth Card ── */}
         <div className="bg-[#1c1c1e]/65 border border-white/[0.08] rounded-3xl p-6 sm:p-8 shadow-[0_20px_60px_rgba(0,0,0,0.6),inset_0_0.5px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl">
           {/* Segmented Pill Switcher */}
-          <div className="flex items-center p-1 bg-white/[0.04] rounded-full border border-white/[0.06] mb-6">
-            <button
-              type="button"
-              onClick={() => {
-                setMode("signin");
+          <div className="mb-6">
+            <SegmentedControl
+              label="Sign in or create an account"
+              value={mode}
+              onChange={(v) => {
+                setMode(v);
                 setErrorMsg(null);
               }}
-              className={cn(
-                "flex-1 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer",
-                mode === "signin"
-                  ? "bg-white/[0.12] text-white shadow-sm"
-                  : "text-white/40 hover:text-white/80"
-              )}
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode("signup");
-                setErrorMsg(null);
-              }}
-              className={cn(
-                "flex-1 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer",
-                mode === "signup"
-                  ? "bg-white/[0.12] text-white shadow-sm"
-                  : "text-white/40 hover:text-white/80"
-              )}
-            >
-              Join Squad
-            </button>
+              options={[
+                { value: "signin", label: "Sign In" },
+                { value: "signup", label: "Join Squad" },
+              ]}
+            />
           </div>
 
           {/* Loop D: arriving on an invite link. Names the squad so the account
@@ -345,41 +339,47 @@ function LoginForm() {
             </div>
           )}
 
-          {/* Error Message */}
-          {errorMsg && (
-            <div className="mb-5 p-3 rounded-2xl bg-[#ff453a]/10 border border-[#ff453a]/25 text-[#ff453a] text-xs leading-relaxed">
-              {errorMsg}
-            </div>
-          )}
-
-          {/* Success Message */}
-          {successMsg && (
-            <div className="mb-5 p-3 rounded-2xl bg-[#30d158]/10 border border-[#30d158]/25 text-[#30d158] text-xs leading-relaxed">
-              {successMsg}
-            </div>
-          )}
+          {/* Error + success share one persistent live region: a node that only
+              mounts when the message appears is frequently missed by screen
+              readers, which is the one moment the copy matters most. */}
+          <div aria-live="polite" aria-atomic="true">
+            {errorMsg && (
+              <div className="mb-5 p-3 rounded-2xl bg-[#ff453a]/10 border border-[#ff453a]/25 text-[#ff453a] text-xs leading-relaxed">
+                {errorMsg}
+              </div>
+            )}
+            {successMsg && (
+              <div className="mb-5 p-3 rounded-2xl bg-[#30d158]/10 border border-[#30d158]/25 text-[#30d158] text-xs leading-relaxed">
+                {successMsg}
+              </div>
+            )}
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === "signup" && (
               <>
                 <div>
-                  <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
+                  <label htmlFor="username" className="block text-[11px] font-semibold text-white/60 uppercase tracking-wider mb-1.5 pl-1">
                     Squad Member Name
                   </label>
                   <input
+                    id="username"
+                    name="username"
+                    autoComplete="username"
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="e.g. Rahul"
-                    className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-[#fa586a]/30 transition-all"
+                    className="w-full min-h-11 bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/55 transition-colors"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
-                    What are you here for? <span className="text-white/25 normal-case font-normal">(optional)</span>
-                  </label>
+                  <fieldset className="border-0 p-0 m-0">
+                  <legend className="block text-[11px] font-semibold text-white/60 uppercase tracking-wider mb-1.5 pl-1">
+                    What are you here for? <span className="text-white/55 normal-case font-normal">(optional)</span>
+                  </legend>
                   <div className="grid grid-cols-3 gap-1.5">
                     {OBJECTIVES.map((o) => (
                       <button
@@ -388,9 +388,9 @@ function LoginForm() {
                         onClick={() => setObjective(objective === o.value ? "" : o.value)}
                         aria-pressed={objective === o.value}
                         className={cn(
-                          "px-2 py-2 rounded-xl border text-[11px] font-semibold transition-all cursor-pointer",
+                          "min-h-11 px-2 py-2 rounded-xl border text-[11px] font-semibold transition-colors cursor-pointer",
                           objective === o.value
-                            ? "bg-[#fa586a]/20 border-[#fa586a]/60 text-white"
+                            ? "btn-accent border-[#fa586a]/60 text-white"
                             : "bg-white/[0.04] hover:bg-white/[0.06] border-white/[0.08] text-white/50 hover:text-white/80"
                         )}
                       >
@@ -398,33 +398,39 @@ function LoginForm() {
                       </button>
                     ))}
                   </div>
+                  </fieldset>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
-                    Start a squad <span className="text-white/25 normal-case font-normal">(optional — you can also join later)</span>
+                  <label htmlFor="squadName" className="block text-[11px] font-semibold text-white/60 uppercase tracking-wider mb-1.5 pl-1">
+                    Start a squad <span className="text-white/55 normal-case font-normal">(optional — you can also join later)</span>
                   </label>
                   <input
+                    id="squadName"
+                    name="squadName"
                     type="text"
                     value={squadName}
                     onChange={(e) => setSquadName(e.target.value)}
                     placeholder="e.g. College DSA crew — leave blank to go solo"
-                    className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-[#fa586a]/30 transition-all"
+                    className="w-full min-h-11 bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/55 transition-colors"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
-                    LeetCode Username <span className="text-white/25 normal-case font-normal">(optional)</span>
+                  <label htmlFor="leetcodeUsername" className="block text-[11px] font-semibold text-white/60 uppercase tracking-wider mb-1.5 pl-1">
+                    LeetCode Username <span className="text-white/55 normal-case font-normal">(optional)</span>
                   </label>
                   <input
+                    id="leetcodeUsername"
+                    name="leetcodeUsername"
+                    autoComplete="off"
                     type="text"
                     value={leetcodeUsername}
                     onChange={(e) => setLeetcodeUsername(e.target.value)}
                     placeholder="e.g. rahul_dev — connect later if you skip"
-                    className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-[#fa586a]/30 transition-all font-mono"
+                    className="w-full min-h-11 bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/55 transition-colors font-mono"
                   />
-                  <span className="text-[10px] text-white/30 mt-1.5 pl-1 block">
+                  <span className="text-[10px] text-white/50 mt-1.5 pl-1 block">
                     Optional. Adds contest rating + LeetCode evidence badges. Everything else works without it — connect anytime from the Arena.
                   </span>
                 </div>
@@ -432,29 +438,35 @@ function LoginForm() {
             )}
 
             <div>
-              <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
+              <label htmlFor="email" className="block text-[11px] font-semibold text-white/60 uppercase tracking-wider mb-1.5 pl-1">
                 Email Address
               </label>
               <input
+                id="email"
+                name="email"
+                autoComplete="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@squad.dev"
-                className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-[#fa586a]/30 transition-all"
+                className="w-full min-h-11 bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/55 transition-colors"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
+              <label htmlFor="password" className="block text-[11px] font-semibold text-white/60 uppercase tracking-wider mb-1.5 pl-1">
                 Password
               </label>
               <input
+                id="password"
+                name="password"
+                autoComplete={mode === "signin" ? "current-password" : "new-password"}
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-[#fa586a]/30 transition-all"
+                className="w-full min-h-11 bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/55 transition-colors"
                 required
                 minLength={6}
               />
@@ -463,7 +475,7 @@ function LoginForm() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 mt-6 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 active:scale-[0.99] text-white font-bold text-xs shadow-[0_0_24px_rgba(250,88,106,0.4)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+              className="w-full min-h-11 py-3 mt-6 rounded-full btn-accent active:scale-[0.99] text-white font-bold text-xs shadow-[0_0_24px_rgba(250,88,106,0.4)] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               {loading ? (
                 <Spinner size="md" tone="inverse" className="border-white/20" />
@@ -475,7 +487,7 @@ function LoginForm() {
         </div>
 
         {/* ── Subtitle Footer ── */}
-        <div className="mt-8 text-center text-[11px] text-white/30 tracking-wider">
+        <div className="mt-8 text-center text-[11px] text-white/50 tracking-wider">
           No LeetCode account needed to start. Solve your first battle in under 2 minutes.
         </div>
       </div>

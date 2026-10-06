@@ -20,7 +20,7 @@ export function PublicProfileBody({
     return (
       <section className="space-y-2">
         <h2 className="text-lg font-bold">Public teaching</h2>
-        <p className="text-xs text-white/40">
+        <p className="text-xs text-white/55">
           Nothing published yet. An approach or a primer shared publicly shows up
           here — that is what makes somebody worth following.
         </p>
@@ -45,7 +45,7 @@ export function PublicProfileBody({
                   {p.pattern}
                 </div>
                 {p.recognize_when?.length > 0 && (
-                  <p className="text-[11px] text-white/40 truncate">
+                  <p className="text-[11px] text-white/55 truncate">
                     Recognise it when: {p.recognize_when[0]}
                   </p>
                 )}
@@ -70,10 +70,10 @@ export function PublicProfileBody({
                     {a.problem_slug.replace(/-/g, " ")}
                   </span>
                   {a.pattern && (
-                    <span className="text-[10px] text-white/35">{a.pattern}</span>
+                    <span className="text-[10px] text-white/50">{a.pattern}</span>
                   )}
                 </div>
-                <p className="text-[11px] text-white/45 line-clamp-2">{a.core_idea}</p>
+                <p className="text-[11px] text-white/60 line-clamp-2">{a.core_idea}</p>
               </Link>
             ))}
           </div>

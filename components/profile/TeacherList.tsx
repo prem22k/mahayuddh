@@ -46,7 +46,7 @@ export function TeacherList({ pattern }: { pattern: string }) {
 
   if (teachers.length === 0) {
     return (
-      <p className="text-xs text-white/30">
+      <p className="text-xs text-white/50">
         Nobody has published for this pattern yet. If you have solved one, your
         approach is the thing that would go here.
       </p>
@@ -77,7 +77,7 @@ export function TeacherList({ pattern }: { pattern: string }) {
               >
                 @{t.username}
               </Link>
-              <p className="text-[10px] text-white/35">
+              <p className="text-[10px] text-white/50">
                 {/* Why this person is here, in downstream actions only. */}
                 {used > 0
                   ? `${used} ${used === 1 ? "copy" : "copies"} of their writing`

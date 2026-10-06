@@ -46,12 +46,12 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-20 px-4 md:px-8 py-2 md:py-3 flex items-center justify-between gap-3 bg-black/70 backdrop-blur-xl border-b border-white/[0.06] select-none">
+    <header className="sticky top-0 z-20 px-4 md:px-8 py-2 md:py-3 flex items-center justify-between gap-3 bg-black/90 backdrop-blur-xl border-b border-white/[0.06] select-none">
       {/* Left: mobile drawer + global search */}
       <div className="flex items-center gap-1.5 md:gap-3 flex-1 min-w-0">
         <button
           onClick={onMenuToggle}
-          className="md:hidden w-11 h-11 -ml-2 rounded-xl text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors flex items-center justify-center cursor-pointer"
+          className="md:hidden w-11 h-11 shrink-0 -ml-2 rounded-xl text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors flex items-center justify-center cursor-pointer"
           aria-label="Open navigation menu"
         >
           <Menu className="w-5 h-5" />
@@ -62,7 +62,7 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
             drawer is a worse search entry than a visible field. */}
         <button
           onClick={onSearchOpen}
-          className="group h-9 md:h-8 px-3 w-full max-w-md bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.06] hover:border-[#fa586a]/30 rounded-[10px] flex items-center justify-between gap-3 text-white/40 transition-all cursor-pointer"
+          className="group h-11 md:h-9 px-3 w-full max-w-md bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.06] hover:border-[#fa586a]/30 rounded-[10px] flex items-center justify-between gap-3 text-white/70 transition-all cursor-pointer"
         >
           <span className="flex items-center gap-2 min-w-0">
             <Search className="w-3.5 h-3.5 shrink-0 group-hover:text-[#fa586a] transition-colors" />
@@ -81,7 +81,7 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
         <button
           onClick={handleSync}
           disabled={isSyncing}
-          className="w-10 h-10 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-white/45 hover:text-white transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center"
+          className="w-11 h-11 md:w-10 md:h-10 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-white/60 hover:text-white transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center"
           title="Sync LeetCode Submissions"
           aria-label="Sync LeetCode Submissions"
         >

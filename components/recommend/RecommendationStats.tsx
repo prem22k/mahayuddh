@@ -42,7 +42,7 @@ export function RecommendationStats() {
   if (error) {
     return (
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] text-white/30">{error}</p>
+        <p className="text-[11px] text-white/50">{error}</p>
         <button
           onClick={() => window.location.reload()}
           className="px-3 py-1 rounded-full bg-white/[0.06] text-[11px] font-bold text-white/60 hover:text-white cursor-pointer shrink-0"
@@ -55,7 +55,7 @@ export function RecommendationStats() {
 
   return (
     <div className="space-y-2">
-      <p className="text-[11px] text-white/40">{summary}</p>
+      <p className="text-[11px] text-white/55">{summary}</p>
 
       {overall && signals.length > 0 && (
         <ul className="space-y-1">
@@ -71,7 +71,7 @@ export function RecommendationStats() {
                   style={{ width: `${(s.rate ?? 0) * 100}%` }}
                 />
               </div>
-              <span className="text-white/35 font-mono w-16 text-right shrink-0">
+              <span className="text-white/50 font-mono w-16 text-right shrink-0">
                 {s.accepted}/{s.presented}
               </span>
             </li>

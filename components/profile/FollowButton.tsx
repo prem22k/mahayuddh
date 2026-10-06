@@ -58,7 +58,7 @@ export function FollowButton({ userId, username }: { userId: string; username: s
         className={`px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 ${
           following
             ? "bg-white/[0.08] border border-white/[0.1] text-white"
-            : "bg-[#fa586a] text-white hover:bg-[#fa586a]/90"
+            : "btn-accent text-white"
         }`}
         title={
           following

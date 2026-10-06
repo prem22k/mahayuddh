@@ -20,6 +20,11 @@
     --text-secondary: #8e8e93;
     --text-tertiary: #636366;
     --text-accent: #fa586a;
+    /* Accent as a *fill* behind white label text. #fa586a is only 3.15:1
+       against white, so every white-on-accent CTA was failing AA. This is
+       design.md's accentDark, stepped to clear 4.5:1 while staying in the
+       rose family. Text, borders, and icons keep --text-accent. */
+    --accent-strong: #d60017;
 
     /* ── Borders ────────────────────────────────────────── */
     --border-subtle: rgba(255, 255, 255, 0.08);
@@ -74,6 +79,19 @@
   :focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
+  }
+
+  /* Decorative loops (pulse dots, ping rings, skeleton shimmer) mean nothing
+     to reduced-motion users and can genuinely hurt. State changes still apply
+     instantly — nothing here gates on animation completing. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
@@ -208,13 +226,14 @@
   gap: 3px;
   /* design.md §4: touch targets are >= 44x44 on mobile. */
   min-height: 44px;
-  color: rgba(255, 255, 255, 0.45);
+  /* Was 0.45 — measured 4.41:1 on the 10px labels, the last failing surface. */
+  color: rgba(255, 255, 255, 0.65);
   text-decoration: none;
   transition: color 0.15s ease;
 }
 
 .mobile-tab:hover {
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .mobile-tab.active {
@@ -305,7 +324,10 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.22);
+  /* Was 0.22 — measured 1.79:1 on the sidebar surface, i.e. effectively
+     invisible. Section labels are still hierarchy, not decoration, so they
+     clear the 4.5:1 body floor. */
+  color: rgba(255, 255, 255, 0.62);
   padding: 0 12px;
   margin-bottom: 6px;
 }
@@ -406,6 +428,20 @@
 .gradient-violet { @apply apple-card-indigo; }
 .gradient-rose { @apply apple-card-rose; }
 .gradient-dark-card { @apply apple-card-base; }
+
+/* ═══════════════════════════════════════════════════════════
+   ACCENT CTA — the one white-on-accent fill. Rose #fa586a is 3.15:1 under
+   white label text, so every filled CTA uses --accent-strong (5.42:1) with
+   the #e02340 hover (4.68:1). One class keeps base and hover from drifting
+   apart again; shape, padding, and type stay at the call site.
+   ═══════════════════════════════════════════════════════════ */
+.btn-accent {
+  background-color: var(--accent-strong);
+  color: #ffffff;
+}
+.btn-accent:hover {
+  background-color: #e02340;
+}
 
 /* ═══════════════════════════════════════════════════════════
    RESPONSIVE — collapse sidebar on mobile, adjust bottom bar

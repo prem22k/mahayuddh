@@ -183,12 +183,12 @@ export function AlgorithmicCombatRadar({ points, size = 280 }: AlgorithmicCombat
             <span>{hoveredPoint.icon}</span>
             <span className="font-semibold text-white">{hoveredPoint.label}:</span>
             <span className="font-mono text-[#fa586a] font-bold">{hoveredPoint.value}%</span>
-            <span className="text-white/40 text-[11px]">
+            <span className="text-white/55 text-[11px]">
               ({hoveredPoint.solved}/{hoveredPoint.total} solved)
             </span>
           </div>
         ) : (
-          <span className="text-[11px] text-white/35 font-medium">
+          <span className="text-[11px] text-white/50 font-medium">
             Hover vertices to inspect algorithmic domain mastery
           </span>
         )}

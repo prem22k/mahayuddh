@@ -70,7 +70,7 @@ export default async function SeasonResultPage({
         </Suspense>
 
         <header className="space-y-2">
-          <div className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/40">
+          <div className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/55">
             {result.startsAt}
             {result.endsAt ? ` → ${result.endsAt}` : ""}
             {result.status === "complete" ? " · complete" : ""}
@@ -79,7 +79,7 @@ export default async function SeasonResultPage({
             {result.squadName}
           </h1>
           <p className="text-sm text-white/60">{result.name}</p>
-          {result.objective && <p className="text-xs text-white/40">{result.objective}</p>}
+          {result.objective && <p className="text-xs text-white/55">{result.objective}</p>}
           <p className="text-sm text-white/50 leading-relaxed">{result.headline}</p>
         </header>
 
@@ -87,14 +87,14 @@ export default async function SeasonResultPage({
           {stats.map((s) => (
             <div key={s.label} className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-center">
               <div className="text-2xl font-black font-mono">{s.value}</div>
-              <div className="text-[10px] uppercase tracking-wider text-white/35 mt-1">{s.label}</div>
+              <div className="text-[10px] uppercase tracking-wider text-white/50 mt-1">{s.label}</div>
             </div>
           ))}
         </dl>
 
         {result.bestImprovement && (
           <section className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-1">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-white/30">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-white/50">
               Biggest improvement
             </div>
             <p className="text-sm text-white/80">
@@ -102,7 +102,7 @@ export default async function SeasonResultPage({
               {formatDuration(result.bestImprovement.fromSec)} →{" "}
               {formatDuration(result.bestImprovement.toSec)}
             </p>
-            <p className="text-[11px] text-white/35">@{result.bestImprovement.username}</p>
+            <p className="text-[11px] text-white/50">@{result.bestImprovement.username}</p>
           </section>
         )}
 
@@ -131,7 +131,7 @@ export default async function SeasonResultPage({
           />
           <Link
             href="/login"
-            className="px-4 py-2 rounded-full bg-[#fa586a] text-white text-[11px] font-bold"
+            className="px-4 py-2 rounded-full btn-accent text-white text-[11px] font-bold"
           >
             Track your own
           </Link>

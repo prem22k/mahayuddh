@@ -155,11 +155,11 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search all 4,000+ problems, topics, #number (e.g. Two Sum, DP, 15)..."
-            className="w-full bg-transparent text-sm text-white placeholder:text-white/30 focus:outline-none"
+            className="w-full bg-transparent text-sm text-white placeholder:text-white/50 focus:outline-none"
           />
           <button
             onClick={onClose}
-            className="p-1 text-white/40 hover:text-white rounded-lg transition-colors cursor-pointer"
+            className="p-1 text-white/55 hover:text-white rounded-lg transition-colors cursor-pointer"
             aria-label="Close search"
           >
             <X className="w-4 h-4" />
@@ -169,12 +169,12 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
         {/* Results List */}
         <div className="max-h-[60vh] overflow-y-auto p-2 divide-y divide-white/[0.04]">
           {loading ? (
-            <div className="p-8 text-center text-white/40 text-xs flex items-center justify-center gap-2">
+            <div className="p-8 text-center text-white/55 text-xs flex items-center justify-center gap-2">
               <Spinner size="md" tone="soft" />
               <span>Indexing database problems...</span>
             </div>
           ) : combined.length === 0 ? (
-            <div className="p-8 text-center text-white/40 text-xs">
+            <div className="p-8 text-center text-white/55 text-xs">
               {query ? "No matching problems found in catalog." : "Type a title, topic, or question number..."}
             </div>
           ) : (
@@ -185,14 +185,14 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
                 onClick={() => handleSelectProblem(problem)}
               >
                 <div className="flex items-center gap-3 truncate">
-                  <div className="w-8 h-8 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center font-mono text-xs text-white/40 font-bold group-hover:border-[#fa586a]/40 group-hover:text-white transition-colors shrink-0">
+                  <div className="w-8 h-8 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center font-mono text-xs text-white/55 font-bold group-hover:border-[#fa586a]/40 group-hover:text-white transition-colors shrink-0">
                     {problem.order_index > 0 ? problem.order_index : "#"}
                   </div>
                   <div className="truncate">
                     <div className="font-semibold text-xs text-white group-hover:text-[#fa586a] transition-colors truncate">
                       {problem.title}
                     </div>
-                    <div className="text-[10px] text-white/40 truncate">
+                    <div className="text-[10px] text-white/55 truncate">
                       {problem.category}
                     </div>
                   </div>
@@ -211,7 +211,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
         </div>
 
         {/* Modal Footer */}
-        <div className="p-3 bg-black/40 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-white/30">
+        <div className="p-3 bg-black/40 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-white/50">
           <div className="flex items-center gap-2">
             <span>Press</span>
             <kbd className="px-1.5 py-0.5 bg-white/[0.04] rounded border border-white/[0.06] font-mono text-[10px]">

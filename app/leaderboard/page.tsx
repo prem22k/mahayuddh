@@ -14,6 +14,7 @@ import { ConnectLeetCodeModal } from "@/components/modals/ConnectLeetCodeModal";
 import { UserStatsDossierModal } from "@/components/profile/UserStatsDossierModal";
 import { Spinner } from "@/components/ui/Spinner";
 import { PageLoader } from "@/components/ui/PageLoader";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Profile } from "@/types/database";
 
 type MetricKey = "score" | "rating" | "contests" | "easy" | "medium" | "hard" | "total" | "streak";
@@ -258,7 +259,7 @@ export default function LeaderboardPage() {
       );
     }
     return (
-      <span className="font-mono text-xs text-white/30 font-semibold">
+      <span className="font-mono text-xs text-white/50 font-semibold">
         {rank < 10 ? `0${rank}` : rank}
       </span>
     );
@@ -269,51 +270,45 @@ export default function LeaderboardPage() {
       {/* ── Page Header ── */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <div className="text-[11px] font-semibold text-[#fa586a] tracking-[0.2em] uppercase mb-1">
-            Standings & Metrics
-          </div>
           <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
             Leaderboard
           </h1>
-          <p className="text-xs text-white/40 mt-1">
+          <p className="text-xs text-white/55 mt-1">
             Squad first, global second. Click a column to sort.
           </p>
         </div>
 
         {/* Filters */}
         <div className="flex items-center gap-2 flex-wrap self-start md:self-auto">
-          <div className="flex items-center gap-1 p-1 bg-white/[0.04] rounded-full border border-white/[0.06]">
-            {(["squad", "global"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={cn(
-                  "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer capitalize",
-                  tab === t ? "bg-white/[0.12] text-white shadow-sm" : "text-white/40 hover:text-white/80"
-                )}
-                title={t === "squad" ? "Your active squad — accountability" : "Everyone — aspiration and discovery"}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            label="Squad or global standings"
+            value={tab}
+            onChange={setTab}
+            size="sm"
+            options={[
+              { value: "squad", label: "Squad", title: "Your active squad — accountability" },
+              { value: "global", label: "Global", title: "Everyone — aspiration and discovery" },
+            ]}
+          />
           <div className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.04] border border-white/[0.06] rounded-full">
-            <Search className="w-3.5 h-3.5 text-white/30 shrink-0" />
+            <Search className="w-3.5 h-3.5 text-white/50 shrink-0" />
             <input
-              type="text"
+              type="search"
+              aria-label="Search squad members"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search squad..."
-              className="bg-transparent text-xs text-white placeholder:text-white/25 focus:outline-none w-28 sm:w-36"
+              className="bg-transparent text-xs text-white placeholder:text-white/55 min-h-11 w-28 sm:w-36"
             />
           </div>
           <button
+            aria-pressed={hideUnconnected}
             onClick={() => setHideUnconnected((v) => !v)}
             className={cn(
-              "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all shrink-0 cursor-pointer border",
+              "min-h-11 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors shrink-0 cursor-pointer border flex items-center",
               hideUnconnected
                 ? "bg-white/[0.12] text-white border-white/[0.1]"
-                : "text-white/40 hover:text-white/80 border-white/[0.06]"
+                : "text-white/55 hover:text-white/80 border-white/[0.06]"
             )}
             title="Hide members without a linked LeetCode handle"
           >
@@ -359,7 +354,7 @@ export default function LeaderboardPage() {
                 href={`https://leetcode.com/${profile.leetcode_username}/`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-white/40 hover:text-white/80 transition-colors flex items-center gap-1 font-mono mt-0.5"
+                className="text-xs text-white/55 hover:text-white/80 transition-colors flex items-center gap-1 font-mono mt-0.5"
               >
                 <span>@{profile.leetcode_username}</span>
                 <ExternalLink className="w-3 h-3 opacity-50" />
@@ -370,7 +365,7 @@ export default function LeaderboardPage() {
           {/* Quick Metrics Grid */}
           <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
             <div className="flex flex-col">
-              <span className="text-[10px] text-white/35 font-semibold uppercase tracking-wider">
+              <span className="text-[10px] text-white/50 font-semibold uppercase tracking-wider">
                 Score
               </span>
               <span className="text-lg font-black text-white font-mono leading-tight">
@@ -379,7 +374,7 @@ export default function LeaderboardPage() {
             </div>
 
             <div className="flex flex-col">
-              <span className="text-[10px] text-white/35 font-semibold uppercase tracking-wider">
+              <span className="text-[10px] text-white/50 font-semibold uppercase tracking-wider">
                 Rating
               </span>
               <span className="text-lg font-black text-white font-mono leading-tight">
@@ -388,7 +383,7 @@ export default function LeaderboardPage() {
             </div>
 
             <div className="flex flex-col">
-              <span className="text-[10px] text-white/35 font-semibold uppercase tracking-wider">
+              <span className="text-[10px] text-white/50 font-semibold uppercase tracking-wider">
                 Contests
               </span>
               <span className="text-lg font-black text-[#bf5af2] font-mono leading-tight">
@@ -397,7 +392,7 @@ export default function LeaderboardPage() {
             </div>
 
             <div className="flex flex-col">
-              <span className="text-[10px] text-white/35 font-semibold uppercase tracking-wider">
+              <span className="text-[10px] text-white/50 font-semibold uppercase tracking-wider">
                 Streak
               </span>
               <span className="text-lg font-black text-[#ff9f0a] font-mono leading-tight">
@@ -406,7 +401,7 @@ export default function LeaderboardPage() {
             </div>
 
             <div className="flex flex-col">
-              <span className="text-[10px] text-white/35 font-semibold uppercase tracking-wider">
+              <span className="text-[10px] text-white/50 font-semibold uppercase tracking-wider">
                 Solved ({totalMySolved})
               </span>
               <div className="flex items-center gap-1.5 font-mono text-xs font-semibold mt-0.5">
@@ -466,9 +461,9 @@ export default function LeaderboardPage() {
             <h3 className="text-base font-bold text-white mt-0.5">
               Connect LeetCode for extra stats
             </h3>
-            <p className="text-xs text-white/40 mt-0.5">
+            <p className="text-xs text-white/55 mt-0.5">
               Optional. Adds contest rating and daily streaks — you&apos;re already on the
-              leaderboard without it. Bible §43: never gate the product on LeetCode.
+              leaderboard without it, and that never changes.
             </p>
           </div>
 
@@ -476,16 +471,17 @@ export default function LeaderboardPage() {
             <form onSubmit={handleConnectHandle} className="flex items-center gap-2 w-full sm:w-auto">
               <input
                 type="text"
+                aria-label="Your LeetCode username"
                 value={inputHandle}
                 onChange={(e) => setInputHandle(e.target.value)}
                 placeholder="Your LeetCode username"
-                className="px-3.5 py-2 bg-white/[0.04] border border-white/[0.08] rounded-xl text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 font-mono w-full md:w-56"
+                className="px-3.5 py-2 min-h-11 bg-white/[0.04] border border-white/[0.08] rounded-xl text-xs text-white placeholder:text-white/55 focus:border-[#fa586a]/60 font-mono w-full md:w-56"
                 required
               />
               <button
                 type="submit"
                 disabled={isConnectingHandle || !inputHandle.trim()}
-                className="px-4 py-2 rounded-xl bg-[#fa586a] hover:bg-[#fa586a]/90 text-white font-bold text-xs transition-all disabled:opacity-40 shrink-0 cursor-pointer flex items-center gap-1.5"
+                className="px-4 py-2 min-h-11 rounded-xl btn-accent text-white font-bold text-xs transition-colors disabled:opacity-40 shrink-0 cursor-pointer flex items-center gap-1.5"
               >
                 {isConnectingHandle ? (
                   <Spinner size="sm" tone="inverse" />
@@ -499,7 +495,7 @@ export default function LeaderboardPage() {
             </form>
             <button
               onClick={() => setIsConnectModalOpen(true)}
-              className="px-3 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/70 hover:text-white text-xs font-semibold transition-all shrink-0 cursor-pointer flex items-center gap-1.5"
+              className="px-3 py-2 min-h-11 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/70 hover:text-white text-xs font-semibold transition-colors shrink-0 cursor-pointer flex items-center gap-1.5"
               title="Connect with credentials to import complete solved history"
             >
               <Link2 className="w-3.5 h-3.5 text-[#fa586a]" />
@@ -540,7 +536,7 @@ export default function LeaderboardPage() {
           <div className="min-w-[960px]">
             <div
               role="row"
-              className="grid gap-2 px-6 py-3 border-b border-white/[0.06] text-[11px] font-semibold text-white/30 uppercase tracking-wider items-center"
+              className="grid gap-2 px-6 py-3 border-b border-white/[0.06] text-[11px] font-semibold text-white/50 uppercase tracking-wider items-center"
               style={{ gridTemplateColumns: GRID }}
             >
               <div className="text-center">#</div>
@@ -554,7 +550,9 @@ export default function LeaderboardPage() {
                     title={`${title}. Click to cycle desc → asc → default.`}
                     aria-label={`Sort by ${label}${active ? ` (currently ${sortDir === "desc" ? "descending" : "ascending"})` : ""}`}
                     className={cn(
-                      "flex items-center justify-center gap-1 uppercase tracking-wider text-[11px] font-semibold transition-colors cursor-pointer",
+                      /* A 17px-tall label in a scrolling table is untappable on a
+                         phone. The extra padding is the tap area, not the look. */
+                      "flex items-center justify-center gap-1 uppercase tracking-wider text-[11px] font-semibold transition-colors cursor-pointer py-3 md:py-0 -my-1",
                       active ? "text-white" : "hover:text-white/70"
                     )}
                   >
@@ -578,7 +576,7 @@ export default function LeaderboardPage() {
               <PageLoader label="Loading leaderboard..." className="h-48" />
             ) : visibleMembers.length === 0 ? (
               <div className="p-12 text-center space-y-3">
-                <p className="text-white/40 text-xs">
+                <p className="text-white/55 text-xs">
                   {tab === "squad"
                     ? "No squad members here yet. Join or create a squad — this tab ranks people you practice with."
                     : profiles.length === 0
@@ -586,11 +584,11 @@ export default function LeaderboardPage() {
                       : "No squad members match this filter. Clear the search or show unlinked members."}
                 </p>
                 {tab === "squad" ? (
-                  <Link href="/squad" className="inline-block px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold hover:bg-[#fa586a]/90 transition-all">
+                  <Link href="/squad" className="inline-block px-4 py-2 rounded-full btn-accent text-white text-xs font-bold transition-colors">
                     Go to squad
                   </Link>
                 ) : profiles.length === 0 ? (
-                  <a href="/challenges" className="inline-block px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold hover:bg-[#fa586a]/90 transition-all">
+                  <a href="/challenges" className="inline-block px-4 py-2 rounded-full btn-accent text-white text-xs font-bold transition-colors">
                     Challenge a friend to start
                   </a>
                 ) : null}
@@ -642,7 +640,7 @@ export default function LeaderboardPage() {
                               {member.username}
                             </span>
                             {isCurrentUser && (
-                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#fa586a] text-white uppercase tracking-wider shrink-0">
+                              <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-[var(--accent-strong)] text-white uppercase tracking-wider shrink-0">
                                 YOU
                               </span>
                             )}
@@ -651,7 +649,7 @@ export default function LeaderboardPage() {
                             href={`https://leetcode.com/${member.leetcode_username || ""}/`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-[11px] text-white/40 hover:text-white/80 transition-colors flex items-center gap-1 font-mono"
+                            className="text-[11px] text-white/55 hover:text-white/80 transition-colors flex items-center gap-1 font-mono py-2.5 -my-1"
                           >
                             <span>@{member.leetcode_username || "no_handle"}</span>
                             <ExternalLink className="w-2.5 h-2.5 opacity-50" />
@@ -670,7 +668,7 @@ export default function LeaderboardPage() {
                           {member.contest_rating == null ? "—" : Math.round(member.contest_rating)}
                         </span>
                         <span
-                          className="text-[10px] text-white/40 font-mono"
+                          className="text-[10px] text-white/55 font-mono"
                           title={member.contest_top_percentage ? `Top ${member.contest_top_percentage}% of contestants` : undefined}
                         >
                           {contestRank ? `Rank #${contestRank.toLocaleString()}` : "—"}
@@ -716,7 +714,7 @@ export default function LeaderboardPage() {
                       <div className="flex items-center justify-end gap-1.5">
                         <button
                           onClick={() => setInspectedProfile(member)}
-                          className="px-2.5 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#fa586a]/15 hover:border-[#fa586a]/30 border border-white/[0.08] text-white/70 hover:text-[#fa586a] text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+                          className="px-2.5 py-1.5 rounded-full bg-white/[0.04] hover:bg-[var(--accent-strong)] hover:border-[#fa586a]/30 border border-white/[0.08] text-white/70 hover:text-white text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 shadow-sm"
                           title="Inspect Battle Dossier"
                         >
                           <Shield className="w-3 h-3" />
@@ -725,12 +723,12 @@ export default function LeaderboardPage() {
                         {!isCurrentUser ? (
                           <a
                             href={`/challenges?to=${member.id}`}
-                            className="px-2.5 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#fa586a] hover:text-white border border-white/[0.08] text-white/60 text-xs font-semibold transition-all shadow-sm"
+                            className="px-2.5 py-1.5 rounded-full bg-white/[0.04] hover:bg-[var(--accent-strong)] hover:text-white border border-white/[0.08] text-white/60 text-xs font-semibold transition-colors shadow-sm"
                           >
                             Challenge
                           </a>
                         ) : (
-                          <span className="text-[11px] text-white/30 font-medium italic pr-1 hidden lg:inline">
+                          <span className="text-[11px] text-white/50 font-medium italic pr-1 hidden lg:inline">
                             You
                           </span>
                         )}

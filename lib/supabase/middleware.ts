@@ -66,6 +66,15 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/u/") ||
     request.nextUrl.pathname.startsWith("/squad/join/");
 
+  // Social-card renders must be fetchable by scrapers, which never carry a
+  // session. Every /opengraph-image (welcome, invites, recaps, primers) renders
+  // public-safe content by construction — the invite card deliberately omits
+  // anything the preview API wouldn't show a stranger — so the whole family is
+  // exempt rather than allowlisted one route at a time.
+  const isSocialCard =
+    request.nextUrl.pathname.endsWith("/opengraph-image") ||
+    request.nextUrl.pathname.endsWith("/twitter-image");
+
   // A single public primer is a share surface. The layout already generates
   // real per-primer metadata for public primers (Bible §14), so blocking the
   // route meant a share preview could never exist. RLS keeps squad primers out
@@ -96,7 +105,8 @@ export async function updateSession(request: NextRequest) {
     isPublicRecapPath ||
     isPublicPrimerPath ||
     isPublicSeasonPath ||
-    isWelcomePath;
+    isWelcomePath ||
+    isSocialCard;
 
   // Fast-path: Check if any Supabase auth cookies exist in request
   const allCookies = request.cookies.getAll();

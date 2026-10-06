@@ -133,7 +133,7 @@ export default async function BattleSharePage({
       <div className="max-w-2xl mx-auto px-5 py-14 space-y-8">
         <header className="space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/40">
+            <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/55">
               Battle
             </span>
             {card.difficulty && (
@@ -155,7 +155,7 @@ export default async function BattleSharePage({
 
         <div className="rounded-3xl border border-white/[0.06] bg-gradient-to-br from-white/[0.04] to-transparent p-6">
           <div className="text-4xl font-black font-mono">{solved ?? "—"}</div>
-          <div className="text-xs text-white/40 mt-1">
+          <div className="text-xs text-white/55 mt-1">
             {prev ? (
               <>
                 Previous best <span className="font-mono text-white/60">{prev}</span>
@@ -180,7 +180,7 @@ export default async function BattleSharePage({
           ].map((s) => (
             <div key={s.label} className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
               <div className="text-2xl font-black font-mono">{s.value}</div>
-              <div className="text-[10px] uppercase tracking-wider text-white/35 mt-1">
+              <div className="text-[10px] uppercase tracking-wider text-white/50 mt-1">
                 {s.label}
               </div>
             </div>
@@ -188,7 +188,7 @@ export default async function BattleSharePage({
         </dl>
 
         {/* Provenance is stated, not implied. Solved is not the same as understood. */}
-        <p className="text-xs text-white/35">
+        <p className="text-xs text-white/50">
           {card.evidence === "leetcode"
             ? "Solved with LeetCode evidence."
             : "Self-reported solve — logged by the developer, not independently verified."}
@@ -201,13 +201,13 @@ export default async function BattleSharePage({
 
         <div className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-6 space-y-4">
           <h2 className="text-lg font-bold">Solve the same problem</h2>
-          <p className="text-xs text-white/45">
+          <p className="text-xs text-white/60">
             Practice DSA with people you know. Solve it, then challenge them with it.
           </p>
           <div className="flex items-center gap-2 flex-wrap">
             <Link
               href="/login"
-              className="px-5 py-2.5 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white text-xs font-bold transition-all"
+              className="px-5 py-2.5 rounded-full btn-accent text-white text-xs font-bold transition-all"
             >
               Start solving
             </Link>

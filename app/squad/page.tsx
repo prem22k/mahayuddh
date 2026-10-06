@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Plus, Users, Copy, Check, Target, ArrowRight, LogOut } from "lucide-react";
+import { Plus, Copy, Check, Target, ArrowRight, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InviteLink } from "@/components/squad/InviteLink";
 import { copyText } from "@/lib/clipboard";
@@ -236,21 +236,17 @@ export default function SquadPage() {
 
 
   return (
-    <div className="space-y-8 select-none">
+    <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <div className="text-[11px] font-semibold text-[#fa586a] tracking-[0.2em] uppercase mb-1 flex items-center gap-1.5">
-            <Users className="w-3.5 h-3.5" />
-            <span>Who am I doing this with?</span>
-          </div>
           <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">Squad</h1>
-          <p className="text-xs text-white/40 mt-1">Small groups, shared goals, friendly accountability.</p>
+          <p className="text-xs text-white/55 mt-1">Small groups, shared goals, friendly accountability.</p>
         </div>
         <div className="flex items-center gap-2 self-start md:self-auto">
-          <button onClick={() => { setFormError(null); setShowJoin(true); }} className="px-4 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-white text-xs font-bold transition-all cursor-pointer">
+          <button onClick={() => { setFormError(null); setShowJoin(true); }} className="px-4 py-2 min-h-11 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-white text-xs font-bold transition-colors cursor-pointer flex items-center whitespace-nowrap">
             Join with code
           </button>
-          <button onClick={() => { setFormError(null); setShowCreate(true); }} className="px-4 py-2 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5">
+          <button onClick={() => { setFormError(null); setShowCreate(true); }} className="px-4 py-2 min-h-11 rounded-full btn-accent text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap">
             <Plus className="w-3.5 h-3.5" />
             <span>New squad</span>
           </button>
@@ -260,7 +256,7 @@ export default function SquadPage() {
       {loadError && (
         <div role="alert" className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-5 py-4 rounded-2xl bg-[#ff453a]/10 border border-[#ff453a]/30">
           <span className="text-xs text-[#ff453a] font-medium">{loadError}</span>
-          <button onClick={load} className="px-4 py-1.5 rounded-full bg-[#ff453a]/15 hover:bg-[#ff453a]/25 border border-[#ff453a]/30 text-[#ff453a] text-xs font-bold transition-all cursor-pointer shrink-0">
+          <button onClick={load} className="px-4 py-1.5 min-h-11 rounded-full bg-[#ff453a]/15 hover:bg-[#ff453a]/25 border border-[#ff453a]/30 text-[#ff453a] text-xs font-bold transition-colors cursor-pointer shrink-0 flex items-center">
             Retry
           </button>
         </div>
@@ -269,25 +265,25 @@ export default function SquadPage() {
       {squads.length === 0 ? (
         <div className="p-12 text-center space-y-3 bg-[#1c1c1e]/60 rounded-3xl border border-white/[0.06]">
           <p className="text-sm font-bold text-white">Your squad is waiting.</p>
-          <p className="text-xs text-white/40 max-w-sm mx-auto">Create one and invite 2–7 friends — or join with a code. Solo practice keeps working either way.</p>
+          <p className="text-xs text-white/55 max-w-sm mx-auto">Create one and invite 2–7 friends — or join with a code. Solo practice keeps working either way.</p>
           <div className="flex items-center justify-center gap-2 pt-1">
-            <button onClick={() => setShowCreate(true)} className="px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold cursor-pointer">Create squad</button>
-            <button onClick={() => setShowJoin(true)} className="px-4 py-2 rounded-full bg-white/[0.06] border border-white/[0.1] text-white text-xs font-bold cursor-pointer">Join with code</button>
+            <button onClick={() => setShowCreate(true)} className="px-4 py-2 min-h-11 rounded-full btn-accent text-white text-xs font-bold cursor-pointer flex items-center whitespace-nowrap">Create squad</button>
+            <button onClick={() => setShowJoin(true)} className="px-4 py-2 min-h-11 rounded-full bg-white/[0.06] border border-white/[0.1] text-white text-xs font-bold cursor-pointer flex items-center whitespace-nowrap">Join with code</button>
           </div>
         </div>
       ) : (
         <>
           {squads.length > 1 && (
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] text-white/40 uppercase tracking-wider font-semibold">Active:</span>
+              <span className="text-[11px] text-white/55 uppercase tracking-wider font-semibold">Active:</span>
               {squads.map((s) => (
                 <button
                   key={s.id}
                   onClick={() => handleSwitch(s.id)}
                   className={cn(
-                    "px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer",
+                    "min-h-11 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-colors cursor-pointer flex items-center whitespace-nowrap",
                     s.id === activeId
-                      ? "bg-[#fa586a]/15 border-[#fa586a]/40 text-white"
+                      ? "btn-accent border-[#fa586a]/40 text-white"
                       : "bg-white/[0.03] border-white/[0.08] text-white/50 hover:text-white"
                   )}
                 >
@@ -302,8 +298,8 @@ export default function SquadPage() {
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
                   <h2 className="text-xl font-extrabold text-white">{activeSquad.name}</h2>
-                  {activeSquad.description && <p className="text-xs text-white/40 mt-1">{activeSquad.description}</p>}
-                  <p className="text-[11px] text-white/30 mt-1 font-mono">{members.length} member{members.length === 1 ? "" : "s"}</p>
+                  {activeSquad.description && <p className="text-xs text-white/55 mt-1">{activeSquad.description}</p>}
+                  <p className="text-[11px] text-white/50 mt-1 font-mono">{members.length} member{members.length === 1 ? "" : "s"}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {/* Loop D: the bare code still works, and stays available for
@@ -312,7 +308,7 @@ export default function SquadPage() {
                     {copied ? <Check className="w-3.5 h-3.5 text-[#30d158]" /> : <Copy className="w-3.5 h-3.5" />}
                     <span className="font-mono">{copied ? "Copied!" : activeSquad.invite_code}</span>
                   </button>
-                  <button onClick={handleLeave} className="p-2 rounded-full text-white/30 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer" title="Leave squad" aria-label="Leave squad">
+                  <button onClick={handleLeave} className="p-2 rounded-full text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer" title="Leave squad" aria-label="Leave squad">
                     <LogOut className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -320,10 +316,10 @@ export default function SquadPage() {
 
               {/* Your own link, and what came through it (Loop D, §56/§57). */}
               <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-2">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-white/30">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-white/50">
                   Invite people
                 </div>
-                <p className="text-[11px] text-white/40">
+                <p className="text-[11px] text-white/55">
                   Your link remembers who you are, so you can tell whether it worked.
                 </p>
                 <InviteLink squadId={activeSquad.id} squadName={activeSquad.name} />
@@ -337,13 +333,13 @@ export default function SquadPage() {
                     <Target className="w-3.5 h-3.5" />
                     <span>Squad goals</span>
                   </span>
-                  <button onClick={() => { setFormError(null); setShowGoal(true); }} className="text-xs text-[#fa586a] font-semibold hover:underline cursor-pointer">
+                  <button onClick={() => { setFormError(null); setShowGoal(true); }} className="min-h-11 px-3 -mx-3 text-xs text-[#fa586a] font-semibold hover:underline cursor-pointer flex items-center whitespace-nowrap">
                     Set a goal
                   </button>
                 </div>
 
                 {goalProgress.length === 0 ? (
-                  <p className="text-[11px] text-white/30">
+                  <p className="text-[11px] text-white/50">
                     No active goal. Set one — e.g. “Complete 50 Graph problems by Oct 30.”
                   </p>
                 ) : (
@@ -354,21 +350,28 @@ export default function SquadPage() {
                           <span className="text-sm font-bold text-white">{gp.goal.title}</span>
                           <button
                             onClick={async () => {
-                              await completeSquadGoal(gp.goal.id, gp.goal.squad_id);
-                              await load();
+                              // Shared goal, whole squad affected: confirm first, and a
+                              // failure must say so instead of failing silent.
+                              if (!window.confirm(`Mark "${gp.goal.title}" complete for the whole squad?`)) return;
+                              try {
+                                await completeSquadGoal(gp.goal.id, gp.goal.squad_id);
+                                await load();
+                              } catch {
+                                setLoadError("Couldn't mark the goal complete. Try again.");
+                              }
                             }}
-                            className="text-[11px] text-white/40 hover:text-[#30d158] font-semibold cursor-pointer"
+                            className="min-h-11 px-3 -mx-3 text-[11px] text-white/55 hover:text-[#30d158] font-semibold cursor-pointer flex items-center whitespace-nowrap"
                           >
                             Mark complete
                           </button>
                         </div>
-                        <div className="text-[11px] text-white/40 mt-1 font-mono">
+                        <div className="text-[11px] text-white/55 mt-1 font-mono">
                           {gp.done} / {gp.target} solves
                           {gp.goal.pattern ? ` · ${gp.goal.pattern}` : ""}
                           {gp.goal.starts_at ? ` · since ${gp.goal.starts_at}` : ""}
                           {gp.daysRemaining != null ? ` · ${gp.daysRemaining}d left` : ""}
                         </div>
-                        <div className="text-[10px] text-white/30 mt-0.5">
+                        <div className="text-[10px] text-white/50 mt-0.5">
                           {gp.participants} of {gp.memberCount}{" "}
                           {gp.memberCount === 1 ? "member has" : "members have"} contributed
                         </div>
@@ -404,18 +407,18 @@ export default function SquadPage() {
                         </div>
                         <div className="truncate">
                           <span className="text-xs font-semibold text-white">{m.profile?.username || "Member"}</span>
-                          {m.role === "admin" && <span className="ml-1.5 text-[9px] font-bold text-[#fa586a] uppercase">admin</span>}
-                          <span className="block text-[10px] text-white/30 font-mono">
+                          {m.role === "admin" && <span className="ml-1.5 text-[10px] font-bold text-[#fa586a] uppercase">admin</span>}
+                          <span className="block text-[10px] text-white/50 font-mono">
                             {solveCounts[m.user_id] ?? 0} solves · {m.profile?.streak ?? 0}d streak
                           </span>
                         </div>
                       </div>
                       {m.user_id !== user?.id ? (
-                        <Link href={`/challenges?to=${m.user_id}`} className="px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#fa586a] hover:text-white border border-white/[0.08] text-white/60 text-[11px] font-semibold transition-all shrink-0">
+                        <Link href={`/challenges?to=${m.user_id}`} className="px-3 py-1.5 min-h-11 rounded-full bg-white/[0.04] hover:bg-[var(--accent-strong)] hover:text-white border border-white/[0.08] text-white/60 text-[11px] font-semibold transition-colors shrink-0 flex items-center whitespace-nowrap">
                           Challenge
                         </Link>
                       ) : (
-                        <span className="text-[10px] text-white/25 italic">you</span>
+                        <span className="text-[10px] text-white/55 italic">you</span>
                       )}
                     </div>
                   ))}
@@ -429,13 +432,13 @@ export default function SquadPage() {
       {showCreate && (<ModalShell label="Create squad" onClose={() => setShowCreate(false)}>
         <form onSubmit={handleCreate} className="space-y-4 p-1">
           <h3 className="text-base font-bold text-white">Create a squad</h3>
-          <p className="text-[11px] text-white/40">2–7 friends works best. You&apos;ll get an invite code to share.</p>
+          <p className="text-[11px] text-white/55">2–7 friends works best. You&apos;ll get an invite code to share.</p>
           {formError && <div className="text-xs text-[#ff453a]">{formError}</div>}
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Graph Warriors" maxLength={60} required
-            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60" />
-          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What are you preparing for? (optional)" maxLength={500}
-            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60" />
-          <button type="submit" disabled={busy} className="w-full py-2.5 rounded-full bg-[#fa586a] text-white text-xs font-bold disabled:opacity-50 cursor-pointer">
+          <input aria-label="Squad name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Graph Warriors" maxLength={60} required
+            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/55 focus:border-[#fa586a]/60" />
+          <input aria-label="What the squad is preparing for, optional" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What are you preparing for? (optional)" maxLength={500}
+            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/55 focus:border-[#fa586a]/60" />
+          <button type="submit" disabled={busy} className="w-full py-2.5 min-h-11 rounded-full btn-accent text-white text-xs font-bold disabled:opacity-50 cursor-pointer flex items-center justify-center">
             {busy ? "Creating…" : "Create squad"}
           </button>
         </form>
@@ -445,9 +448,9 @@ export default function SquadPage() {
         <form onSubmit={handleJoin} className="space-y-4 p-1">
           <h3 className="text-base font-bold text-white">Join with invite code</h3>
           {formError && <div className="text-xs text-[#ff453a]">{formError}</div>}
-          <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g. KQ7X2P9M" maxLength={8} required
-            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 font-mono uppercase" />
-          <button type="submit" disabled={busy} className="w-full py-2.5 rounded-full bg-[#fa586a] text-white text-xs font-bold disabled:opacity-50 cursor-pointer">
+          <input aria-label="Invite code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g. KQ7X2P9M" maxLength={8} required
+            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/55 focus:border-[#fa586a]/60 font-mono uppercase" />
+          <button type="submit" disabled={busy} className="w-full py-2.5 min-h-11 rounded-full btn-accent text-white text-xs font-bold disabled:opacity-50 cursor-pointer flex items-center justify-center">
             {busy ? "Joining…" : "Join squad"}
           </button>
         </form>
@@ -456,19 +459,27 @@ export default function SquadPage() {
       {showGoal && (<ModalShell label="Set squad goal" onClose={() => setShowGoal(false)}>
         <form onSubmit={handleGoal} className="space-y-4 p-1">
           <h3 className="text-base font-bold text-white">Set a squad goal</h3>
-          <p className="text-[11px] text-white/40">One active goal at a time. Progress counts all-time squad solves.</p>
+          {/* Step 19 upgraded goals from the Step 5 v0 ("one active goal at a
+              time") to several, and getActiveGoals has always returned a list.
+              This line was the last thing still describing v0, so it told members
+              something false about what the squad could hold — a small line with
+              a real cost: someone who wanted a second goal would read this and
+              believe they could not. */}
+          <p className="text-[11px] text-white/55">
+            Several goals can run at once. Each one counts solves inside its own window, from its start date.
+          </p>
           {formError && <div className="text-xs text-[#ff453a]">{formError}</div>}
-          <input value={goalTitle} onChange={(e) => setGoalTitle(e.target.value)} placeholder="e.g. Complete 50 Graph problems" maxLength={120} required
-            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60" />
+          <input aria-label="Goal title" value={goalTitle} onChange={(e) => setGoalTitle(e.target.value)} placeholder="e.g. Complete 50 Graph problems" maxLength={120} required
+            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/55 focus:border-[#fa586a]/60" />
           <div className="grid grid-cols-2 gap-3">
-            <input value={goalTarget} onChange={(e) => setGoalTarget(e.target.value)} type="number" min={1} max={10000} placeholder="Target"
-              className="bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-[#fa586a]/60 font-mono" />
-            <input value={goalPattern} onChange={(e) => setGoalPattern(e.target.value)} placeholder="Pattern (optional)"
-              className="bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60" />
+            <input aria-label="Target number of solves" value={goalTarget} onChange={(e) => setGoalTarget(e.target.value)} type="number" min={1} max={10000} placeholder="Target"
+              className="bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-[#fa586a]/60 font-mono" />
+            <input aria-label="Pattern, optional" value={goalPattern} onChange={(e) => setGoalPattern(e.target.value)} placeholder="Pattern (optional)"
+              className="bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/55 focus:border-[#fa586a]/60" />
           </div>
-          <input value={goalDeadline} onChange={(e) => setGoalDeadline(e.target.value)} type="date"
-            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-[#fa586a]/60" />
-          <button type="submit" disabled={busy} className="w-full py-2.5 rounded-full bg-[#fa586a] text-white text-xs font-bold disabled:opacity-50 cursor-pointer">
+          <input aria-label="Deadline" value={goalDeadline} onChange={(e) => setGoalDeadline(e.target.value)} type="date"
+            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-[#fa586a]/60" />
+          <button type="submit" disabled={busy} className="w-full py-2.5 min-h-11 rounded-full btn-accent text-white text-xs font-bold disabled:opacity-50 cursor-pointer flex items-center justify-center">
             {busy ? "Saving…" : "Set goal"}
           </button>
         </form>
@@ -481,7 +492,7 @@ export default function SquadPage() {
             <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider">
               Season — {season.name}
             </span>
-            <span className="text-[10px] text-white/30 font-mono">
+            <span className="text-[10px] text-white/50 font-mono">
               {season.starts_at}
               {season.ends_at ? ` → ${season.ends_at}` : " → open"}
             </span>
@@ -500,12 +511,12 @@ export default function SquadPage() {
               ].map((m) => (
                 <div key={m.label} className="p-3 rounded-2xl bg-white/[0.02] border border-white/[0.06] text-center">
                   <div className="text-xl font-black text-white font-mono">{m.value}</div>
-                  <div className="text-[10px] text-white/35 mt-0.5">{m.label}</div>
+                  <div className="text-[10px] text-white/50 mt-0.5">{m.label}</div>
                 </div>
               ))}
             </div>
           )}
-          <p className="text-[10px] text-white/25">
+          <p className="text-[10px] text-white/55">
             Counts, not a score. There is nothing to unlock.
           </p>
         </section>
@@ -527,11 +538,11 @@ export default function SquadPage() {
                 <span className="text-[10px] font-bold text-[#fa586a] font-mono">{r.day}</span>
                 <span className="text-[11px] font-bold text-white/80">{r.label}</span>
               </div>
-              <div className="text-[10px] text-white/35 mt-1 leading-snug">{r.intent}</div>
+              <div className="text-[10px] text-white/50 mt-1 leading-snug">{r.intent}</div>
             </Link>
           ))}
         </div>
-        <p className="text-[10px] text-white/25">
+        <p className="text-[10px] text-white/55">
           A suggestion, not a schedule. Nobody is going to remind you.
         </p>
       </section>
@@ -565,14 +576,14 @@ export default function SquadPage() {
         <div className="flex items-center gap-4 flex-wrap">
           <Link
             href={`/squad/${activeId}/recaps`}
-            className="flex items-center gap-1.5 text-xs text-[#bf5af2] font-semibold hover:underline"
+            className="flex items-center gap-1.5 min-h-11 md:min-h-0 text-xs text-[#bf5af2] font-semibold hover:underline"
           >
             <span>Weekly recaps</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
           <Link
             href={`/squad/${activeId}/wall`}
-            className="flex items-center gap-1.5 text-xs text-[#30d158] font-semibold hover:underline"
+            className="flex items-center gap-1.5 min-h-11 md:min-h-0 text-xs text-[#30d158] font-semibold hover:underline"
           >
             <span>Squad wall</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -580,7 +591,7 @@ export default function SquadPage() {
         </div>
       )}
 
-      <Link href="/challenges" className="flex items-center gap-1.5 text-xs text-[#fa586a] font-semibold hover:underline">
+      <Link href="/challenges" className="flex items-center gap-1.5 min-h-11 md:min-h-0 text-xs text-[#fa586a] font-semibold hover:underline">
         <span>Open challenges</span>
         <ArrowRight className="w-3.5 h-3.5" />
       </Link>

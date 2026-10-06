@@ -14,7 +14,7 @@ export default function PracticePage() {
           What should I solve?
         </div>
         <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">Practice</h1>
-        <p className="text-xs text-white/40 mt-1">Revisit what&apos;s fading. Attack weak patterns. Then go new.</p>
+        <p className="text-xs text-white/55 mt-1">Revisit what&apos;s fading. Attack weak patterns. Then go new.</p>
       </div>
       {/* Step 24: "Next battle" with truthful why, on the practice hub (§24). */}
       <NextBattle surface="practice_hub" />

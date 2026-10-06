@@ -350,14 +350,14 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                 </div>
               ) : (
                 /* No fake speedup when either duration is missing (§44). */
-                <div className="text-[11px] text-white/35 mt-0.5">
+                <div className="text-[11px] text-white/50 mt-0.5">
                   Solved. Durations were not both recorded, so there is no speed to claim.
                 </div>
               )}
             </div>
             <button
               onClick={() => setRevengeResult(null)}
-              className="p-1 text-white/40 hover:text-white rounded-md transition-colors cursor-pointer shrink-0"
+              className="p-1 text-white/55 hover:text-white rounded-md transition-colors cursor-pointer shrink-0"
               aria-label="Dismiss"
             >
               <X className="w-4 h-4" />
@@ -404,7 +404,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
             </span>
             <button
               onClick={() => setIsScratchpadOpen(false)}
-              className="p-1 text-white/40 hover:text-white rounded-md transition-colors"
+              className="p-1 text-white/55 hover:text-white rounded-md transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -417,11 +417,11 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
               rows={4}
               className="w-full bg-white/[0.04] border border-white/[0.06] rounded-xl p-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 resize-none font-mono"
             />
-            <div className="mt-2 flex justify-between items-center text-[10px] text-white/30 pl-1">
+            <div className="mt-2 flex justify-between items-center text-[10px] text-white/50 pl-1">
               <span>Saved locally for this problem</span>
               <button
                 onClick={() => setIsScratchpadOpen(false)}
-                className="px-3 py-1 bg-[#fa586a] text-white rounded-full font-medium text-xs hover:opacity-90 transition-opacity cursor-pointer"
+                className="px-3 py-1 btn-accent text-white rounded-full font-medium text-xs hover:opacity-90 transition-opacity cursor-pointer"
               >
                 Done
               </button>
@@ -438,7 +438,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
             <button
               onClick={() => setSeconds(0)}
               disabled={!activeProblem}
-              className="p-1.5 rounded-full text-white/35 hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="w-11 h-11 md:w-8 md:h-8 rounded-full text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
               title="Reset Timer"
               aria-label="Reset Timer"
             >
@@ -453,7 +453,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                 }
                 setIsPlaying(!isPlaying);
               }}
-              className="w-8 h-8 rounded-full bg-white hover:bg-white/90 text-black flex items-center justify-center shadow-subtle transition-transform active:scale-95 cursor-pointer"
+              className="w-11 h-11 md:w-8 md:h-8 rounded-full bg-white hover:bg-white/90 text-black flex items-center justify-center shadow-subtle transition-transform active:scale-95 cursor-pointer"
               aria-label={isPlaying ? "Pause Timer" : "Start Timer"}
             >
               {isPlaying ? (
@@ -467,7 +467,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
               <span className="font-mono text-[11px] font-bold text-white tracking-wider">
                 {formatTime(elapsedSec)}
               </span>
-              <span className="text-[9px] text-white/35 uppercase tracking-wider font-semibold">
+              <span className="text-[10px] text-white/60 uppercase tracking-wider font-semibold">
                 {activeProblem ? (isPlaying ? "Solving" : "Paused") : "Idle"}
               </span>
             </div>
@@ -488,7 +488,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                     </span>
                     <span
                       className={cn(
-                        "px-1.5 py-0.2 rounded-full text-[9px] font-semibold border shrink-0",
+                        "px-1.5 py-0.2 rounded-full text-[10px] font-semibold border shrink-0",
                         difficultyBadgeClass(activeProblem.difficulty)
                       )}
                     >
@@ -497,7 +497,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                   </div>
                   {/* The status line is the first thing to go when width is
                       scarce — the header row above already carries the fact. */}
-                  <div className="hidden sm:block text-[9px] text-white/35 truncate">
+                  <div className="hidden sm:block text-[10px] text-white/50 truncate">
                     {activeProblem.category ? `${activeProblem.category} • ` : ""}
                     {isPlaying ? "Session in progress" : "Session paused"}
                   </div>
@@ -508,7 +508,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                  clipped mid-word by the Find Problem button on a 390px screen.
                  The button already carries the instruction, so the copy only
                  earns its place when there is room for it whole. */
-              <div className="hidden md:flex items-center justify-center text-white/35 text-[11px] truncate">
+              <div className="hidden md:flex items-center justify-center text-white/60 text-[11px] truncate">
                 <span>No problem active • Select a problem to solve</span>
               </div>
             )}
@@ -525,7 +525,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                     "px-2.5 py-1 rounded-full border text-[11px] font-semibold transition-colors hidden sm:flex items-center cursor-pointer",
                     isScratchpadOpen
                       ? "bg-white/[0.1] border-white/[0.14] text-white"
-                      : "bg-white/[0.03] border-white/[0.06] text-white/40 hover:text-white hover:bg-white/[0.06]"
+                      : "bg-white/[0.03] border-white/[0.06] text-white/55 hover:text-white hover:bg-white/[0.06]"
                   )}
                 >
                   Notes
@@ -545,7 +545,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                     "px-2.5 py-1 rounded-full border text-[11px] font-semibold transition-colors cursor-pointer hidden sm:block",
                     stuckOpen
                       ? "bg-[#ff9f0a]/15 border-[#ff9f0a]/40 text-[#ff9f0a]"
-                      : "bg-white/[0.03] border-white/[0.06] text-white/40 hover:text-white hover:bg-white/[0.06]"
+                      : "bg-white/[0.03] border-white/[0.06] text-white/55 hover:text-white hover:bg-white/[0.06]"
                   )}
                 >
                   Stuck?
@@ -556,7 +556,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                   onClick={handleFail}
                   disabled={ending}
                   title="Couldn't crack it — records an honest attempt for revenge later."
-                  className="px-2.5 py-1 rounded-full bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.06] text-white/40 hover:text-white text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-40"
+                  className="px-2.5 py-1 rounded-full bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.06] text-white/55 hover:text-white text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-40"
                 >
                   Failed
                 </button>
@@ -569,7 +569,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                     "px-3 py-1 rounded-full font-semibold text-[11px] transition-all cursor-pointer",
                     isCompleted
                       ? "bg-[#30d158] text-black"
-                      : "bg-[#fa586a] hover:bg-[#fa586a]/90 text-white shadow-glow"
+                      : "btn-accent text-white shadow-glow"
                   )}
                 >
                   {isCompleted ? "Solved" : "Mark Solved"}
@@ -588,7 +588,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
             ) : (
               <button
                 onClick={onSearchOpen}
-                className="px-3 py-1 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/50 hover:text-white text-[11px] font-semibold transition-colors cursor-pointer"
+                className="h-11 md:h-auto px-3 py-1 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/50 hover:text-white text-[11px] font-semibold transition-colors cursor-pointer flex items-center"
               >
                 Find Problem
               </button>

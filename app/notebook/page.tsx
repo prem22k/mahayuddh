@@ -139,10 +139,10 @@ export default function NotebookPage() {
             <span>What do I know?</span>
           </div>
           <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">Notebook</h1>
-          <p className="text-xs text-white/40 mt-1">Private by default. Sharing is intentional and reversible.</p>
+          <p className="text-xs text-white/55 mt-1">Private by default. Sharing is intentional and reversible.</p>
         </div>
         <button onClick={() => { openNew(); setShowEditor(true); }}
-          className="px-4 py-2 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 self-start md:self-auto">
+          className="px-4 py-2 rounded-full btn-accent text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 self-start md:self-auto">
           <Plus className="w-3.5 h-3.5" />
           <span>New note</span>
         </button>
@@ -152,7 +152,7 @@ export default function NotebookPage() {
         {(["mine", "vault", "shared", "impact"] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={cn("px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
-              tab === t ? "bg-white/[0.12] text-white shadow-sm" : "text-white/40 hover:text-white/80")}>
+              tab === t ? "bg-white/[0.12] text-white shadow-sm" : "text-white/55 hover:text-white/80")}>
             {t === "mine"
               ? `My Notes (${notes.length})`
               : t === "vault"
@@ -171,7 +171,7 @@ export default function NotebookPage() {
         <section className="space-y-3">
           <div>
             <h2 className="text-lg font-bold text-white">Your impact</h2>
-            <p className="text-xs text-white/40 mt-0.5">
+            <p className="text-xs text-white/55 mt-0.5">
               Who copied what you wrote, and whether they went on to solve it.
             </p>
           </div>
@@ -190,8 +190,8 @@ export default function NotebookPage() {
         notes.length === 0 ? (
           <div className="p-12 text-center space-y-3 bg-[#1c1c1e]/60 rounded-3xl border border-white/[0.06]">
             <p className="text-sm font-bold text-white">Your notebook is empty.</p>
-            <p className="text-xs text-white/40">Write what a problem taught you — or copy a squad template and make it yours.</p>
-            <button onClick={() => { openNew(); setShowEditor(true); }} className="inline-block px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold cursor-pointer">Write the first note</button>
+            <p className="text-xs text-white/55">Write what a problem taught you — or copy a squad template and make it yours.</p>
+            <button onClick={() => { openNew(); setShowEditor(true); }} className="inline-block px-4 py-2 rounded-full btn-accent text-white text-xs font-bold cursor-pointer">Write the first note</button>
           </div>
         ) : (
           <div className="space-y-2">
@@ -199,14 +199,14 @@ export default function NotebookPage() {
               <div key={n.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06] flex items-center justify-between gap-3">
                 <button onClick={() => { openEdit(n); setShowEditor(true); }} className="text-left flex-1 min-w-0 cursor-pointer">
                   <div className="text-sm font-bold text-white truncate">{n.title}</div>
-                  <div className="text-[10px] text-white/30 mt-0.5 flex items-center gap-2 flex-wrap">
+                  <div className="text-[10px] text-white/50 mt-0.5 flex items-center gap-2 flex-wrap">
                     <span className="uppercase">{n.visibility}</span>
                     {n.problem_slug && <Link href={`/practice/${n.problem_slug}`} onClick={(e) => e.stopPropagation()} className="text-[#fa586a] hover:underline font-mono">{n.problem_slug}</Link>}
                     {n.fork_from && <span className="italic">Forked from @{n.fork_from}</span>}
                   </div>
                 </button>
                 <button onClick={async () => { if (window.confirm("Delete this note?")) { await deleteNote(n.id); await load(); } }}
-                  className="p-2 rounded-full text-white/30 hover:text-[#ff453a] cursor-pointer" title="Delete note">
+                  className="p-2 rounded-full text-white/50 hover:text-[#ff453a] cursor-pointer" title="Delete note">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -219,7 +219,7 @@ export default function NotebookPage() {
         vault.length === 0 ? (
           <div className="p-12 text-center space-y-3 bg-[#1c1c1e]/60 rounded-3xl border border-white/[0.06]">
             <p className="text-sm font-bold text-white">Vault is empty.</p>
-            <p className="text-xs text-white/40">Shared templates and guides from the squad will land here.</p>
+            <p className="text-xs text-white/55">Shared templates and guides from the squad will land here.</p>
             <Link href="/vault" className="inline-block px-4 py-2 rounded-full bg-white/[0.06] border border-white/[0.1] text-white text-xs font-bold">Open full vault</Link>
           </div>
         ) : (
@@ -228,7 +228,7 @@ export default function NotebookPage() {
               <div key={r.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06] flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-sm font-bold text-white truncate">{r.title}</div>
-                  <div className="text-[10px] text-white/30 mt-0.5">{r.category} · by @{r.author_profile?.username || "squad"}</div>
+                  <div className="text-[10px] text-white/50 mt-0.5">{r.category} · by @{r.author_profile?.username || "squad"}</div>
                 </div>
                 <button
                   onClick={async () => {
@@ -257,14 +257,14 @@ export default function NotebookPage() {
         shared.length === 0 ? (
           <div className="p-12 text-center space-y-2 bg-[#1c1c1e]/60 rounded-3xl border border-white/[0.06]">
             <p className="text-sm font-bold text-white">Nothing shared with you yet.</p>
-            <p className="text-xs text-white/40">Squad notes and 1:1 shares appear here — with attribution to whoever taught you.</p>
+            <p className="text-xs text-white/55">Squad notes and 1:1 shares appear here — with attribution to whoever taught you.</p>
           </div>
         ) : (
           <div className="space-y-2">
             {shared.map((n) => (
               <div key={n.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
                 <div className="text-sm font-bold text-white">{n.title}</div>
-                <div className="text-[10px] text-white/30 mt-0.5">
+                <div className="text-[10px] text-white/50 mt-0.5">
                   by @{n.owner?.username || "squad"} · {n.visibility}
                   {n.problem_slug && <span> · <Link href={`/practice/${n.problem_slug}`} className="text-[#fa586a] hover:underline font-mono">{n.problem_slug}</Link></span>}
                 </div>
@@ -278,7 +278,7 @@ export default function NotebookPage() {
         <ModalShell label={editing ? "Edit note" : "New note"} onClose={() => setShowEditor(false)}>
           <form onSubmit={handleSave} className="space-y-4 p-1">
             <h3 className="text-base font-bold text-white">{editing ? "Edit note" : "New note"}</h3>
-            {editing?.fork_from && <p className="text-[11px] text-white/40 italic">Forked from @{editing.fork_from} — your copy, your edits.</p>}
+            {editing?.fork_from && <p className="text-[11px] text-white/55 italic">Forked from @{editing.fork_from} — your copy, your edits.</p>}
             {formError && <div className="text-xs text-[#ff453a]">{formError}</div>}
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" maxLength={120} required
               className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60" />
@@ -292,7 +292,7 @@ export default function NotebookPage() {
                 <option value="squad">Squad</option>
                 <option value="public">Public</option>
               </select>
-              <button type="submit" disabled={saving} className="px-4 py-1.5 rounded-full bg-[#fa586a] text-white text-[11px] font-bold disabled:opacity-40 cursor-pointer">
+              <button type="submit" disabled={saving} className="px-4 py-1.5 rounded-full btn-accent text-white text-[11px] font-bold disabled:opacity-40 cursor-pointer">
                 {saving ? "Saving…" : editing ? "Save changes" : "Save note"}
               </button>
             </div>

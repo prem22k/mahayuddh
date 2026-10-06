@@ -124,7 +124,7 @@ export default async function PublicProfilePage({
             {stats.map((s) => (
               <div key={s.label} className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-center">
                 <div className="text-2xl font-black font-mono">{s.value}</div>
-                <div className="text-[10px] uppercase tracking-wider text-white/35 mt-1">{s.label}</div>
+                <div className="text-[10px] uppercase tracking-wider text-white/50 mt-1">{s.label}</div>
               </div>
             ))}
           </dl>
@@ -135,7 +135,7 @@ export default async function PublicProfilePage({
         {dimensions.length > 0 && (
           <section className="space-y-2">
             <h2 className="text-lg font-bold">What they have done</h2>
-            <p className="text-[11px] text-white/30">
+            <p className="text-[11px] text-white/50">
               Five separate dimensions, not one number. A single score would imply a
               comparison that does not hold.
             </p>
@@ -149,7 +149,7 @@ export default async function PublicProfilePage({
                     <span className="text-xs font-bold text-white/80">{d.label}</span>
                     <span className="text-xl font-black font-mono text-white">{d.value}</span>
                   </div>
-                  <p className="text-[10px] text-white/40">{d.definition}</p>
+                  <p className="text-[10px] text-white/55">{d.definition}</p>
                   {d.note && <p className="text-[10px] text-white/25">{d.note}</p>}
                 </div>
               ))}
@@ -163,7 +163,7 @@ export default async function PublicProfilePage({
         />
 
         {journey?.medianSolveSec != null && (
-          <p className="text-[11px] text-white/30">
+          <p className="text-[11px] text-white/50">
             Median solve {formatDuration(journey.medianSolveSec)} over the last 30 days.
           </p>
         )}

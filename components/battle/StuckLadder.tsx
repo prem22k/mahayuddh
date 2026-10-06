@@ -89,14 +89,14 @@ export function StuckLadder({
         </span>
         <button
           onClick={onClose}
-          className="p-1 text-white/40 hover:text-white rounded-md transition-colors cursor-pointer"
+          className="p-1 text-white/55 hover:text-white rounded-md transition-colors cursor-pointer"
           aria-label="Close"
         >
           <X className="w-4 h-4" />
         </button>
       </div>
 
-      <p className="text-[11px] text-white/45">
+      <p className="text-[11px] text-white/60">
         Least help that unsticks you. Helpers may not give more than you ask for.
       </p>
 
@@ -121,16 +121,16 @@ export function StuckLadder({
               >
                 {LEVEL_LABEL[l]}
               </span>
-              {level === l && <span className="text-[10px] text-white/40">selected</span>}
+              {level === l && <span className="text-[10px] text-white/55">selected</span>}
             </div>
             <div className="text-[11px] text-white/60 mt-1.5">{LEVEL_PROMISE[l]}</div>
-            <div className="text-[11px] text-white/35 italic mt-1">{LEVEL_EXAMPLE[l]}</div>
+            <div className="text-[11px] text-white/50 italic mt-1">{LEVEL_EXAMPLE[l]}</div>
           </button>
         ))}
       </div>
 
       <div>
-        <div className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-1.5">
+        <div className="text-[10px] font-bold text-white/55 uppercase tracking-wider mb-1.5">
           Who can see this
         </div>
         <div className="grid grid-cols-3 gap-1.5">
@@ -143,14 +143,14 @@ export function StuckLadder({
                 "px-2 py-2 rounded-xl border text-[10px] font-semibold transition-all cursor-pointer",
                 visibility === v
                   ? "bg-white/[0.12] border-white/25 text-white"
-                  : "bg-white/[0.04] border-white/[0.08] text-white/45 hover:text-white/75"
+                  : "bg-white/[0.04] border-white/[0.08] text-white/60 hover:text-white/75"
               )}
             >
               {v === "anon" ? "Anonymous" : v === "squad" ? "My squad" : "Public"}
             </button>
           ))}
         </div>
-        <p className="text-[10px] text-white/30 mt-1.5">{VISIBILITY_LABEL[visibility]}</p>
+        <p className="text-[10px] text-white/50 mt-1.5">{VISIBILITY_LABEL[visibility]}</p>
       </div>
 
       {/* Escape hatches that teach rather than hand over an answer, plus a way

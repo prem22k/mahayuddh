@@ -84,8 +84,8 @@ export function NextBattle({
   if (loading) {
     return (
       <div className={`rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5 ${className}`}>
-        <div className="text-[10px] uppercase tracking-widest text-white/25">Next battle</div>
-        <p className="text-xs text-white/20 mt-1">Reading your history…</p>
+        <div className="text-[10px] uppercase tracking-widest text-white/55">Next battle</div>
+        <p className="text-xs text-white/55 mt-1">Reading your history…</p>
       </div>
     );
   }
@@ -93,9 +93,9 @@ export function NextBattle({
   if (error) {
     return (
       <div className={`rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5 ${className}`}>
-        <div className="text-[10px] uppercase tracking-widest text-white/25">Next battle</div>
+        <div className="text-[10px] uppercase tracking-widest text-white/55">Next battle</div>
         <div className="flex items-center justify-between gap-3 mt-1">
-          <p className="text-xs text-white/35">{error}</p>
+          <p className="text-xs text-white/50">{error}</p>
           <button
             onClick={() => void load()}
             className="px-3 py-1 rounded-full bg-white/[0.06] text-[11px] font-bold text-white/70 hover:text-white cursor-pointer shrink-0"
@@ -112,8 +112,8 @@ export function NextBattle({
     return (
       <div className={`space-y-3 ${className}`}>
         <div className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5">
-        <div className="text-[10px] uppercase tracking-widest text-white/25">Next battle</div>
-        <p className="text-xs text-white/40 mt-1">
+        <div className="text-[10px] uppercase tracking-widest text-white/55">Next battle</div>
+        <p className="text-xs text-white/55 mt-1">
           {dismissed
             ? "Dismissed. Ask again when you want another suggestion."
             : "Nothing to recommend right now — no problem in your current sheet has a recorded reason to come back to."}
@@ -121,7 +121,7 @@ export function NextBattle({
         {!dismissed && (
           <Link
             href="/practice"
-            className="inline-block mt-3 px-4 py-2 rounded-full bg-[#fa586a] text-white text-[11px] font-bold"
+            className="inline-block mt-3 px-4 py-2 rounded-full btn-accent text-white text-[11px] font-bold"
           >
             Browse your sheet
           </Link>
@@ -143,7 +143,7 @@ export function NextBattle({
             read back. Before that the card would be an empty promise. */}
         {dismissed && (
           <div className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-2">
-            <div className="text-[10px] uppercase tracking-widest text-white/25">
+            <div className="text-[10px] uppercase tracking-widest text-white/55">
               Is this helping you?
             </div>
             <RecommendationStats />
@@ -157,7 +157,7 @@ export function NextBattle({
     <div className={`rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-3 ${className}`}>
       <div className="flex items-center gap-2">
         <Sparkles className="w-3.5 h-3.5 text-[#fa586a]" />
-        <span className="text-[10px] uppercase tracking-widest text-white/25">Next battle</span>
+        <span className="text-[10px] uppercase tracking-widest text-white/55">Next battle</span>
       </div>
 
       <div>
@@ -167,7 +167,7 @@ export function NextBattle({
         >
           {rec.problem.title}
         </Link>
-        <p className="text-[11px] text-white/35">
+        <p className="text-[11px] text-white/60">
           {rec.problem.difficulty}
           {rec.problem.patterns[0] ? ` · ${rec.problem.patterns[0]}` : ""}
         </p>
@@ -177,15 +177,15 @@ export function NextBattle({
           so a one-reason recommendation does not look like a strong one. */}
       <ul className="space-y-1">
         {rec.why.map((w) => (
-          <li key={w} className="text-[11px] text-white/55 flex gap-2">
-            <span className="text-white/20">·</span>
+          <li key={w} className="text-[11px] text-white/70 flex gap-2">
+            <span className="text-white/55">·</span>
             <span>{w}</span>
           </li>
         ))}
       </ul>
 
       {rec.blockedBy.length > 0 && (
-        <p className="text-[10px] text-[#ffd60a]/70">
+        <p className="text-[10px] text-[#ffd60a]/85">
           Listed despite unmet prerequisites ({rec.blockedBy.join(", ")}). You can skip it.
         </p>
       )}
@@ -193,20 +193,22 @@ export function NextBattle({
       <div className="flex items-center gap-2 pt-1">
         <button
           onClick={() => void decide("accepted")}
-          className="px-4 py-2 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5"
+          className="px-4 py-2 rounded-full btn-accent text-white text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
         >
-          <Play className="w-3 h-3 fill-current" />
-          Start this
+          <Play className="w-3 h-3 fill-current shrink-0" />
+          {/* The label was a bare text node, so a narrow card broke it across
+              two lines mid-phrase ("Start" / "this"). */}
+          <span className="whitespace-nowrap">Start this</span>
         </button>
         <button
           onClick={() => void decide("dismissed")}
-          className="px-3 py-2 rounded-full bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.08] text-white/60 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5"
+          className="px-3 py-2 rounded-full bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.08] text-white/85 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
           title="Not this one"
         >
-          <X className="w-3 h-3" />
-          Not this
+          <X className="w-3 h-3 shrink-0" />
+          <span className="whitespace-nowrap">Not this</span>
         </button>
-        <span className="text-[10px] text-white/20 ml-auto">
+        <span className="text-[10px] text-white/60 ml-auto shrink-0 whitespace-nowrap">
           {rec.reasonCount} {rec.reasonCount === 1 ? "reason" : "reasons"}
         </span>
       </div>

@@ -72,7 +72,7 @@ export default function SquadRecapsPage() {
     return (
       <div role="alert" className="p-12 text-center space-y-3">
         <p className="text-xs text-[#ff453a]">{loadError}</p>
-        <button onClick={load} className="px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold cursor-pointer">
+        <button onClick={load} className="px-4 py-2 rounded-full btn-accent text-white text-xs font-bold cursor-pointer">
           Retry
         </button>
       </div>
@@ -83,7 +83,7 @@ export default function SquadRecapsPage() {
 
   return (
     <div className="space-y-6 select-none max-w-3xl">
-      <Link href={`/squad`} className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white transition-colors">
+      <Link href={`/squad`} className="flex items-center gap-1.5 text-xs text-white/55 hover:text-white transition-colors">
         <ArrowLeft className="w-3.5 h-3.5" />
         <span>{squadName}</span>
       </Link>
@@ -96,7 +96,7 @@ export default function SquadRecapsPage() {
           <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight mt-1">
             Recaps
           </h1>
-          <p className="text-xs text-white/40 mt-2 max-w-xl leading-relaxed">
+          <p className="text-xs text-white/55 mt-2 max-w-xl leading-relaxed">
             Generated from what was actually logged. Every recap names the week it covers, so a
             shared one is never mistaken for today.
           </p>
@@ -104,7 +104,7 @@ export default function SquadRecapsPage() {
         <button
           onClick={generate}
           disabled={generating}
-          className="px-4 py-2 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1.5 shrink-0"
+          className="px-4 py-2 rounded-full btn-accent text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1.5 shrink-0"
         >
           <Sparkles className="w-3.5 h-3.5" />
           {generating ? "Generating…" : "Generate this week"}
@@ -120,7 +120,7 @@ export default function SquadRecapsPage() {
       {recaps.length === 0 ? (
         <div className="p-12 text-center space-y-3 rounded-3xl bg-white/[0.02] border border-white/[0.06]">
           <p className="text-sm font-bold text-white">No recaps yet.</p>
-          <p className="text-xs text-white/40 max-w-sm mx-auto">
+          <p className="text-xs text-white/55 max-w-sm mx-auto">
             A recap summarises one week of what your squad logged. Generate one above — even a
             quiet week is worth writing down.
           </p>
@@ -134,7 +134,7 @@ export default function SquadRecapsPage() {
               <article key={r.id} className="p-6 rounded-3xl bg-gradient-to-br from-white/[0.04] to-transparent border border-white/[0.06] space-y-4">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div>
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-white/35">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-white/50">
                       <Link
                         href={`/squad/${squadId}/recaps/${r.id}`}
                         className="hover:text-white transition-colors"
@@ -164,7 +164,7 @@ export default function SquadRecapsPage() {
                   ].map((m) => (
                     <div key={m.label} className="p-3 rounded-2xl bg-white/[0.02] border border-white/[0.06] text-center">
                       <div className="text-xl font-black text-white font-mono">{m.value}</div>
-                      <div className="text-[10px] text-white/35 mt-0.5">{m.label}</div>
+                      <div className="text-[10px] text-white/50 mt-0.5">{m.label}</div>
                     </div>
                   ))}
                 </div>
@@ -173,7 +173,7 @@ export default function SquadRecapsPage() {
                   <dl className="space-y-2">
                     {body.entries.map((e: { label: string; detail: string }) => (
                       <div key={e.label} className="grid grid-cols-[110px_1fr] gap-3">
-                        <dt className="text-[10px] font-bold uppercase tracking-wider text-white/35 pt-0.5">
+                        <dt className="text-[10px] font-bold uppercase tracking-wider text-white/50 pt-0.5">
                           {e.label}
                         </dt>
                         <dd className="text-xs text-white/70 leading-relaxed">{e.detail}</dd>
@@ -186,12 +186,12 @@ export default function SquadRecapsPage() {
                     lie, and a zero on a chart hides the reason. */}
                 {body.empty?.length > 0 && (
                   <div className="pt-2 border-t border-white/[0.06]">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-white/30 mb-1">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1">
                       Did not happen
                     </div>
                     <ul className="space-y-0.5">
                       {body.empty.map((line: string) => (
-                        <li key={line} className="text-[11px] text-white/30">
+                        <li key={line} className="text-[11px] text-white/50">
                           · {line}
                         </li>
                       ))}
@@ -200,7 +200,7 @@ export default function SquadRecapsPage() {
                 )}
 
                 {body.entries?.length === 0 && body.empty?.length === 0 && (
-                  <p className="text-xs text-white/35">Nothing was logged in this window.</p>
+                  <p className="text-xs text-white/50">Nothing was logged in this window.</p>
                 )}
               </article>
             );

@@ -53,7 +53,12 @@ export function ProblemLink({
       onClick={(e) => e.stopPropagation()}
       title={label}
       aria-label={label}
-      className={cn("text-white/40 hover:text-white transition-colors", className)}
+      /* A 14px glyph in a padding-less anchor measured 14x14 — untappable.
+         44px on touch, natural size on desktop where the mouse is precise. */
+      className={cn(
+        "inline-flex items-center justify-center min-h-11 min-w-11 md:min-h-0 md:min-w-0 text-white/55 hover:text-white transition-colors",
+        className
+      )}
     >
       <ExternalLink className={iconClassName} />
     </a>

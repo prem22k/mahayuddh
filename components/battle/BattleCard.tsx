@@ -127,7 +127,7 @@ export function BattleCard({
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] font-extrabold uppercase tracking-widest text-white/40">
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-white/55">
               Battle
             </span>
             {card.difficulty && (
@@ -160,14 +160,14 @@ export function BattleCard({
           {failed ? (
             <>
               <div className="text-2xl font-black text-[#ff9f0a] font-mono leading-none">Failed</div>
-              <div className="text-[11px] text-white/40 mt-0.5">Revenge available</div>
+              <div className="text-[11px] text-white/55 mt-0.5">Revenge available</div>
             </>
           ) : (
             <>
               <div className="text-2xl font-black text-white font-mono leading-none">
                 {solvedLabel ?? "—"}
               </div>
-              <div className="text-[11px] text-white/40 mt-0.5">
+              <div className="text-[11px] text-white/55 mt-0.5">
                 {prevLabel ? (
                   <>
                     Previous best{" "}
@@ -183,7 +183,7 @@ export function BattleCard({
       </div>
 
       {/* Honest provenance: solved is not the same as understood (§44). */}
-      <div className="flex items-center gap-3 text-[11px] text-white/40 flex-wrap">
+      <div className="flex items-center gap-3 text-[11px] text-white/55 flex-wrap">
         <span>{card.stats.attempts} attempts</span>
         {card.stats.revisits > 0 && <span>· {card.stats.revisits} revisits</span>}
         {card.stats.challengesSent > 0 && <span>· {card.stats.challengesSent} challenged out</span>}
@@ -198,7 +198,7 @@ export function BattleCard({
 
       {isFull(card) && card.approachExcerpt && (
         <div className="rounded-2xl border border-white/[0.06] bg-black/20 p-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-white/35 mb-1">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1">
             Your approach
           </div>
           <p className="text-xs text-white/70 leading-relaxed">{card.approachExcerpt}</p>
@@ -277,7 +277,7 @@ export function BattleCard({
       {/* Challenge picker. Squad members only — no global user search (§61). */}
       {squadMembers.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-white/[0.06]">
-          <span className="text-[11px] text-white/40">Challenge</span>
+          <span className="text-[11px] text-white/55">Challenge</span>
           <select
             value={target}
             onChange={(e) => setTarget(e.target.value)}
@@ -301,7 +301,7 @@ export function BattleCard({
               if (secs != null) params.set("time", String(secs));
               router.push(`/challenges?${params.toString()}`);
             }}
-            className="px-3 py-1.5 rounded-full bg-[#fa586a] text-white text-[11px] font-bold transition-all cursor-pointer"
+            className="px-3 py-1.5 rounded-full btn-accent text-white text-[11px] font-bold transition-all cursor-pointer"
           >
             Send challenge
           </button>

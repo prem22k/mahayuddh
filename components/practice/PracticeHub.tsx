@@ -78,7 +78,7 @@ export function PracticeHub() {
     return (
       <div className="p-12 text-center space-y-3 bg-[#1c1c1e]/60 rounded-3xl border border-white/[0.06]">
         <p className="text-sm font-bold text-white">Log in to get your revision queue.</p>
-        <Link href="/login" className="inline-block px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold">Log in</Link>
+        <Link href="/login" className="inline-block px-4 py-2 rounded-full btn-accent text-white text-xs font-bold">Log in</Link>
       </div>
     );
   }
@@ -112,7 +112,7 @@ export function PracticeHub() {
           Review due {reviews.length > 0 && <span className="text-[#fa586a]">({reviews.length})</span>}
         </h2>
         {reviews.length === 0 ? (
-          <p className="text-xs text-white/30 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
+          <p className="text-xs text-white/50 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
             Nothing due. Failed battles, fading solves, and bookmarks will queue here automatically.
           </p>
         ) : (
@@ -134,7 +134,7 @@ export function PracticeHub() {
                     <Link href={`/practice/${r.problem_slug}`} className="text-xs font-bold text-white hover:text-[#fa586a] transition-colors truncate block">
                       {meta?.title || r.problem_slug}
                     </Link>
-                    <span className="text-[10px] text-white/40">
+                    <span className="text-[10px] text-white/55">
                       {/* Revenge shows the real previous time; other reasons keep
                           their plain label. Never invent a duration. */}
                       {revenge
@@ -162,13 +162,13 @@ export function PracticeHub() {
       {/* Weak patterns */}
       {weak.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm font-bold text-white">Weak patterns <span className="text-white/30 font-normal text-[11px]">· estimate, not proof</span></h2>
+          <h2 className="text-sm font-bold text-white">Weak patterns <span className="text-white/50 font-normal text-[11px]">· estimate, not proof</span></h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {weak.map((p) => (
               <Link key={p.pattern} href={`/patterns/${encodeURIComponent(p.pattern)}`}
                 className="p-4 rounded-2xl bg-[#ff9f0a]/[0.05] border border-[#ff9f0a]/20 hover:border-[#ff9f0a]/40 transition-all">
                 <div className="text-xs font-bold text-white">{p.pattern}</div>
-                <div className="text-[11px] text-white/40 mt-1 font-mono">
+                <div className="text-[11px] text-white/55 mt-1 font-mono">
                   {p.solved} solved · {p.failures} failed · {p.revisits} revisits
                 </div>
               </Link>

@@ -253,7 +253,7 @@ export function FeedComposer({
   const picker = useMemo(() => {
     const cls = "w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs text-white focus:outline-none focus:border-white/20";
     const empty = (msg: string) => (
-      <p className="text-[11px] text-white/35">{msg}</p>
+      <p className="text-[11px] text-white/50">{msg}</p>
     );
 
     if (tile === "solve") {
@@ -331,7 +331,7 @@ export function FeedComposer({
               <option key={l} value={l}>{LEVEL_LABEL[l]}</option>
             ))}
           </select>
-          <p className="text-[10px] text-white/30">
+          <p className="text-[10px] text-white/50">
             The level is a contract: nobody may answer above it.
           </p>
         </div>
@@ -373,7 +373,7 @@ export function FeedComposer({
       <div className="space-y-4">
         <div>
           <h2 className="text-lg font-bold text-white">Post something</h2>
-          <p className="text-[11px] text-white/40 mt-1">
+          <p className="text-[11px] text-white/55 mt-1">
             Structured, not a blank box. Each one creates a real thing.
           </p>
         </div>
@@ -394,7 +394,7 @@ export function FeedComposer({
                 className="p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.06] text-left transition-all cursor-pointer"
               >
                 <div className="text-[11px] font-bold text-white/80">{TILE_COPY[t].title}</div>
-                <div className="text-[10px] text-white/30 mt-0.5">{TILE_COPY[t].blurb}</div>
+                <div className="text-[10px] text-white/50 mt-0.5">{TILE_COPY[t].blurb}</div>
               </button>
             ))}
           </div>
@@ -406,14 +406,14 @@ export function FeedComposer({
                   setTile(null);
                   setError(null);
                 }}
-                className="text-[11px] font-bold text-white/35 hover:text-white cursor-pointer"
+                className="text-[11px] font-bold text-white/50 hover:text-white cursor-pointer"
               >
                 ← All tiles
               </button>
               <span className="text-sm font-bold text-white">{TILE_COPY[tile].title}</span>
             </div>
 
-            <p className="text-[11px] text-white/35">{TILE_COPY[tile].blurb}</p>
+            <p className="text-[11px] text-white/50">{TILE_COPY[tile].blurb}</p>
             {picker}
 
             {note && <p className="text-[11px] text-[#30d158]">{note}</p>}
@@ -433,7 +433,7 @@ export function FeedComposer({
               <button
                 onClick={() => void doSubmit()}
                 disabled={!canSubmit || busy}
-                className="px-5 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-5 py-2 rounded-full btn-accent text-white text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {busy && <Spinner size="xs" tone="inverse" />}
                 Post

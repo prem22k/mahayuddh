@@ -193,7 +193,7 @@ export function TodaysBattle({
             className="p-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-white/70 hover:text-white transition-all border border-white/[0.08]"
           />
         </div>
-        <span className="text-[11px] text-white/40 font-mono hidden sm:inline">Dock Solver Ready</span>
+        <span className="text-[11px] text-white/60 font-mono hidden sm:inline">Dock Solver Ready</span>
       </div>
 
       {/* ── Post-solve next actions. Every one is wired (Bible Principle 9). ── */}

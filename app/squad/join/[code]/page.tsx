@@ -75,9 +75,8 @@ export default function SquadJoinPage() {
   if (loading) return <PageLoader label="Loading invite..." />;
 
   return (
-    <div className="max-w-md mx-auto space-y-6 select-none pt-8">
+    <div className="max-w-md mx-auto space-y-6 pt-8">
       <div className="text-center">
-        <div className="text-[11px] font-semibold text-[#fa586a] tracking-[0.2em] uppercase mb-1">Squad invite</div>
         <h1 className="text-2xl font-extrabold text-white tracking-tight">You&apos;re invited to battle together</h1>
       </div>
 
@@ -96,7 +95,7 @@ export default function SquadJoinPage() {
             </div>
             <div>
               <h2 className="text-lg font-extrabold text-white">{preview.squad.name}</h2>
-              <p className="text-[11px] text-white/40 font-mono">{preview.member_count} member{preview.member_count === 1 ? "" : "s"}</p>
+              <p className="text-[11px] text-white/55 font-mono">{preview.member_count} member{preview.member_count === 1 ? "" : "s"}</p>
             </div>
           </div>
           {preview.squad.description && <p className="text-xs text-white/50">{preview.squad.description}</p>}
@@ -120,9 +119,9 @@ export default function SquadJoinPage() {
               </div>
             ))}
           </div>
-          {error && <p className="text-xs text-[#ff453a]">{error}</p>}
+          {error && <p role="alert" className="text-xs text-[#ff453a]">{error}</p>}
           <button onClick={handleJoin} disabled={joining}
-            className="w-full py-3 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white text-xs font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5">
+            className="w-full py-3 min-h-11 rounded-full btn-accent text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5">
             <span>
               {joining
                 ? "Joining…"
@@ -141,7 +140,8 @@ export default function SquadJoinPage() {
                 setTimeout(() => setCopied(false), 2000);
               }
             }}
-            className="w-full py-2.5 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/70 text-xs font-mono transition-all cursor-pointer flex items-center justify-center gap-1.5"
+            aria-label="Copy invite code"
+            className="w-full py-2.5 min-h-11 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/70 text-xs font-mono transition-colors cursor-pointer flex items-center justify-center gap-1.5"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-[#30d158]" /> : <Copy className="w-3.5 h-3.5" />}
             <span>{copied ? "Copied!" : `Code: ${code}`}</span>

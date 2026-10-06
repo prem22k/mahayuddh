@@ -107,7 +107,7 @@ export function StuckBoard() {
             onClick={() => setTab(t.key)}
             className={cn(
               "px-4 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer",
-              tab === t.key ? "bg-white/[0.12] text-white" : "text-white/40 hover:text-white/70"
+              tab === t.key ? "bg-white/[0.12] text-white" : "text-white/55 hover:text-white/70"
             )}
           >
             {t.label}
@@ -124,7 +124,7 @@ export function StuckBoard() {
       {rows.length === 0 ? (
         <div className="p-10 text-center space-y-3 rounded-3xl bg-white/[0.02] border border-white/[0.06]">
           <HelpCircle className="w-6 h-6 text-white/20 mx-auto" />
-          <p className="text-xs text-white/45">
+          <p className="text-xs text-white/60">
             {tab === "open"
               ? "Nobody in your squad is stuck right now. That is a good sign."
               : "You haven't asked for help. When you do, ask for the smallest amount that unsticks you."}
@@ -137,7 +137,7 @@ export function StuckBoard() {
               Start a battle
             </Link>
           ) : (
-            <p className="text-[11px] text-white/30">
+            <p className="text-[11px] text-white/50">
               Press <span className="text-white/50 font-semibold">Stuck?</span> in the dock while
               solving.
             </p>
@@ -225,7 +225,7 @@ function RequestCard({
                 {request.status}
               </span>
             )}
-            <span className="text-[10px] text-white/30 font-mono">
+            <span className="text-[10px] text-white/50 font-mono">
               {relativeDays(daysBetween(request.created_at))}
             </span>
           </div>
@@ -238,7 +238,7 @@ function RequestCard({
         </div>
       </div>
 
-      <p className="text-[11px] text-white/40">{LEVEL_PROMISE[request.level]}</p>
+      <p className="text-[11px] text-white/55">{LEVEL_PROMISE[request.level]}</p>
 
       {(request.replies ?? []).length > 0 && (
         <div className="space-y-2">
@@ -334,7 +334,7 @@ function RequestCard({
                 setActing(false);
               }}
               disabled={busy || acting}
-              className="px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-white/40 hover:text-white text-[11px] font-bold transition-all disabled:opacity-40 cursor-pointer"
+              className="px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-white/55 hover:text-white text-[11px] font-bold transition-all disabled:opacity-40 cursor-pointer"
             >
               Delete
             </button>
@@ -345,7 +345,7 @@ function RequestCard({
           {/* Only levels at or below the ask are offered — the ladder in the UI,
               enforced again by the database trigger. */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[10px] text-white/40 uppercase tracking-wider">Answer at</span>
+            <span className="text-[10px] text-white/55 uppercase tracking-wider">Answer at</span>
             {levels.map((l) => (
               <button
                 key={l}
@@ -354,7 +354,7 @@ function RequestCard({
                   "px-2.5 py-1 rounded-full border text-[10px] font-bold transition-all cursor-pointer",
                   replyLevel === l
                     ? LEVEL_CLASS[l]
-                    : "bg-white/[0.04] border-white/[0.08] text-white/40 hover:text-white/70"
+                    : "bg-white/[0.04] border-white/[0.08] text-white/55 hover:text-white/70"
                 )}
               >
                 {LEVEL_LABEL[l]}
@@ -389,7 +389,7 @@ function RequestCard({
               <Send className="w-3 h-3" />
               Reply
             </button>
-            <span className="text-[10px] text-white/30">
+            <span className="text-[10px] text-white/50">
               {draft.trim().length}/4000
             </span>
           </div>

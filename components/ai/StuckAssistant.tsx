@@ -95,12 +95,12 @@ export function StuckAssistant({
     <div className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-3">
       <div className="flex items-center gap-2">
         <Sparkles className="w-3.5 h-3.5 text-[#ffd60a]" />
-        <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">
           Stuck assistant
         </span>
       </div>
 
-      <p className="text-[11px] text-white/40">
+      <p className="text-[11px] text-white/55">
         Hints only, at the level you choose. It will not answer above it.
       </p>
 
@@ -112,7 +112,7 @@ export function StuckAssistant({
             className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all cursor-pointer ${
               level === l
                 ? "bg-white/[0.12] text-white"
-                : "bg-white/[0.04] text-white/40 hover:text-white/70"
+                : "bg-white/[0.04] text-white/55 hover:text-white/70"
             }`}
           >
             {LEVEL_LABEL[l]}
@@ -145,7 +145,7 @@ export function StuckAssistant({
       {blocked && (
         <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] p-3 space-y-1">
           <p className="text-[11px] text-white/50">{blocked}</p>
-          <p className="text-[10px] text-white/30">
+          <p className="text-[10px] text-white/50">
             This is not a placeholder answer. No AI feature here will invent one.
           </p>
         </div>

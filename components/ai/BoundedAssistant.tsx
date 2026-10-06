@@ -162,11 +162,11 @@ export function BoundedAssistant({
           {copy.title}
           <span className="text-[10px] font-normal text-white/25">§45</span>
         </p>
-        <p className="text-[11px] text-white/45 leading-relaxed">{copy.blurb}</p>
+        <p className="text-[11px] text-white/60 leading-relaxed">{copy.blurb}</p>
       </header>
 
       <label className="block">
-        <span className="text-[11px] text-white/35">{copy.inputLabel}</span>
+        <span className="text-[11px] text-white/50">{copy.inputLabel}</span>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -204,13 +204,13 @@ export function BoundedAssistant({
             {answer}
           </p>
           {stripped && (
-            <p className="text-[10px] text-white/30">
+            <p className="text-[10px] text-white/50">
               Code was removed from that answer — this feature explains, it does not
               hand over an implementation.
             </p>
           )}
           {feature === "interview-sim" && (
-            <p className="text-[10px] text-white/30">
+            <p className="text-[10px] text-white/50">
               One at a time. Answer that question first — then come back for the next.
             </p>
           )}

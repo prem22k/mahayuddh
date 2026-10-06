@@ -32,8 +32,8 @@ export function PrimerList() {
     return (
       <div className="p-12 text-center space-y-2 rounded-3xl bg-[#1c1c1e]/60 border border-white/[0.06]">
         <p className="text-sm font-bold text-white">No primers yet.</p>
-        <p className="text-xs text-white/40">Start with a roadmap battle instead — primers grow from real squad needs.</p>
-        <Link href="/practice" className="inline-block px-4 py-2 rounded-full bg-[#fa586a] text-white text-xs font-bold">Practice</Link>
+        <p className="text-xs text-white/55">Start with a roadmap battle instead — primers grow from real squad needs.</p>
+        <Link href="/practice" className="inline-block px-4 py-2 rounded-full btn-accent text-white text-xs font-bold">Practice</Link>
       </div>
     );
   }
@@ -45,7 +45,7 @@ export function PrimerList() {
           className="p-5 rounded-3xl bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.08] hover:border-white/[0.15] transition-all">
           <div className="text-[10px] font-bold text-[#fa586a] uppercase tracking-widest">{p.pattern}</div>
           <div className="text-sm font-bold text-white mt-1">{p.title}</div>
-          <div className="text-[11px] text-white/40 mt-1">{p.starter_slugs.length} starter problems · {p.mistakes.length} common mistakes</div>
+          <div className="text-[11px] text-white/55 mt-1">{p.starter_slugs.length} starter problems · {p.mistakes.length} common mistakes</div>
         </Link>
       ))}
     </div>

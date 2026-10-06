@@ -93,7 +93,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
                 .
               </span>
             </span>
-            <span className="text-[10px] text-white/35 font-medium tracking-[0.16em] uppercase mt-0.5">
+            <span className="text-[10px] text-white/60 font-medium tracking-[0.16em] uppercase mt-0.5">
               Developer Arena
             </span>
           </Link>
@@ -103,7 +103,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
         <div className="px-3 pb-3">
           <button
             onClick={onSearchOpen}
-            className="w-full h-8 px-3 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.06] hover:border-[#fa586a]/30 rounded-[10px] flex items-center justify-between text-white/40 transition-all group cursor-pointer"
+            className="w-full h-8 px-3 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.06] hover:border-[#fa586a]/30 rounded-[10px] flex items-center justify-between text-white/70 transition-all group cursor-pointer"
           >
             <div className="flex items-center gap-2">
               <Search className="w-3.5 h-3.5 group-hover:text-[#fa586a] transition-colors" />
@@ -111,7 +111,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
                 Search problems...
               </span>
             </div>
-            <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-white/[0.04] rounded border border-white/[0.06] text-white/25">
+            <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-white/[0.04] rounded border border-white/[0.06] text-white/60">
               ⌘K
             </kbd>
           </button>
@@ -154,11 +154,11 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
             <div className="nav-section-label">Roadmaps</div>
             <nav className="space-y-0.5" aria-label="Curated roadmaps">
               {loadingLists ? (
-                <div className="px-3 py-1.5 text-[11px] text-white/25">
+                <div className="px-3 py-1.5 text-[11px] text-white/60">
                   Loading roadmaps...
                 </div>
               ) : curatedRoadmaps.length === 0 ? (
-                <div className="px-3 py-1.5 text-[11px] text-white/25">
+                <div className="px-3 py-1.5 text-[11px] text-white/60">
                   No roadmaps loaded
                 </div>
               ) : (
@@ -190,7 +190,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
               <span className="nav-section-label !p-0 !m-0">Squad Lists</span>
               <button
                 onClick={() => setIsCreateListOpen(true)}
-                className="p-1 rounded-md text-white/40 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                className="p-1 rounded-md text-white/55 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
                 title="Create Squad List"
                 aria-label="Create Squad List"
               >
@@ -202,7 +202,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
               {squadLists.length === 0 ? (
                 <button
                   onClick={() => setIsCreateListOpen(true)}
-                  className="w-full text-left px-3 py-2 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] border border-dashed border-white/[0.08] hover:border-white/[0.15] text-[11px] text-white/40 hover:text-white/70 transition-all flex items-center gap-2 group cursor-pointer"
+                  className="w-full text-left px-3 py-2 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] border border-dashed border-white/[0.08] hover:border-white/[0.15] text-[11px] text-white/70 hover:text-white transition-all flex items-center gap-2 group cursor-pointer"
                 >
                   <Plus className="w-3 h-3 group-hover:text-[#fa586a] transition-colors" />
                   <span>Create Squad List</span>
@@ -259,7 +259,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
                 <span className="text-[12px] font-semibold text-white truncate leading-tight group-hover:text-white">
                   {displayName}
                 </span>
-                <span className="text-[10px] text-white/35 truncate leading-tight font-mono">
+                <span className="text-[10px] text-white/60 truncate leading-tight font-mono">
                   @{displayHandle}
                 </span>
               </div>
@@ -279,7 +279,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
                 onClick={() => signOut()}
                 title="Sign Out"
                 aria-label="Sign Out"
-                className="p-1.5 rounded-lg text-white/30 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
+                className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
               </button>

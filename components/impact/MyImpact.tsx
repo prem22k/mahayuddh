@@ -54,10 +54,10 @@ export function MyImpact() {
   if (rows.length === 0) {
     return (
       <div className="space-y-1">
-        <p className="text-xs text-white/45">
+        <p className="text-xs text-white/60">
           Nothing of yours has been copied yet.
         </p>
-        <p className="text-[11px] text-white/30">
+        <p className="text-[11px] text-white/50">
           Publish an approach or a primer and this will show who picked it up —
           and whether they went on to solve the problem.
         </p>
@@ -127,7 +127,7 @@ export function MyImpact() {
                 </div>
               </div>
             </div>
-            <p className="text-[10px] text-white/35 mt-1.5">{r.headline}</p>
+            <p className="text-[10px] text-white/50 mt-1.5">{r.headline}</p>
           </li>
         ))}
       </ul>

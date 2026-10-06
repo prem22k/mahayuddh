@@ -13,7 +13,7 @@ export function difficultyBadgeClass(difficulty: string): string {
     case "hard":
       return "text-[#ff453a] bg-[#ff453a]/10 border-[#ff453a]/25";
     default:
-      return "text-white/40";
+      return "text-white/55";
   }
 }
 

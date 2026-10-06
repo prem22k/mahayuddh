@@ -16,7 +16,7 @@ export const metadata = {
 export default function StuckPage() {
   return (
     <div className="space-y-6 select-none max-w-3xl">
-      <Link href="/practice" className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white transition-colors">
+      <Link href="/practice" className="flex items-center gap-1.5 text-xs text-white/55 hover:text-white transition-colors">
         ← Practice
       </Link>
 
@@ -27,7 +27,7 @@ export default function StuckPage() {
         <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
           Stuck
         </h1>
-        <p className="text-xs text-white/40 mt-2 max-w-xl leading-relaxed">
+        <p className="text-xs text-white/55 mt-2 max-w-xl leading-relaxed">
           Ask for a nudge, a pattern hint, a direction, or the whole thing — and get exactly
           that. Helpers cannot give you more than you asked for. A hint you can act on teaches
           more than an answer that teaches nothing.

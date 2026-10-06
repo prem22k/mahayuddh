@@ -70,7 +70,7 @@ export default async function PublicRecapPage({
         </Suspense>
 
         <header className="space-y-2">
-          <div className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/40">
+          <div className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/55">
             Week of {body.window?.weekStart ?? recap.week_start}
           </div>
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">{squadName}</h1>
@@ -90,14 +90,14 @@ export default async function PublicRecapPage({
               className="p-3 rounded-2xl bg-white/[0.02] border border-white/[0.06] text-center"
             >
               <div className="text-xl font-black text-white font-mono">{m.value}</div>
-              <div className="text-[10px] text-white/35 mt-0.5">{m.label}</div>
+              <div className="text-[10px] text-white/50 mt-0.5">{m.label}</div>
             </div>
           ))}
         </dl>
 
         {body.biggestImprovement && (
           <section className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-1">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-white/30">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-white/50">
               Biggest improvement
             </div>
             <p className="text-sm text-white/80">
@@ -106,7 +106,7 @@ export default async function PublicRecapPage({
               {formatDuration(body.biggestImprovement.toSec)}
             </p>
             {body.biggestImprovement.username && (
-              <p className="text-[11px] text-white/35">
+              <p className="text-[11px] text-white/50">
                 @{body.biggestImprovement.username}
               </p>
             )}
@@ -117,7 +117,7 @@ export default async function PublicRecapPage({
           <ul className="space-y-1.5">
             {body.entries.map((e) => (
               <li key={e.label} className="flex items-baseline gap-2 text-sm text-white/60">
-                <span className="text-white/30 text-[10px] uppercase tracking-wider w-24 shrink-0">
+                <span className="text-white/50 text-[10px] uppercase tracking-wider w-24 shrink-0">
                   {e.label}
                 </span>
                 {e.detail}
@@ -130,12 +130,12 @@ export default async function PublicRecapPage({
             be a highlight reel, and the plan asks for the opposite. */}
         {body.empty?.length > 0 && (
           <div className="pt-3 border-t border-white/[0.06]">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-white/30 mb-1">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1">
               Did not happen
             </div>
             <ul className="space-y-0.5">
               {body.empty.map((line: string) => (
-                <li key={line} className="text-[11px] text-white/30">
+                <li key={line} className="text-[11px] text-white/50">
                   · {line}
                 </li>
               ))}
@@ -152,7 +152,7 @@ export default async function PublicRecapPage({
           />
           <Link
             href="/login"
-            className="px-4 py-2 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white text-[11px] font-bold transition-all"
+            className="px-4 py-2 rounded-full btn-accent text-white text-[11px] font-bold transition-all"
           >
             Track your own
           </Link>
