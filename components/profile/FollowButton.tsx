@@ -57,8 +57,8 @@ export function FollowButton({ userId, username }: { userId: string; username: s
         disabled={busy || following === null}
         className={`px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 ${
           following
-            ? "bg-white/[0.08] border border-white/[0.1] text-white"
-            : "btn-accent text-white"
+            ? "bg-surface-overlay border border-hairline text-text-primary"
+            : "bg-primary text-on-primary hover:bg-primary-hover"
         }`}
         title={
           following
@@ -69,7 +69,7 @@ export function FollowButton({ userId, username }: { userId: string; username: s
         {following ? <UserCheck className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
         {following ? "Following" : "Follow"}
       </button>
-      {error && <span className="text-[10px] text-[#ff453a]">{error}</span>}
+      {error && <span className="text-[10px] text-error">{error}</span>}
     </div>
   );
 }

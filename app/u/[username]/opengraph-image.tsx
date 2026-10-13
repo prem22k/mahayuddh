@@ -37,12 +37,12 @@ export default async function JourneyOpengraphImage({
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          background: "linear-gradient(135deg, #0a0a0a 0%, #141414 55%, #1c0f12 100%)",
+          background: "linear-gradient(135deg, #0a0a0a 0%, #141414 55%, #1a150d 100%)",
           padding: 72,
           fontFamily: "sans-serif",
         }}
       >
-        <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 6, color: "#fa586a" }}>
+        <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 6, color: "#F5B83D" }}>
           LAST 30 DAYS
         </div>
 

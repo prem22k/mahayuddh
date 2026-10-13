@@ -4,10 +4,12 @@ import { profileHref } from "@/lib/profiles/username";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Users, Copy, Check, ArrowRight } from "lucide-react";
+import { Copy, Check } from "lucide-react";
 import { copyText } from "@/lib/clipboard";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { PageLoader } from "@/components/ui/PageLoader";
+import { Button } from "@/components/ui/Button";
+import { Avatar } from "@/components/ui/Avatar";
 import { joinSquad } from "@/lib/data/squads";
 import { track } from "@/lib/analytics";
 
@@ -75,79 +77,122 @@ export default function SquadJoinPage() {
   if (loading) return <PageLoader label="Loading invite..." />;
 
   return (
-    <div className="max-w-md mx-auto space-y-6 pt-8">
-      <div className="text-center">
-        <h1 className="text-2xl font-extrabold text-white tracking-tight">You&apos;re invited to battle together</h1>
-      </div>
-
-      {error && !preview ? (
-        <div className="p-8 text-center space-y-3 bg-[#1c1c1e]/60 rounded-3xl border border-white/[0.06]">
-          <p className="text-xs text-[#ff453a]">{error}</p>
-          <Link href="/" className="inline-block px-4 py-2 rounded-full bg-white/[0.06] border border-white/[0.1] text-white text-xs font-bold">
-            Start solo instead
-          </Link>
-        </div>
-      ) : preview ? (
-        <div className="p-6 rounded-3xl bg-white/[0.03] border border-white/[0.08] space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-[#fa586a]/15 border border-[#fa586a]/30 flex items-center justify-center text-[#fa586a]">
-              <Users className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-extrabold text-white">{preview.squad.name}</h2>
-              <p className="text-[11px] text-white/55 font-mono">{preview.member_count} member{preview.member_count === 1 ? "" : "s"}</p>
-            </div>
-          </div>
-          {preview.squad.description && <p className="text-xs text-white/50">{preview.squad.description}</p>}
-          {preview.invited_by && (
-            <p className="text-xs text-[#fa586a]">
-              <Link href={profileHref(preview.invited_by)} className="font-bold hover:underline">
-                @{preview.invited_by}
-              </Link>{" "}
-              invited you to this squad.
-            </p>
-          )}
-          <div className="flex items-center gap-2">
-            {preview.sample_members.map((m, i) => (
-              <div key={i} className="w-7 h-7 rounded-full bg-white/[0.06] border border-white/[0.1] flex items-center justify-center font-bold text-[10px] text-white overflow-hidden" title={m.profile.username}>
-                {m.profile.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={m.profile.avatar_url} alt={m.profile.username} className="w-full h-full object-cover" />
-                ) : (
-                  m.profile.username.charAt(0).toUpperCase()
-                )}
-              </div>
-            ))}
-          </div>
-          {error && <p role="alert" className="text-xs text-[#ff453a]">{error}</p>}
-          <button onClick={handleJoin} disabled={joining}
-            className="w-full py-3 min-h-11 rounded-full btn-accent text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5">
-            <span>
-              {joining
-                ? "Joining…"
-                : user
-                  ? "Join squad"
-                  : preview.invited_by
-                    ? `Join ${preview.squad.name}`
-                    : "Create an account to join"}
-            </span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={async () => {
-              if (await copyText(code)) {
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              }
-            }}
-            aria-label="Copy invite code"
-            className="w-full py-2.5 min-h-11 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/70 text-xs font-mono transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+    <div className="min-h-screen bg-canvas text-text-primary">
+      <header className="flex h-14 items-center justify-between px-4 md:px-10">
+        <Link href="/welcome" className="font-display text-lg font-semibold tracking-tight">
+          Mahayuddh
+        </Link>
+        {!user && (
+          <Link
+            href={`/login?next=${encodeURIComponent(`/squad/join/${code}`)}`}
+            className="inline-flex min-h-[44px] items-center rounded-md px-3 text-sm font-medium text-text-secondary hover:bg-surface-raised hover:text-text-primary"
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-[#30d158]" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copied ? "Copied!" : `Code: ${code}`}</span>
-          </button>
-        </div>
-      ) : null}
+            Sign in
+          </Link>
+        )}
+      </header>
+
+      <main className="mx-auto w-full max-w-[560px] px-4 pb-16 pt-6">
+        {error && !preview ? (
+          <div className="rounded-xl border border-hairline bg-surface p-8 text-center">
+            <h1 className="font-display text-2xl font-semibold tracking-tight">
+              That invite code doesn&apos;t work
+            </h1>
+            <p className="mt-2 text-sm leading-6 text-text-secondary">
+              {error} Check it with the person who sent it.
+            </p>
+            <Button variant="secondary" className="mt-5 min-h-[44px]" onClick={() => router.push("/welcome")}>
+              Start your own squad
+            </Button>
+          </div>
+        ) : preview ? (
+          <>
+            <section className="rounded-xl border border-hairline bg-surface p-6 sm:p-8">
+              <div className="flex items-center justify-center">
+                <span className="inline-flex items-center">
+                  {preview.sample_members.slice(0, 5).map((m, i) => (
+                    <Avatar
+                      key={`${m.profile.username}-${i}`}
+                      name={m.profile.username}
+                      src={m.profile.avatar_url}
+                      size="lg"
+                      className={i > 0 ? "-ml-3 ring-2 ring-surface" : "ring-2 ring-surface"}
+                    />
+                  ))}
+                </span>
+              </div>
+              <p className="mt-5 text-center text-sm leading-6 text-text-secondary">
+                {preview.invited_by ? (
+                  <>
+                    <Link
+                      href={profileHref(preview.invited_by)}
+                      className="font-medium text-text-primary underline underline-offset-4"
+                    >
+                      @{preview.invited_by}
+                    </Link>{" "}
+                    invited you to
+                  </>
+                ) : (
+                  "You were invited to"
+                )}
+              </p>
+              <h1 className="mt-1 text-center font-display text-4xl font-semibold leading-tight tracking-tight">
+                {preview.squad.name}
+              </h1>
+              {preview.squad.description && (
+                <p className="mx-auto mt-2 max-w-sm text-center text-sm leading-6 text-text-secondary">
+                  {preview.squad.description}
+                </p>
+              )}
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs leading-5 text-text-tertiary">
+                <span>
+                  {preview.member_count} member{preview.member_count === 1 ? "" : "s"}
+                </span>
+                <span aria-hidden>·</span>
+                <span>One problem a day</span>
+              </div>
+              {error && (
+                <p role="alert" className="mt-4 rounded-md border border-error/30 bg-error-tint px-3 py-2 text-xs leading-5 text-error">
+                  {error}
+                </p>
+              )}
+              <Button
+                variant="primary"
+                size="lg"
+                className="mt-6 w-full min-h-[44px]"
+                loading={joining}
+                onClick={handleJoin}
+              >
+                {!joining &&
+                  (user
+                    ? `Join ${preview.squad.name}`
+                    : preview.invited_by
+                      ? `Join ${preview.squad.name}`
+                      : "Create an account to join")}
+              </Button>
+              <button
+                onClick={async () => {
+                  if (await copyText(code)) {
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }
+                }}
+                aria-label="Copy invite code"
+                className="mt-2 inline-flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-hairline bg-transparent px-3 font-mono text-xs text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary"
+              >
+                {copied ? <Check className="h-3.5 w-3.5" strokeWidth={1.5} /> : <Copy className="h-3.5 w-3.5" strokeWidth={1.5} />}
+                <span>{copied ? "Copied" : `Code ${code}`}</span>
+              </button>
+            </section>
+
+            <section className="mx-auto mt-6 max-w-sm space-y-1.5 text-center">
+              <p className="text-xs leading-5 text-text-tertiary">Today&apos;s problem, picked for your squad.</p>
+              <p className="text-xs leading-5 text-text-tertiary">See who solved it, how fast, and how they thought.</p>
+              <p className="text-xs leading-5 text-text-tertiary">Friendly 1v1 challenges, no wagers.</p>
+            </section>
+          </>
+        ) : null}
+      </main>
     </div>
   );
 }

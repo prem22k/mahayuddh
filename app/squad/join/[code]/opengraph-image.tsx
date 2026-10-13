@@ -70,7 +70,7 @@ export default async function InviteOpengraphImage({
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          background: "linear-gradient(135deg, #0a0a0a 0%, #141414 55%, #1c0f12 100%)",
+          background: "linear-gradient(135deg, #0a0a0a 0%, #141414 55%, #1a150d 100%)",
           padding: 64,
           fontFamily: "sans-serif",
         }}
@@ -82,7 +82,7 @@ export default async function InviteOpengraphImage({
             alignItems: "center",
           }}
         >
-          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 6, color: "#fa586a" }}>
+          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 6, color: "#F5B83D" }}>
             SQUAD INVITE
           </div>
           <div
@@ -95,7 +95,7 @@ export default async function InviteOpengraphImage({
             }}
           >
             <span>Mahayuddh</span>
-            <span style={{ color: "#fa586a" }}>.</span>
+            <span style={{ color: "#F5B83D" }}>.</span>
           </div>
         </div>
 
@@ -134,8 +134,8 @@ export default async function InviteOpengraphImage({
                     fontSize: 28,
                     fontWeight: 800,
                     color: "#ffffff",
-                    background: "rgba(250,88,106,0.18)",
-                    border: "2px solid rgba(250,88,106,0.45)",
+                    background: "rgba(245,184,61,0.18)",
+                    border: "2px solid rgba(245,184,61,0.45)",
                   }}
                 >
                   {ch}

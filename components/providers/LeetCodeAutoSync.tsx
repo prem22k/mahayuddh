@@ -59,7 +59,7 @@ export function LeetCodeAutoSync() {
             particleCount: 45,
             spread: 55,
             origin: { y: 0.85 },
-            colors: ["#30d158", "#fa586a", "#ffffff"],
+            colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
           });
           void refreshProfile();
         }

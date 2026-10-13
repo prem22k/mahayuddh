@@ -1,34 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
-import {
-  X,
-  ExternalLink,
-  Flame,
-  Trophy,
-  Calendar,
-  Zap,
-  Award,
-  Check,
-  Share2,
-  Shield,
-  Activity,
-} from "lucide-react";
-import confetti from "canvas-confetti";
-import { cn } from "@/lib/utils";
-import { copyText } from "@/lib/clipboard";
+import Link from "next/link";
+import { X, Check } from "lucide-react";
 import { ModalShell } from "@/components/ui/ModalShell";
+import { Button } from "@/components/ui/Button";
+import { Avatar } from "@/components/ui/Avatar";
+import { StreakChip, VerifiedBadge } from "@/components/ui/Badge";
+import { copyText } from "@/lib/clipboard";
 import { Profile } from "@/types/database";
-import {
-  getTierInfo,
-  calculatePowerLevel,
-  calculateStreaks,
-  computeDomainMastery,
-  generateDossierShareText,
-} from "@/lib/stats";
-import { CURATED_SHEETS } from "@/lib/data/curatedSheetsData";
-import { AlgorithmicCombatRadar } from "./AlgorithmicCombatRadar";
-import { TriForceEnergyRings } from "./TriForceEnergyRings";
 
 interface UserStatsDossierModalProps {
   isOpen: boolean;
@@ -38,397 +18,163 @@ interface UserStatsDossierModalProps {
   userCalendarJson?: string | Record<string, number> | null;
 }
 
+/**
+ * Warrior dossier (31): a five-second picture of someone's practice.
+ *
+ * No power level, tiers, achievements, radar, or rings — the landing page
+ * promises "no XP, no badges" and this modal keeps that promise. Only
+ * measured numbers appear; anything unknown is said to be unknown.
+ */
 export function UserStatsDossierModal({
   isOpen,
   onClose,
   profile,
   statusMap = {},
-  userCalendarJson,
 }: UserStatsDossierModalProps) {
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "radar">("overview");
 
   if (!isOpen || !profile) return null;
 
-  const rating = profile.contest_rating;
-  const tier = getTierInfo(rating);
-  const powerLevel = calculatePowerLevel(profile);
-  const streakStats = calculateStreaks(userCalendarJson);
-  const effectiveCurrentStreak = profile.streak || streakStats.currentStreak;
-  const effectiveMaxStreak = Math.max(effectiveCurrentStreak, streakStats.maxStreak || effectiveCurrentStreak);
-
-  // Flatten all curated problems for domain mastery computation
-  const allCurated = CURATED_SHEETS.flatMap((s) => s.problems);
-  const masteryPoints = computeDomainMastery(statusMap, allCurated);
-
-  const totalSolved =
-    (profile.total_easy || 0) + (profile.total_medium || 0) + (profile.total_hard || 0);
-  const hasActivity = streakStats.totalActiveDays > 0;
   const displayName = profile.username || "Squad Member";
+  const easy = profile.total_easy || 0;
+  const medium = profile.total_medium || 0;
+  const hard = profile.total_hard || 0;
+  const totalSolved = easy + medium + hard;
+  const streak = profile.streak || 0;
+  const rating = profile.contest_rating;
+  const synced = profile.last_synced_at
+    ? new Date(profile.last_synced_at).toLocaleDateString(undefined, {
+        day: "numeric",
+        month: "short",
+      })
+    : null;
 
-  const handleCopyShare = async () => {
-    const text = generateDossierShareText(profile, powerLevel, tier);
-    // Clipboard unavailable (permissions / non-secure context): no confetti,
-    // no fake confirmation.
-    if (!(await copyText(text))) return;
+  const recentSlugs = Object.entries(statusMap)
+    .filter(([, v]) => v === "solved" || v === "verified")
+    .slice(0, 3)
+    .map(([slug]) => slug);
+
+  const handleShare = async () => {
+    const url =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/u/${encodeURIComponent(displayName)}`
+        : `/u/${encodeURIComponent(displayName)}`;
+    if (!(await copyText(url))) return;
     setCopied(true);
-    confetti({
-      particleCount: 50,
-      spread: 60,
-      origin: { y: 0.8 },
-      colors: ["#fa586a", "#ffffff", "#ffd60a", "#30d158"],
-    });
     setTimeout(() => setCopied(false), 2500);
   };
 
-  const daysOfWeek = ["M", "T", "W", "T", "F", "S", "S"];
-
-  // Achievements
-  const achievements = [
-    {
-      id: "hard_slayer",
-      title: "Hard Slayer",
-      desc: "Solved complex Hard algorithmic problems",
-      unlocked: (profile.total_hard || 0) >= 5,
-      icon: "⚔️",
-      color: "#fa586a",
-    },
-    {
-      id: "streak_titan",
-      title: "Consistency Titan",
-      desc: "Maintained a 7+ day consecutive streak",
-      unlocked: effectiveMaxStreak >= 7,
-      icon: "🔥",
-      color: "#ff9f0a",
-    },
-    {
-      id: "century_club",
-      title: "Century Warrior",
-      desc: "Solved 100+ total problems",
-      unlocked: totalSolved >= 100,
-      icon: "👑",
-      color: "#ffd60a",
-    },
-    {
-      id: "contest_veteran",
-      title: "Contest Veteran",
-      desc: "Achieved 1600+ contest battle rating",
-      unlocked: (rating ?? 0) >= 1600,
-      icon: "🏆",
-      color: "#bf5af2",
-    },
-  ];
-
   return (
-    <ModalShell
-      label={`Battle dossier for ${displayName}`}
-      onClose={onClose}
-      zIndexClass="z-[350]"
-      maxWidthClass="max-w-2xl"
-      panelClassName={cn(
-        "bg-[#141416]/95 overflow-hidden shadow-[0_25px_80px_rgba(0,0,0,0.9)] my-auto",
-        tier.borderColor
-      )}
-    >
-        {/* Ambient Top Glow Banner */}
-        <div
-          className={cn(
-            "absolute top-0 inset-x-0 h-44 bg-gradient-to-b opacity-40 pointer-events-none",
-            tier.bgGradient
-          )}
-        />
-
-        {/* ── Modal Header ── */}
-        <div className="relative p-6 pb-4 border-b border-white/[0.06] flex items-start justify-between">
-          <div className="flex items-center gap-4">
-            {/* Avatar with Animated Tier Glow */}
-            <div className="relative">
-              <div
-                className="w-16 h-16 rounded-2xl p-0.5 bg-gradient-to-br from-white/20 to-white/5 border border-white/10 flex items-center justify-center overflow-hidden shadow-lg"
-                style={{ borderColor: tier.badgeColor }}
-              >
-                {profile.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={profile.avatar_url}
-                    alt={profile.username}
-                    className="w-full h-full object-cover rounded-xl"
-                  />
-                ) : (
-                  <span className="text-2xl font-black text-white">
-                    {displayName.charAt(0).toUpperCase()}
-                  </span>
-                )}
-              </div>
-              <div
-                className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider text-black border border-white/20 shadow-md"
-                style={{ backgroundColor: tier.badgeColor }}
-              >
-                {tier.tier}
-              </div>
+    <ModalShell label={`Practice summary for ${displayName}`} onClose={onClose} maxWidthClass="max-w-[560px]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar name={displayName} src={profile.avatar_url} size="lg" />
+          <div className="min-w-0">
+            <h2 className="truncate font-display text-2xl font-semibold tracking-tight">
+              {displayName}
+            </h2>
+            <p className="mt-0.5 font-mono text-xs text-text-tertiary">@{displayName}</p>
+            <div className="mt-1.5">
+              <StreakChip count={streak} alive={streak > 0} />
             </div>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="primary"
+            onClick={onClose}
+            className="hidden min-h-[44px] sm:inline-flex"
+          >
+            <Link href={`/challenges?to=${profile.id}`}>Challenge {displayName}</Link>
+          </Button>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded-md text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+          >
+            <X className="h-5 w-5" strokeWidth={1.5} />
+          </button>
+        </div>
+      </div>
 
-            {/* Identity & Rank */}
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-2xl font-extrabold text-white tracking-tight">
-                  @{displayName}
-                </h2>
-                {profile.leetcode_username && (
-                  <a
-                    href={`https://leetcode.com/${profile.leetcode_username}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-white/55 hover:text-white transition-colors"
-                    title="View Official LeetCode Profile"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                )}
-              </div>
-              <div className="flex items-center gap-2 mt-1">
-                <span
-                  className="text-xs font-bold uppercase tracking-wider"
-                  style={{ color: tier.badgeColor }}
+      <div className="mt-3 sm:hidden">
+        <Button variant="primary" className="w-full min-h-[44px]">
+          <Link href={`/challenges?to=${profile.id}`}>Challenge {displayName}</Link>
+        </Button>
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div>
+          <p className="font-display text-2xl font-semibold tnum">{totalSolved}</p>
+          <p className="mt-0.5 text-xs leading-5 text-text-tertiary">Solved</p>
+        </div>
+        <div>
+          <p className="font-display text-2xl font-semibold tnum">
+            {easy + medium + hard > 0 ? `${easy} · ${medium} · ${hard}` : "—"}
+          </p>
+          <p className="mt-0.5 text-xs leading-5 text-text-tertiary">Easy · Medium · Hard</p>
+        </div>
+        <div>
+          <p className="font-display text-2xl font-semibold tnum">
+            {rating == null ? "—" : Math.round(rating).toLocaleString()}
+          </p>
+          <p className="mt-0.5 text-xs leading-5 text-text-tertiary">Contest rating</p>
+        </div>
+        <div>
+          <p className="font-display text-2xl font-semibold tnum">
+            {profile.contest_attended || "—"}
+          </p>
+          <p className="mt-0.5 text-xs leading-5 text-text-tertiary">Contests</p>
+        </div>
+      </div>
+
+      <p className="mt-2 text-xs leading-5 text-text-tertiary">
+        {profile.leetcode_username
+          ? `From LeetCode · ${synced ? `synced ${synced}` : "not synced yet"}`
+          : "Contest rating not available · LeetCode not connected"}
+      </p>
+
+      <section className="mt-5 border-t border-hairline pt-4">
+        <h3 className="text-sm font-medium text-text-secondary">Recent verified solves</h3>
+        {recentSlugs.length > 0 ? (
+          <ul className="mt-2 divide-y divide-hairline rounded-md border border-hairline">
+            {recentSlugs.map((slug) => (
+              <li key={slug}>
+                <Link
+                  href={`/practice/${slug}`}
+                  className="flex min-h-[44px] items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-surface-raised"
                 >
-                  {tier.title}
-                </span>
-                <span className="text-white/20">•</span>
-                <span className="text-xs text-white/50 font-mono">
-                  {profile.global_rank
-                    ? `Global Rank #${profile.global_rank.toLocaleString()}`
-                    : "Rank Unassigned"}
-                </span>
-              </div>
-            </div>
-          </div>
+                  <span className="truncate text-sm capitalize text-text-primary">
+                    {slug.replace(/-/g, " ")}
+                  </span>
+                  <VerifiedBadge />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm leading-6 text-text-secondary">
+            No recent verified solves to show here. The full history lives on their public
+            page.
+          </p>
+        )}
+      </section>
 
-          {/* Close Button */}
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-xl text-white/55 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
-            aria-label="Close dossier"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* ── Navigation Tabs ── */}
-        <div className="px-6 pt-3 flex items-center justify-between border-b border-white/[0.06] bg-white/[0.01]">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setActiveTab("overview")}
-              className={cn(
-                "px-4 py-2 text-xs font-bold border-b-2 transition-all cursor-pointer",
-                activeTab === "overview"
-                  ? "border-[#fa586a] text-white"
-                  : "border-transparent text-white/55 hover:text-white/80"
-              )}
-            >
-              Overview & Matrix
-            </button>
-            <button
-              onClick={() => setActiveTab("radar")}
-              className={cn(
-                "px-4 py-2 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5",
-                activeTab === "radar"
-                  ? "border-[#fa586a] text-white"
-                  : "border-transparent text-white/55 hover:text-white/80"
-              )}
-            >
-              <Activity className="w-3.5 h-3.5" />
-              <span>Combat Radar</span>
-            </button>
-          </div>
-
-          {/* Copy / Share Button */}
-          <button
-            onClick={handleCopyShare}
-            className="text-xs font-semibold text-[#fa586a] hover:text-[#fa586a]/80 flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#fa586a]/10 border border-[#fa586a]/20 transition-all cursor-pointer mb-2"
-          >
-            {copied ? <Check className="w-3.5 h-3.5 text-[#30d158]" /> : <Share2 className="w-3.5 h-3.5" />}
-            <span>{copied ? "Copied Dossier!" : "Share Dossier"}</span>
-          </button>
-        </div>
-
-        {/* ── Modal Body Content ── */}
-        <div className="p-6 space-y-6 max-h-[65vh] overflow-y-auto">
-          {/* Hero Battle Rating Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {/* Power Level */}
-            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex flex-col justify-between">
-              <div className="flex items-center justify-between text-white/55 text-[11px] font-semibold uppercase">
-                <span>Power Level</span>
-                <Zap className="w-3.5 h-3.5 text-[#ffd60a]" />
-              </div>
-              <div className="text-2xl font-black text-white font-mono mt-2">
-                {powerLevel.toLocaleString()}
-              </div>
-              <div className="text-[10px] text-white/55 mt-0.5">Combat Potential</div>
-            </div>
-
-            {/* Contest Rating */}
-            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex flex-col justify-between">
-              <div className="flex items-center justify-between text-white/55 text-[11px] font-semibold uppercase">
-                <span>Contest Rating</span>
-                <Trophy className="w-3.5 h-3.5 text-[#bf5af2]" />
-              </div>
-              <div className="text-2xl font-black text-white font-mono mt-2">
-                {rating == null ? "—" : Math.round(rating)}
-              </div>
-              <div className="text-[10px] text-white/55 mt-0.5">{tier.tier} Division</div>
-            </div>
-
-            {/* Current Streak */}
-            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex flex-col justify-between">
-              <div className="flex items-center justify-between text-white/55 text-[11px] font-semibold uppercase">
-                <span>Current Streak</span>
-                <Flame className="w-3.5 h-3.5 text-[#fa586a]" />
-              </div>
-              <div className="text-2xl font-black text-white font-mono mt-2">
-                {effectiveCurrentStreak} <span className="text-xs font-normal text-white/50">days</span>
-              </div>
-              <div className="text-[10px] text-white/55 mt-0.5">
-                {effectiveCurrentStreak > 0 ? "Active Flame 🔥" : "Streak Idle"}
-              </div>
-            </div>
-
-            {/* All-Time Max Streak */}
-            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex flex-col justify-between">
-              <div className="flex items-center justify-between text-white/55 text-[11px] font-semibold uppercase">
-                <span>Max Streak</span>
-                <Award className="w-3.5 h-3.5 text-[#30d158]" />
-              </div>
-              <div className="text-2xl font-black text-white font-mono mt-2">
-                {effectiveMaxStreak} <span className="text-xs font-normal text-white/50">days</span>
-              </div>
-              <div className="text-[10px] text-white/55 mt-0.5">Personal Record</div>
-            </div>
-          </div>
-
-          {activeTab === "overview" ? (
-            <>
-              {/* ── Tri-Force Radial Energy Rings ── */}
-              <div className="p-5 rounded-2xl bg-[#1c1c1e]/60 border border-white/[0.06] shadow-subtle flex flex-col items-center">
-                <div className="w-full flex items-center justify-between mb-2">
-                  <div className="text-xs font-bold uppercase tracking-wider text-white/50">
-                    Solved Problem Matrix
-                  </div>
-                  <div className="text-[11px] font-mono text-[#fa586a]">
-                    Total Solved: {totalSolved}
-                  </div>
-                </div>
-
-                <TriForceEnergyRings
-                  easy={profile.total_easy || 0}
-                  medium={profile.total_medium || 0}
-                  hard={profile.total_hard || 0}
-                  size={190}
-                />
-              </div>
-
-              {/* ── Consistency & Solar Weekly Pulse ── */}
-              <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div>
-                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-[#64d2ff]" />
-                    <span>7-Day Activity Pulse</span>
-                  </div>
-                  <p className="text-[11px] text-white/55 mt-0.5">
-                    {hasActivity
-                      ? `Total Active Days Recorded: ${streakStats.totalActiveDays}`
-                      : "No activity recorded yet — solve your first problem to light the pulse."}
-                  </p>
-                </div>
-
-                {/* 7-Day Indicators */}
-                <div className="flex items-center gap-2">
-                  {streakStats.recentActiveDays.map((active, idx) => (
-                    <div key={idx} className="flex flex-col items-center gap-1">
-                      <span className="text-[9px] font-mono text-white/50">{daysOfWeek[idx]}</span>
-                      <div
-                        className={cn(
-                          "w-5 h-5 rounded-md flex items-center justify-center transition-all",
-                          active
-                            ? "bg-[#30d158] text-black shadow-[0_0_8px_#30d158]"
-                            : "bg-white/[0.04] border border-white/[0.08]"
-                        )}
-                      >
-                        {active && <span className="text-[10px] font-bold">✓</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* ── Combat Badges & Milestones ── */}
-              <div>
-                <div className="text-xs font-bold uppercase tracking-wider text-white/50 mb-3">
-                  Battle Achievements
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {achievements.map((a) => (
-                    <div
-                      key={a.id}
-                      className={cn(
-                        "p-3 rounded-xl border flex items-center gap-3 transition-all",
-                        a.unlocked
-                          ? "bg-white/[0.04] border-white/[0.12] shadow-sm"
-                          : "bg-white/[0.01] border-white/[0.04] opacity-40 grayscale"
-                      )}
-                    >
-                      <div className="text-2xl shrink-0">{a.icon}</div>
-                      <div className="truncate">
-                        <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                          <span>{a.title}</span>
-                          {a.unlocked && (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-[#30d158]/20 text-[#30d158] font-semibold">
-                              UNLOCKED
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[11px] text-white/55 truncate mt-0.5">{a.desc}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          ) : (
-            /* ── Algorithmic Combat Radar ── */
-            <div className="p-6 rounded-2xl bg-[#1c1c1e]/60 border border-white/[0.06] flex flex-col items-center justify-center">
-              <div className="w-full flex items-center justify-between mb-4">
-                <div>
-                  <div className="text-sm font-bold text-white">Algorithmic Combat Radar</div>
-                  <p className="text-[11px] text-white/55">
-                    {totalSolved > 0
-                      ? "6-Pillar Domain Mastery plotted from your roadmap submissions"
-                      : "Solve roadmap problems to populate your combat radar."}
-                  </p>
-                </div>
-                <span className="px-2.5 py-1 rounded-full bg-[#fa586a]/15 text-[#fa586a] border border-[#fa586a]/30 text-[10px] font-bold">
-                  LIVE RADAR
-                </span>
-              </div>
-
-              <AlgorithmicCombatRadar points={masteryPoints} size={280} />
-            </div>
-          )}
-        </div>
-
-        {/* ── Modal Footer ── */}
-        <div className="p-4 bg-black/50 border-t border-white/[0.06] flex items-center justify-between text-xs text-white/55">
-          <div className="flex items-center gap-2">
-            <Shield className="w-3.5 h-3.5 text-[#fa586a]" />
-            <span>Mahayuddh Tactical Dossier</span>
-          </div>
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.1] text-white font-semibold transition-colors cursor-pointer"
-          >
-            Done
-          </button>
-        </div>
+      <div className="mt-5 flex items-center justify-between gap-2 border-t border-hairline pt-4">
+        <Link
+          href={`/u/${encodeURIComponent(displayName)}`}
+          className="inline-flex min-h-[44px] items-center rounded-md px-3 text-sm font-medium text-text-secondary hover:bg-surface-raised hover:text-text-primary"
+        >
+          View full profile
+        </Link>
+        <button
+          onClick={handleShare}
+          className="inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 rounded-md px-3 text-sm font-medium text-text-secondary hover:bg-surface-raised hover:text-text-primary"
+        >
+          {copied ? <Check className="h-4 w-4" strokeWidth={1.5} /> : null}
+          {copied ? "Copied" : "Share"}
+        </button>
+      </div>
     </ModalShell>
   );
 }

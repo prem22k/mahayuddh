@@ -36,12 +36,12 @@ export default async function OpengraphImage() {
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          background: "linear-gradient(135deg, #0a0a0a 0%, #141414 55%, #1c0f12 100%)",
+          background: "linear-gradient(135deg, #0a0a0a 0%, #141414 55%, #1a150d 100%)",
           padding: 72,
           fontFamily: "sans-serif",
         }}
       >
-        <div style={{ display: "flex", fontSize: 28, fontWeight: 700, letterSpacing: 6, color: "#fa586a" }}>
+        <div style={{ display: "flex", fontSize: 28, fontWeight: 700, letterSpacing: 6, color: "#F5B83D" }}>
           DEVELOPER SQUAD
         </div>
 

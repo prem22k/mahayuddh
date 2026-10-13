@@ -41,12 +41,12 @@ export function TeacherList({ pattern }: { pattern: string }) {
   }, [pattern]);
 
   if (loading) {
-    return <p className="text-xs text-white/25">Looking for teachers…</p>;
+    return <p className="text-xs text-text-disabled">Looking for teachers…</p>;
   }
 
   if (teachers.length === 0) {
     return (
-      <p className="text-xs text-white/50">
+      <p className="text-xs text-text-tertiary">
         Nobody has published for this pattern yet. If you have solved one, your
         approach is the thing that would go here.
       </p>
@@ -60,9 +60,9 @@ export function TeacherList({ pattern }: { pattern: string }) {
         return (
           <div
             key={t.user_id}
-            className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/[0.02] border border-white/[0.06]"
+            className="flex items-center gap-3 p-3.5 rounded-2xl bg-surface border border-hairline"
           >
-            <div className="w-8 h-8 rounded-full bg-white/[0.06] border border-white/[0.08] flex items-center justify-center font-bold text-[11px] text-white shrink-0 overflow-hidden">
+            <div className="w-8 h-8 rounded-full bg-surface-overlay border border-hairline flex items-center justify-center font-bold text-[11px] text-text-secondary shrink-0 overflow-hidden">
               {t.avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={t.avatar_url} alt={t.username} className="w-full h-full object-cover" />
@@ -73,11 +73,11 @@ export function TeacherList({ pattern }: { pattern: string }) {
             <div className="flex-1 min-w-0">
               <Link
                 href={profileHref(t.username)}
-                className="text-xs font-bold text-white hover:text-[#fa586a] transition-colors"
+                className="text-xs font-bold text-text-primary hover:text-primary transition-colors"
               >
                 @{t.username}
               </Link>
-              <p className="text-[10px] text-white/50">
+              <p className="text-[10px] text-text-tertiary">
                 {/* Why this person is here, in downstream actions only. */}
                 {used > 0
                   ? `${used} ${used === 1 ? "copy" : "copies"} of their writing`
@@ -90,7 +90,7 @@ export function TeacherList({ pattern }: { pattern: string }) {
           </div>
         );
       })}
-      <p className="text-[10px] text-white/25 pt-1">
+      <p className="text-[10px] text-text-disabled pt-1">
         Ordered by copies and completed challenges. Not by followers, and not by a
         single score.
       </p>

@@ -54,14 +54,14 @@ export function AlgorithmicCombatRadar({ points, size = 280 }: AlgorithmicCombat
       >
         <defs>
           <radialGradient id="radarFill" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#fa586a" stopOpacity="0.4" />
-            <stop offset="60%" stopColor="#fa586a" stopOpacity="0.15" />
-            <stop offset="100%" stopColor="#ff2a6d" stopOpacity="0.0" />
+            <stop offset="0%" stopColor="#F5B83D" stopOpacity="0.4" />
+            <stop offset="60%" stopColor="#F5B83D" stopOpacity="0.15" />
+            <stop offset="100%" stopColor="#F26D78" stopOpacity="0.0" />
           </radialGradient>
           <linearGradient id="radarStroke" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#fa586a" />
-            <stop offset="50%" stopColor="#bf5af2" />
-            <stop offset="100%" stopColor="#64d2ff" />
+            <stop offset="0%" stopColor="#F5B83D" />
+            <stop offset="50%" stopColor="#8B91F7" />
+            <stop offset="100%" stopColor="#8B91F7" />
           </linearGradient>
           <filter id="radarGlow" x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="3" result="blur" />
@@ -135,8 +135,8 @@ export function AlgorithmicCombatRadar({ points, size = 280 }: AlgorithmicCombat
                 cx={x}
                 y={y}
                 r={isHovered ? 6 : 4}
-                fill={isHovered ? "#ffffff" : "#fa586a"}
-                stroke="#1c1c1e"
+                fill={isHovered ? "#EDEDEF" : "#F5B83D"}
+                stroke="#191A1E"
                 strokeWidth="2"
                 className="transition-all duration-300"
               />
@@ -144,7 +144,7 @@ export function AlgorithmicCombatRadar({ points, size = 280 }: AlgorithmicCombat
                 cx={x}
                 y={y}
                 r={isHovered ? 12 : 6}
-                fill="#fa586a"
+                fill="#F5B83D"
                 opacity={isHovered ? 0.4 : 0.15}
                 className="transition-all duration-300 animate-pulse"
               />
@@ -165,7 +165,7 @@ export function AlgorithmicCombatRadar({ points, size = 280 }: AlgorithmicCombat
               textAnchor="middle"
               dominantBaseline="middle"
               className={`text-[10px] font-bold tracking-tight transition-colors cursor-pointer ${
-                isHovered ? "fill-[#fa586a]" : "fill-white/60"
+                isHovered ? "fill-primary" : "fill-text-secondary"
               }`}
               onMouseEnter={() => setHoveredPoint(p)}
               onMouseLeave={() => setHoveredPoint(null)}
@@ -179,16 +179,16 @@ export function AlgorithmicCombatRadar({ points, size = 280 }: AlgorithmicCombat
       {/* Interactive Tooltip Card / Center Inspection */}
       <div className="h-9 flex items-center justify-center mt-1">
         {hoveredPoint ? (
-          <div className="px-3 py-1 rounded-full bg-white/[0.08] border border-[#fa586a]/30 backdrop-blur-md flex items-center gap-2 text-xs animate-in fade-in zoom-in-95">
+          <div className="px-3 py-1 rounded-full bg-surface-overlay border border-hairline flex items-center gap-2 text-xs">
             <span>{hoveredPoint.icon}</span>
-            <span className="font-semibold text-white">{hoveredPoint.label}:</span>
-            <span className="font-mono text-[#fa586a] font-bold">{hoveredPoint.value}%</span>
-            <span className="text-white/55 text-[11px]">
+            <span className="font-semibold text-text-primary">{hoveredPoint.label}:</span>
+            <span className="font-mono text-primary font-bold">{hoveredPoint.value}%</span>
+            <span className="text-text-secondary text-[11px]">
               ({hoveredPoint.solved}/{hoveredPoint.total} solved)
             </span>
           </div>
         ) : (
-          <span className="text-[11px] text-white/50 font-medium">
+          <span className="text-[11px] text-text-tertiary font-medium">
             Hover vertices to inspect algorithmic domain mastery
           </span>
         )}

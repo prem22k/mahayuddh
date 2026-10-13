@@ -23,13 +23,13 @@ export default async function WelcomeOpengraphImage() {
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
-          background: "linear-gradient(135deg, #0a0a0a 0%, #141414 55%, #1c0f12 100%)",
+          background: "linear-gradient(135deg, #0a0a0a 0%, #141414 55%, #1a150d 100%)",
           padding: 72,
           fontFamily: "sans-serif",
         }}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 640 }}>
-          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 6, color: "#fa586a" }}>
+          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 6, color: "#F5B83D" }}>
             DEVELOPER SQUAD ARENA
           </div>
           <div style={{ fontSize: 76, fontWeight: 800, color: "#ffffff", lineHeight: 1.02 }}>
@@ -43,8 +43,8 @@ export default async function WelcomeOpengraphImage() {
               style={{
                 fontSize: 26,
                 fontWeight: 800,
-                color: "#ffffff",
-                background: "#d60017",
+                color: "#1A1406",
+                background: "#F5B83D",
                 borderRadius: 9999,
                 paddingLeft: 36,
                 paddingRight: 36,
@@ -84,7 +84,7 @@ export default async function WelcomeOpengraphImage() {
             padding: 36,
           }}
         >
-          <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 3, color: "#fa586a" }}>
+          <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 3, color: "#F5B83D" }}>
             TODAY&apos;S BATTLE
           </div>
           <div style={{ fontSize: 44, fontWeight: 800, color: "#ffffff" }}>Two Sum</div>

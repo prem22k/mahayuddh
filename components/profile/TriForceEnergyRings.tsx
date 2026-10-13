@@ -48,16 +48,16 @@ export function TriForceEnergyRings({
         <svg width={size} height={size} className="transform -rotate-90">
           <defs>
             <linearGradient id="easyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#30d158" />
-              <stop offset="100%" stopColor="#64d2ff" />
+              <stop offset="0%" stopColor="#3DDC97" />
+              <stop offset="100%" stopColor="#8B91F7" />
             </linearGradient>
             <linearGradient id="medGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#ff9f0a" />
-              <stop offset="100%" stopColor="#ffd60a" />
+              <stop offset="0%" stopColor="#F5B83D" />
+              <stop offset="100%" stopColor="#FFC95E" />
             </linearGradient>
             <linearGradient id="hardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#fa586a" />
-              <stop offset="100%" stopColor="#ff2a6d" />
+              <stop offset="0%" stopColor="#F5B83D" />
+              <stop offset="100%" stopColor="#E0A32B" />
             </linearGradient>
           </defs>
 
@@ -67,7 +67,7 @@ export function TriForceEnergyRings({
             cy={center}
             r={rEasy}
             fill="none"
-            stroke="rgba(48, 209, 88, 0.12)"
+            stroke="rgba(61, 220, 151, 0.12)"
             strokeWidth={strokeWidth}
           />
           <circle
@@ -75,7 +75,7 @@ export function TriForceEnergyRings({
             cy={center}
             r={rMedium}
             fill="none"
-            stroke="rgba(255, 159, 10, 0.12)"
+            stroke="rgba(245, 184, 61, 0.12)"
             strokeWidth={strokeWidth}
           />
           <circle
@@ -83,7 +83,7 @@ export function TriForceEnergyRings({
             cy={center}
             r={rHard}
             fill="none"
-            stroke="rgba(250, 88, 106, 0.12)"
+            stroke="rgba(245, 184, 61, 0.12)"
             strokeWidth={strokeWidth}
           />
 
@@ -128,10 +128,10 @@ export function TriForceEnergyRings({
 
         {/* Center Solved Metrics */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-2xl sm:text-3xl font-black text-white leading-none tracking-tight">
+          <span className="text-2xl sm:text-3xl font-bold text-text-primary leading-none tracking-tight">
             {totalSolved}
           </span>
-          <span className="text-[10px] uppercase font-bold tracking-widest text-white/55 mt-1">
+          <span className="text-[10px] uppercase font-bold tracking-widest text-text-secondary mt-1">
             Solved
           </span>
         </div>
@@ -140,29 +140,29 @@ export function TriForceEnergyRings({
       {/* Difficulty Breakdown Badges */}
       <div className="flex sm:flex-col gap-3">
         {/* Easy */}
-        <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-[#30d158]/20">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#30d158] shadow-[0_0_8px_#30d158]" />
+        <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-surface-overlay border border-verified/20">
+          <div className="w-2.5 h-2.5 rounded-full bg-verified shadow-[0_0_8px_#3DDC97]" />
           <div>
-            <div className="text-[10px] text-white/55 font-semibold uppercase">Easy</div>
-            <div className="text-sm font-bold text-white font-mono">{easy}</div>
+            <div className="text-[10px] text-text-secondary font-semibold uppercase">Easy</div>
+            <div className="text-sm font-bold text-text-primary font-mono">{easy}</div>
           </div>
         </div>
 
         {/* Medium */}
-        <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-[#ff9f0a]/20">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#ff9f0a] shadow-[0_0_8px_#ff9f0a]" />
+        <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-surface-overlay border border-primary/20">
+          <div className="w-2.5 h-2.5 rounded-full bg-primary shadow-[0_0_8px_#F5B83D]" />
           <div>
-            <div className="text-[10px] text-white/55 font-semibold uppercase">Medium</div>
-            <div className="text-sm font-bold text-white font-mono">{medium}</div>
+            <div className="text-[10px] text-text-secondary font-semibold uppercase">Medium</div>
+            <div className="text-sm font-bold text-text-primary font-mono">{medium}</div>
           </div>
         </div>
 
         {/* Hard */}
-        <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-[#fa586a]/20">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#fa586a] shadow-[0_0_8px_#fa586a]" />
+        <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-surface-overlay border border-primary/20">
+          <div className="w-2.5 h-2.5 rounded-full bg-primary shadow-[0_0_8px_#F5B83D]" />
           <div>
-            <div className="text-[10px] text-white/55 font-semibold uppercase">Hard</div>
-            <div className="text-sm font-bold text-white font-mono">{hard}</div>
+            <div className="text-[10px] text-text-secondary font-semibold uppercase">Hard</div>
+            <div className="text-sm font-bold text-text-primary font-mono">{hard}</div>
           </div>
         </div>
       </div>

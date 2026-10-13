@@ -61,10 +61,10 @@ export function InviteLink({ squadId, squadName }: { squadId: string; squadName:
   if (error) {
     return (
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] text-white/50">{error}</p>
+        <p className="text-[11px] text-text-secondary">{error}</p>
         <button
           onClick={() => void load()}
-          className="px-3 py-1 rounded-full bg-white/[0.06] text-[11px] font-bold text-white/60 hover:text-white cursor-pointer shrink-0"
+          className="px-3 py-1 rounded-full bg-surface-overlay text-[11px] font-bold text-text-secondary hover:text-text-primary cursor-pointer shrink-0"
         >
           Retry
         </button>
@@ -81,7 +81,7 @@ export function InviteLink({ squadId, squadName }: { squadId: string; squadName:
           setBusy(false);
         }}
         disabled={busy}
-        className="px-4 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] text-white/70 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
+        className="px-4 py-2 rounded-full bg-surface-overlay hover:bg-surface-raised border border-hairline text-text-secondary text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
       >
         {busy ? "Getting your link…" : "Get my invite link"}
       </button>
@@ -98,9 +98,9 @@ export function InviteLink({ squadId, squadName }: { squadId: string; squadName:
       <div className="flex items-center gap-2 flex-wrap">
         <button
           onClick={() => void copy()}
-          className="px-3 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] text-white/70 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5"
+          className="px-3 py-2 rounded-full bg-surface-overlay hover:bg-surface-raised border border-hairline text-text-secondary text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5"
         >
-          {copied ? <Check className="w-3.5 h-3.5 text-[#30d158]" /> : <Copy className="w-3.5 h-3.5" />}
+          {copied ? <Check className="w-3.5 h-3.5 text-verified" /> : <Copy className="w-3.5 h-3.5" />}
           {copied ? "Copied" : "Copy link"}
         </button>
         {/* §40: the same distribution targets as every other artifact, because
@@ -114,7 +114,7 @@ export function InviteLink({ squadId, squadName }: { squadId: string; squadName:
       </div>
 
       {/* Opens next to joins, because the gap between them is the useful part. */}
-      <p className="text-[11px] text-white/50">
+      <p className="text-[11px] text-text-secondary">
         {totals.joins > 0
           ? `${totals.joins} ${totals.joins === 1 ? "person has" : "people have"} joined through your links (${totals.opens} ${totals.opens === 1 ? "open" : "opens"}).`
           : totals.opens > 0
@@ -123,7 +123,7 @@ export function InviteLink({ squadId, squadName }: { squadId: string; squadName:
       </p>
 
       {all.length > 1 && (
-        <ul className="text-[10px] text-white/25 space-y-0.5">
+        <ul className="text-[10px] text-text-disabled space-y-0.5">
           {all.map((l) => (
             <li key={l.squad_id}>
               {l.squad_name}: {l.joins} joined · {l.opens} opened

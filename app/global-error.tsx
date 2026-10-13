@@ -9,16 +9,16 @@ export default function GlobalError({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="bg-black text-white antialiased">
+      <body className="bg-canvas text-text-primary antialiased">
         <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-8 text-center" role="alert">
-          <h1 className="text-2xl font-black">Mahayuddh crashed.</h1>
-          <p className="text-xs text-white/55 max-w-sm">
+          <h1 className="text-2xl font-semibold">Mahayuddh crashed.</h1>
+          <p className="text-xs text-text-secondary max-w-sm">
             Reload to get back to your battles. Nothing you solved was lost — progress lives in the database, not this tab.
             {error.digest ? ` Ref ${error.digest}.` : ""}
           </p>
           <button
             onClick={reset}
-            className="px-5 py-2.5 rounded-full btn-accent text-white text-xs font-bold cursor-pointer"
+            className="px-5 py-2.5 rounded-full bg-primary text-on-primary hover:bg-primary-hover text-xs font-bold cursor-pointer"
           >
             Reload Mahayuddh
           </button>
