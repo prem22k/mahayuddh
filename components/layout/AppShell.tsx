@@ -16,8 +16,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-  // Global Cmd/Ctrl+K toggles the search modal. Lives here (always mounted);
-  // SearchModal unmounts its listener when closed, so the shortcut can't open it.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -29,78 +27,62 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // A drawer that survives the navigation it triggered hides the page you just
-  // asked for behind a menu you have to dismiss first.
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [pathname]);
 
-  // If on login page or auth callbacks, show clean full-page view
   if (pathname?.startsWith("/login") || pathname?.startsWith("/auth")) {
-    return <main className="min-h-screen bg-surface-base">{children}</main>;
+    return <main className="min-h-screen bg-canvas">{children}</main>;
   }
 
-  // If not logged in, user will be redirected to /login by middleware
   if (!user) {
-    return <main className="min-h-screen bg-surface-base">{children}</main>;
+    return <main className="min-h-screen bg-canvas">{children}</main>;
   }
 
   return (
-    <div className="min-h-screen bg-surface-base text-txt-primary">
-      {/* ── Floating Sidebar (desktop) ──────────────────── */}
-      <div className="hidden md:flex floating-sidebar">
+    <div className="min-h-screen bg-canvas text-text-primary">
+      {/* Desktop sidebar S1 */}
+      <div className="shell-sidebar hidden md:flex">
         <Sidebar onSearchOpen={() => setIsSearchOpen(true)} />
       </div>
 
-      {/* ── Mobile Drawer Overlay ───────────────────────── */}
+      {/* Mobile drawer S2 */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-[200] flex md:hidden">
           <div
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            className="modal-scrim fixed inset-0"
             onClick={() => setIsMobileMenuOpen(false)}
           />
           <div
             role="dialog"
             aria-modal="true"
             aria-label="Navigation"
-            className="relative w-64 max-w-[80vw] h-full z-10"
+            className="relative z-10 h-full w-64 max-w-[80vw] border-r border-hairline bg-surface"
           >
-            <div className="h-full rounded-r-2xl overflow-hidden glass-panel border-r border-border-subtle">
-              <Sidebar
-                onSearchOpen={() => {
-                  setIsMobileMenuOpen(false);
-                  setIsSearchOpen(true);
-                }}
-              />
-            </div>
+            <Sidebar
+              onSearchOpen={() => {
+                setIsMobileMenuOpen(false);
+                setIsSearchOpen(true);
+              }}
+            />
           </div>
         </div>
       )}
 
-      {/* ── Main Content Area ───────────────────────────── */}
-      <div className="main-content-area">
-        <Header
-          onMenuToggle={() => setIsMobileMenuOpen(true)}
-          onSearchOpen={() => setIsSearchOpen(true)}
-        />
-        <main className="p-4 md:p-8 max-w-7xl mx-auto w-full">
-          {children}
-        </main>
+      <div className="shell-content">
+        <div className="shell-content-inner">
+          <Header
+            onMenuToggle={() => setIsMobileMenuOpen(true)}
+            onSearchOpen={() => setIsSearchOpen(true)}
+          />
+          <main className="pb-8 pt-6">{children}</main>
+        </div>
       </div>
 
-      {/* ── Floating Bottom Bar (Now Solving) ───────────── */}
       <NowSolvingBar onSearchOpen={() => setIsSearchOpen(true)} />
-
-      {/* ── Mobile Tab Bar (design.md §4) ───────────────── */}
       <MobileTabBar />
 
-      {/* ── Global Cmd+K Search Modal ───────────────────── */}
-      <SearchModal
-        isOpen={isSearchOpen}
-        onClose={() => setIsSearchOpen(false)}
-      />
-
-      {/* ── Background LeetCode Focus & Milestone Auto-Sync ── */}
+      <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
       <LeetCodeAutoSync />
     </div>
   );

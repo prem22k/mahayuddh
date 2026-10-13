@@ -117,11 +117,11 @@ export function NotificationBell() {
         onClick={() => void onOpen()}
         aria-label={`Notifications${unread > 0 ? ` (${unread} unread)` : ""}`}
         aria-expanded={open}
-        className="relative w-11 h-11 md:w-10 md:h-10 rounded-full text-white/50 hover:text-white transition-colors cursor-pointer flex items-center justify-center"
+        className="relative w-11 h-11 md:w-10 md:h-10 rounded-full text-text-tertiary hover:text-text-primary transition-colors cursor-pointer flex items-center justify-center"
       >
         <Bell className="w-4 h-4" />
         {unread > 0 && (
-          <span className="absolute top-1.5 right-1.5 min-w-[14px] h-[14px] px-1 rounded-full btn-accent text-white text-[9px] font-black flex items-center justify-center">
+          <span className="absolute top-1.5 right-1.5 min-w-[14px] h-[14px] px-1 rounded-full bg-primary text-on-primary text-[9px] font-bold flex items-center justify-center">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -135,15 +135,15 @@ export function NotificationBell() {
             onClick={() => setOpen(false)}
             className="fixed inset-0 z-10 cursor-default"
           />
-          <div className="absolute right-0 top-full mt-1 z-20 w-[20rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-white/[0.08] bg-[#0e0e0e] shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06]">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+          <div className="absolute right-0 top-full mt-1 z-20 w-[20rem] max-w-[calc(100vw-2rem)] popover-panel overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-hairline">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-text-tertiary">
                 Notifications
               </span>
               {unread > 0 && (
                 <button
                   onClick={() => void markAllRead().then(refresh)}
-                  className="text-[10px] font-bold text-white/50 hover:text-white cursor-pointer"
+                  className="text-[10px] font-bold text-text-tertiary hover:text-text-primary cursor-pointer"
                 >
                   Mark all read
                 </button>
@@ -151,13 +151,13 @@ export function NotificationBell() {
             </div>
 
             {loading && items.length === 0 ? (
-              <p className="px-4 py-6 text-[11px] text-white/50 text-center">Loading…</p>
+              <p className="px-4 py-6 text-[11px] text-text-tertiary text-center">Loading…</p>
             ) : items.length === 0 ? (
-              <p className="px-4 py-6 text-[11px] text-white/50 text-center">
+              <p className="px-4 py-6 text-[11px] text-text-tertiary text-center">
                 Nothing here. Notifications only arrive when there is something to do.
               </p>
             ) : (
-              <ul className="max-h-96 overflow-y-auto divide-y divide-white/[0.04]">
+              <ul className="max-h-96 overflow-y-auto divide-y divide-hairline">
                 {items.map((n) => (
                   <li key={n.id}>
                     <Link
@@ -167,18 +167,18 @@ export function NotificationBell() {
                         void markRead(n.id);
                         setOpen(false);
                       }}
-                      className={`block px-4 py-3 hover:bg-white/[0.04] transition-all ${
+                      className={`block px-4 py-3 hover:bg-surface-overlay transition-all ${
                         n.read_at ? "opacity-60" : ""
                       }`}
                     >
                       <div className="flex items-start gap-2">
                         {!n.read_at && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#fa586a] mt-1.5 shrink-0" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
                         )}
                         <div className="min-w-0">
-                          <p className="text-[11px] font-bold text-white">{n.title}</p>
-                          {n.body && <p className="text-[11px] text-white/60 mt-0.5">{n.body}</p>}
-                          <p className="text-[10px] text-white/25 mt-1">
+                          <p className="text-[11px] font-bold text-text-primary">{n.title}</p>
+                          {n.body && <p className="text-[11px] text-text-secondary mt-0.5">{n.body}</p>}
+                          <p className="text-[10px] text-text-disabled mt-1">
                             {new Date(n.created_at).toLocaleDateString()} · {n.kind}
                           </p>
                         </div>
@@ -190,8 +190,8 @@ export function NotificationBell() {
             )}
 
             {/* Push permission, with the bell. One concept, one control. */}
-            <div className="border-t border-white/[0.06] px-4 py-2.5 flex items-center justify-between gap-3">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+            <div className="border-t border-hairline px-4 py-2.5 flex items-center justify-between gap-3">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-text-tertiary">
                 Push alerts
               </span>
               <button
@@ -199,8 +199,8 @@ export function NotificationBell() {
                 aria-pressed={pushGranted}
                 className={
                   pushGranted
-                    ? "flex items-center gap-1.5 text-[10px] font-bold text-[#fa586a] hover:opacity-80 transition-opacity cursor-pointer"
-                    : "text-[10px] font-bold text-white/50 hover:text-white transition-colors cursor-pointer"
+                    ? "flex items-center gap-1.5 text-[10px] font-bold text-primary hover:opacity-80 transition-opacity cursor-pointer"
+                    : "text-[10px] font-bold text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
                 }
               >
                 {pushGranted ? (

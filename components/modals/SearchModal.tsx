@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Search, X } from "lucide-react";
+import { Search } from "lucide-react";
 import { getAllProblems } from "@/lib/data/sheets";
 import { searchCatalogProblems } from "@/lib/data/problems";
-import { DifficultyBadge } from "@/components/ui/DifficultyBadge";
+import { DifficultyBadgeNew, PatternChip } from "@/components/ui/Badge";
+import { StatusGlyph } from "@/components/ui/ProblemRow";
 import { ProblemLink } from "@/components/ui/ProblemLink";
 import { ModalShell } from "@/components/ui/ModalShell";
-import { Spinner } from "@/components/ui/Spinner";
 import { ListProblem, Problem } from "@/types/database";
 import { useSolving } from "@/components/providers/SolvingProvider";
 
@@ -21,6 +21,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const [problems, setProblems] = useState<ListProblem[]>([]);
   const [catalogResults, setCatalogResults] = useState<Problem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const { startSolving } = useSolving();
 
@@ -61,6 +62,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 50);
+      setActiveIndex(0);
     } else {
       setQuery("");
       setCatalogResults([]);
@@ -68,12 +70,14 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
   }, [isOpen]);
 
   const filtered = useMemo(() => {
+    const q = query.toLowerCase();
+    if (!q) return problems.slice(0, 3);
     return problems.filter(
       (p) =>
-        p.title.toLowerCase().includes(query.toLowerCase()) ||
-        p.category.toLowerCase().includes(query.toLowerCase()) ||
-        p.title_slug.toLowerCase().includes(query.toLowerCase()) ||
-        p.order_index.toString().includes(query)
+        p.title.toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q) ||
+        p.title_slug.toLowerCase().includes(q) ||
+        p.order_index.toString().includes(q)
     );
   }, [problems, query]);
 
@@ -117,6 +121,10 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
     return Array.from(map.values());
   }, [filtered, catalogResults]);
 
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [query]);
+
   if (!isOpen) return null;
 
   const handleSelectProblem = (p: {
@@ -137,92 +145,110 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
     onClose();
   };
 
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.min(i + 1, combined.slice(0, 50).length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      const item = combined.slice(0, 50)[activeIndex];
+      if (item) handleSelectProblem(item);
+    }
+  };
+
+  const rows = combined.slice(0, 50);
+
   return (
     <ModalShell
-      label="Search problems"
+      label="Search problems, patterns, people, actions"
       onClose={onClose}
       zIndexClass="z-[300]"
-      maxWidthClass="max-w-2xl"
+      maxWidthClass="max-w-[640px]"
       alignTop
-      panelClassName="shadow-[0_25px_70px_rgba(0,0,0,0.8)] overflow-hidden"
+      panelClassName="overflow-hidden p-0"
     >
-        {/* Search Header */}
-        <div className="p-4 border-b border-white/[0.06] flex items-center gap-3">
-          <Search className="w-4 h-4 text-[#fa586a] shrink-0" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search all 4,000+ problems, topics, #number (e.g. Two Sum, DP, 15)..."
-            className="w-full bg-transparent text-sm text-white placeholder:text-white/50 focus:outline-none"
-          />
-          <button
-            onClick={onClose}
-            className="p-1 text-white/55 hover:text-white rounded-lg transition-colors cursor-pointer"
-            aria-label="Close search"
-          >
-            <X className="w-4 h-4" />
-          </button>
+      <div className="flex items-center gap-3 border-b border-hairline p-4">
+        <Search className="h-4 w-4 shrink-0 text-text-secondary" strokeWidth={1.5} />
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder="Search problems, patterns, primers, people…"
+          className="w-full bg-transparent font-mono text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none"
+          aria-label="Search"
+        />
+        <kbd className="kbd">esc</kbd>
+      </div>
+
+      <div className="max-h-[60vh] overflow-y-auto p-2">
+        <div className="px-3 pb-1 pt-2 text-xs font-medium text-text-tertiary">
+          {!query ? "Recent" : "Problems"}
         </div>
-
-        {/* Results List */}
-        <div className="max-h-[60vh] overflow-y-auto p-2 divide-y divide-white/[0.04]">
-          {loading ? (
-            <div className="p-8 text-center text-white/55 text-xs flex items-center justify-center gap-2">
-              <Spinner size="md" tone="soft" />
-              <span>Indexing database problems...</span>
-            </div>
-          ) : combined.length === 0 ? (
-            <div className="p-8 text-center text-white/55 text-xs">
-              {query ? "No matching problems found in catalog." : "Type a title, topic, or question number..."}
-            </div>
-          ) : (
-            combined.slice(0, 50).map((problem) => (
-              <div
-                key={problem.title_slug}
-                className="flex items-center justify-between p-3 rounded-2xl hover:bg-white/[0.04] transition-colors group cursor-pointer"
-                onClick={() => handleSelectProblem(problem)}
-              >
-                <div className="flex items-center gap-3 truncate">
-                  <div className="w-8 h-8 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center font-mono text-xs text-white/55 font-bold group-hover:border-[#fa586a]/40 group-hover:text-white transition-colors shrink-0">
-                    {problem.order_index > 0 ? problem.order_index : "#"}
+        {loading ? (
+          <div className="space-y-2 p-2">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="skeleton h-14 w-full" />
+            ))}
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="p-8 text-center text-sm text-text-secondary">
+            Nothing matches &lsquo;{query}&rsquo;. Search covers problems, patterns,
+            primers, and people in your squads.
+          </div>
+        ) : (
+          rows.map((problem, i) => (
+            <div
+              key={problem.title_slug}
+              onClick={() => handleSelectProblem(problem)}
+              onMouseEnter={() => setActiveIndex(i)}
+              className={
+                i === activeIndex
+                  ? "flex items-center justify-between rounded-lg bg-surface-overlay p-3 transition-colors"
+                  : "flex items-center justify-between rounded-lg p-3 transition-colors hover:bg-surface-raised"
+              }
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <StatusGlyph status="none" />
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-text-primary">
+                    {problem.title}
                   </div>
-                  <div className="truncate">
-                    <div className="font-semibold text-xs text-white group-hover:text-[#fa586a] transition-colors truncate">
-                      {problem.title}
-                    </div>
-                    <div className="text-[10px] text-white/55 truncate">
-                      {problem.category}
-                    </div>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <span className="font-mono text-xs text-text-tertiary">
+                      No. {problem.order_index > 0 ? problem.order_index : "—"}
+                    </span>
+                    <DifficultyBadgeNew difficulty={problem.difficulty} />
+                    <PatternChip label={problem.category} />
                   </div>
-                </div>
-
-                <div className="flex items-center gap-3 shrink-0">
-                  <DifficultyBadge difficulty={problem.difficulty} />
-                  <ProblemLink
-                    slug={problem.title_slug}
-                    className="p-1 text-white/20 hover:text-white rounded-lg"
-                  />
                 </div>
               </div>
-            ))
-          )}
-        </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {i === activeIndex && <kbd className="kbd">⏎</kbd>}
+                <ProblemLink
+                  slug={problem.title_slug}
+                  className="rounded-md p-1 text-text-tertiary hover:text-text-primary"
+                />
+              </div>
+            </div>
+          ))
+        )}
+      </div>
 
-        {/* Modal Footer */}
-        <div className="p-3 bg-black/40 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-white/50">
-          <div className="flex items-center gap-2">
-            <span>Press</span>
-            <kbd className="px-1.5 py-0.5 bg-white/[0.04] rounded border border-white/[0.06] font-mono text-[10px]">
-              Esc
-            </kbd>
-            <span>to exit</span>
-          </div>
-          <div className="text-[#fa586a] font-semibold text-[11px] tracking-wide">
-            {problems.length > 0 ? `${problems.length} Curated Sheets • 4,000+ Catalog Indexed` : "4,000+ Catalog Indexed"}
-          </div>
-        </div>
+      <div className="flex items-center gap-4 border-t border-hairline p-3 text-xs text-text-tertiary">
+        <span className="flex items-center gap-1.5">
+          <kbd className="kbd">↑↓</kbd> to move
+        </span>
+        <span className="flex items-center gap-1.5">
+          <kbd className="kbd">⏎</kbd> to open
+        </span>
+        <span className="flex items-center gap-1.5">
+          <kbd className="kbd">esc</kbd> to close
+        </span>
+      </div>
     </ModalShell>
   );
 }

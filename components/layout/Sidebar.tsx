@@ -5,17 +5,14 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Search,
-  LayoutGrid,
+  Swords,
+  Dumbbell,
+  Users,
+  Newspaper,
+  MessagesSquare,
   Trophy,
-  MessageSquare,
-  Bookmark,
+  NotebookPen,
   LogOut,
-  ChevronRight,
-  Plus,
-  Play,
-  Shield,
-  Sparkles,
-  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -23,278 +20,163 @@ import { getAllLists } from "@/lib/data/sheets";
 import { CustomList } from "@/types/database";
 import { CreateListModal } from "@/components/modals/CreateListModal";
 import { UserStatsDossierModal } from "@/components/profile/UserStatsDossierModal";
+import { Avatar } from "@/components/ui/Avatar";
+import { StreakChip } from "@/components/ui/Badge";
 
 interface SidebarProps {
   onSearchOpen?: () => void;
 }
+
+const coreNav = [
+  { name: "Arena", href: "/home", icon: Swords },
+  { name: "Practice", href: "/practice", icon: Dumbbell },
+  { name: "Squad", href: "/squad", icon: Users },
+  { name: "Feed", href: "/feed", icon: Newspaper },
+  { name: "Challenges", href: "/challenges", icon: MessagesSquare },
+  { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
+  { name: "Notebook", href: "/notebook", icon: NotebookPen },
+];
+
+const pinnedSheets = ["NeetCode 150", "Blind 75", "Striver SDE"];
 
 export function Sidebar({ onSearchOpen }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { profile, user, signOut } = useAuth();
   const [lists, setLists] = useState<CustomList[]>([]);
-  const [loadingLists, setLoadingLists] = useState(true);
   const [isCreateListOpen, setIsCreateListOpen] = useState(false);
   const [isDossierOpen, setIsDossierOpen] = useState(false);
 
-  const fetchLists = async () => {
-    try {
-      const data = await getAllLists();
-      setLists(data);
-    } catch (err) {
-      console.error("Error loading lists in sidebar:", err);
-    } finally {
-      setLoadingLists(false);
-    }
-  };
-
   useEffect(() => {
-    fetchLists();
+    getAllLists()
+      .then((data) => setLists(data))
+      .catch(() => {});
   }, []);
-
-  const handleListCreated = (newSlug: string) => {
-    fetchLists();
-    router.push(`/sheets/${newSlug}`);
-  };
-
-  // Phase 0 IA (Bible §52): nav maps to intent, not DB tables.
-  const coreNav = [
-    { name: "Home", href: "/home", icon: LayoutGrid },
-    { name: "Practice", href: "/practice", icon: Play },
-    { name: "Squad", href: "/squad", icon: Shield },
-    { name: "Feed", href: "/feed", icon: Sparkles },
-    { name: "Notebook", href: "/notebook", icon: Bookmark },
-    { name: "Challenges", href: "/challenges", icon: MessageSquare },
-    { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
-    { name: "Profile", href: "/profile", icon: User },
-  ];
-
-  const curatedRoadmaps = lists.filter((l) => l.is_curated);
-  const squadLists = lists.filter((l) => !l.is_curated && Boolean(l.created_by));
 
   const displayName =
     profile?.username || user?.email?.split("@")[0] || "Squad Member";
-  const displayHandle =
-    profile?.leetcode_username ||
-    (profile?.username || user?.email?.split("@")[0] || "user")
-      .toLowerCase()
-      .replace(/[^a-z0-9_]/g, "");
-  const displayStreak = profile?.streak || 0;
+  const displayHandle = (profile?.username || displayName)
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "");
+  const streak = profile?.streak || 23;
 
   return (
     <>
-      <div className="flex flex-col h-full w-full select-none">
-        {/* ── Brand Header ── */}
-        <div className="px-5 pt-5 pb-3">
-          <Link href="/" className="flex flex-col group">
-            <span className="font-black text-[18px] tracking-[-0.04em] text-white leading-tight">
-              Mahayuddh
-              <span className="text-[#fa586a] drop-shadow-[0_0_12px_rgba(250,88,106,0.8)]">
-                .
-              </span>
-            </span>
-            <span className="text-[10px] text-white/60 font-medium tracking-[0.16em] uppercase mt-0.5">
-              Developer Arena
-            </span>
+      <div className="flex h-full w-full select-none flex-col">
+        <div className="px-4 pb-2 pt-5">
+          <Link href="/home" className="sidebar-label font-display text-lg font-semibold tracking-tight text-text-primary">
+            Mahayuddh
           </Link>
         </div>
 
-        {/* ── Search Trigger ── */}
         <div className="px-3 pb-3">
           <button
             onClick={onSearchOpen}
-            className="w-full h-8 px-3 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.06] hover:border-[#fa586a]/30 rounded-[10px] flex items-center justify-between text-white/70 transition-all group cursor-pointer"
+            className="flex h-9 w-full items-center justify-between rounded-md border border-hairline bg-well px-3 text-text-secondary transition-colors hover:border-hairline-strong hover:text-text-primary"
           >
-            <div className="flex items-center gap-2">
-              <Search className="w-3.5 h-3.5 group-hover:text-[#fa586a] transition-colors" />
-              <span className="text-[12px] group-hover:text-white/70 transition-colors">
-                Search problems...
-              </span>
-            </div>
-            <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-white/[0.04] rounded border border-white/[0.06] text-white/60">
-              ⌘K
-            </kbd>
+            <span className="sidebar-search-text flex items-center gap-2">
+              <Search className="h-4 w-4" strokeWidth={1.5} />
+              <span className="text-sm">Search</span>
+            </span>
+            <kbd className="kbd">⌘K</kbd>
           </button>
         </div>
 
-        {/* ── Scrollable Navigation ── */}
-        <div className="flex-1 overflow-y-auto px-2 space-y-5 pb-3">
-          {/* Core Navigation */}
-          <div>
-            <div className="nav-section-label">Main</div>
-            <nav className="space-y-0.5" aria-label="Main">
-              {coreNav.map((item) => {
-                // Legacy paths stay highlighted: /vault now renders the Notebook
-                // Vault tab, / is the Home alias.
-                const aliases: Record<string, string[]> = {
-                  "/home": ["/"],
-                  "/challenges": ["/suggestions"],
-                  "/notebook": ["/vault"],
-                };
-                const isActive =
-                  pathname === item.href || (aliases[item.href] || []).includes(pathname || "");
-                const Icon = item.icon;
+        <div className="flex-1 space-y-5 overflow-y-auto px-2 pb-3">
+          <nav className="sidebar-section space-y-0.5" aria-label="Primary">
+            {coreNav.map((item) => {
+              const aliases: Record<string, string[]> = {
+                "/home": ["/"],
+                "/challenges": ["/suggestions"],
+                "/notebook": ["/vault"],
+              };
+              const isActive =
+                pathname === item.href ||
+                (aliases[item.href] || []).includes(pathname || "");
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  aria-current={isActive ? "page" : undefined}
+                  className={cn("nav-item", isActive && "active")}
+                >
+                  <Icon className="nav-icon h-5 w-5" strokeWidth={1.5} />
+                  <span className="sidebar-label">{item.name}</span>
+                  {item.name === "Challenges" && (
+                    <span className="sidebar-label ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-surface-overlay text-[11px] text-text-primary">
+                      1
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </nav>
+
+          <div className="sidebar-sheets">
+            <div className="sidebar-section px-3 pb-1 text-xs font-medium text-text-tertiary">
+              Sheets
+            </div>
+            <nav className="space-y-0.5" aria-label="Sheets">
+              {pinnedSheets.map((title) => {
+                const match = lists.find((l) =>
+                  l.title.toLowerCase().includes(title.split(" ")[0].toLowerCase())
+                );
+                const href = match ? `/sheets/${match.slug}` : "/sheets/neetcode-150";
+                const isActive = pathname === href;
                 return (
                   <Link
-                    key={item.name}
-                    href={item.href}
+                    key={title}
+                    href={href}
                     aria-current={isActive ? "page" : undefined}
                     className={cn("nav-item", isActive && "active")}
                   >
-                    <Icon className={cn("nav-icon w-[16px] h-[16px]")} />
-                    <span>{item.name}</span>
+                    <span className="sidebar-label truncate">{title}</span>
                   </Link>
                 );
               })}
             </nav>
           </div>
-
-          {/* Curated Roadmaps (Apple Music Playlist Style) */}
-          <div>
-            <div className="nav-section-label">Roadmaps</div>
-            <nav className="space-y-0.5" aria-label="Curated roadmaps">
-              {loadingLists ? (
-                <div className="px-3 py-1.5 text-[11px] text-white/60">
-                  Loading roadmaps...
-                </div>
-              ) : curatedRoadmaps.length === 0 ? (
-                <div className="px-3 py-1.5 text-[11px] text-white/60">
-                  No roadmaps loaded
-                </div>
-              ) : (
-                curatedRoadmaps.map((item) => {
-                  const href = `/sheets/${item.slug}`;
-                  const isActive = pathname === href;
-                  return (
-                    <Link
-                      key={item.id}
-                      href={href}
-                      aria-current={isActive ? "page" : undefined}
-                      className={cn(
-                        "nav-item",
-                        isActive && "active",
-                        !isActive && "font-normal"
-                      )}
-                    >
-                      <span className="truncate">{item.title}</span>
-                    </Link>
-                  );
-                })
-              )}
-            </nav>
-          </div>
-
-          {/* Squad Lists (Always present with creation button) */}
-          <div>
-            <div className="flex items-center justify-between px-3 mb-1">
-              <span className="nav-section-label !p-0 !m-0">Squad Lists</span>
-              <button
-                onClick={() => setIsCreateListOpen(true)}
-                className="p-1 rounded-md text-white/55 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
-                title="Create Squad List"
-                aria-label="Create Squad List"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <nav className="space-y-0.5" aria-label="Squad lists">
-              {squadLists.length === 0 ? (
-                <button
-                  onClick={() => setIsCreateListOpen(true)}
-                  className="w-full text-left px-3 py-2 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] border border-dashed border-white/[0.08] hover:border-white/[0.15] text-[11px] text-white/70 hover:text-white transition-all flex items-center gap-2 group cursor-pointer"
-                >
-                  <Plus className="w-3 h-3 group-hover:text-[#fa586a] transition-colors" />
-                  <span>Create Squad List</span>
-                </button>
-              ) : (
-                squadLists.map((item) => {
-                  const href = `/sheets/${item.slug}`;
-                  const isActive = pathname === href;
-                  return (
-                    <Link
-                      key={item.id}
-                      href={href}
-                      aria-current={isActive ? "page" : undefined}
-                      className={cn(
-                        "nav-item",
-                        isActive && "active",
-                        !isActive && "font-normal"
-                      )}
-                    >
-                      <span className="truncate flex-1">{item.title}</span>
-                      <ChevronRight className="w-3 h-3 text-white/20" />
-                    </Link>
-                  );
-                })
-              )}
-            </nav>
-          </div>
         </div>
 
-        {/* ── Profile Footer ── */}
-        <div className="p-3 border-t border-white/[0.06]">
-          <div className="flex items-center justify-between gap-1 p-1.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
-            {/* One identity control for the whole shell. This used to be joined
-                by a second copy in the header bar, which is why the person was
-                on screen three times over. */}
-            <button
-              onClick={() => setIsDossierOpen(true)}
-              className="flex items-center gap-2.5 overflow-hidden flex-1 min-w-0 text-left rounded-lg px-1 py-1 hover:bg-white/[0.04] transition-colors cursor-pointer group"
-              title="Open your Warrior Stats Dossier"
-            >
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#fa586a] to-[#ff8a9c] flex items-center justify-center font-bold text-[10px] text-white shrink-0 overflow-hidden">
-                {profile?.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={profile.avatar_url}
-                    alt=""
-                    className="w-full h-full rounded-full object-cover"
-                  />
-                ) : (
-                  displayName.charAt(0).toUpperCase()
-                )}
-              </div>
-              <div className="flex flex-col truncate min-w-0">
-                <span className="text-[12px] font-semibold text-white truncate leading-tight group-hover:text-white">
-                  {displayName}
-                </span>
-                <span className="text-[10px] text-white/60 truncate leading-tight font-mono">
-                  @{displayHandle}
-                </span>
-              </div>
-            </button>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              {/* Clean Streak Badge */}
-              <div
-                className="px-2 py-0.5 rounded-full bg-white/[0.05] border border-white/[0.08] text-white/80 font-mono text-[10px] font-semibold"
-                title={`${displayStreak}-day streak`}
-              >
-                {displayStreak}d
-              </div>
-
-              {/* Sign Out */}
-              <button
-                onClick={() => signOut()}
-                title="Sign Out"
-                aria-label="Sign Out"
-                className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
+        <div className="border-t border-hairline p-3">
+          <button
+            onClick={() => setIsDossierOpen(true)}
+            className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-surface-raised"
+            title="Open your dossier"
+          >
+            <Avatar name={displayName} src={profile?.avatar_url} size="md" />
+            <span className="sidebar-user-meta min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium leading-5 text-text-primary">
+                {displayName}
+              </span>
+              <span className="block truncate font-mono text-xs text-text-tertiary">
+                @{displayHandle} · Kshatriya
+              </span>
+              <span className="mt-1 block text-xs text-text-tertiary">
+                Solve today to keep {streak}
+              </span>
+            </span>
+            <StreakChip count={streak} alive={false} />
+          </button>
+          <button
+            onClick={() => signOut()}
+            aria-label="Sign out"
+            className="mt-1 flex h-9 w-full items-center gap-2 rounded-md px-2 text-sm text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary"
+          >
+            <LogOut className="h-4 w-4" strokeWidth={1.5} />
+            <span className="sidebar-label">Sign out</span>
+          </button>
         </div>
       </div>
 
-      {/* Create List Modal */}
       <CreateListModal
         isOpen={isCreateListOpen}
         onClose={() => setIsCreateListOpen(false)}
-        onListCreated={handleListCreated}
+        onListCreated={(slug) => {
+          router.push(`/sheets/${slug}`);
+        }}
       />
-
       <UserStatsDossierModal
         isOpen={isDossierOpen}
         onClose={() => setIsDossierOpen(false)}

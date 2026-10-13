@@ -9,7 +9,6 @@ import {
   X,
 } from "lucide-react";
 import { cn, formatTime } from "@/lib/utils";
-import { difficultyBadgeClass } from "@/components/ui/DifficultyBadge";
 import { ProblemLink } from "@/components/ui/ProblemLink";
 import {
   useSolving,
@@ -237,7 +236,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
         particleCount: 60,
         spread: 70,
         origin: { y: 0.9 },
-        colors: ["#fa586a", "#30d158", "#ffd60a", "#0a84ff"],
+        colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
       });
     } catch {
       // ignore
@@ -332,49 +331,48 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
       {/* ── REVENGE COMPLETE (Step 17). A solve that answers a recorded failure
           is a different event from a solve: it closes a loop the user opened. ── */}
       {revengeResult && (
-        <div className="fixed bottom-[calc(var(--dock-bottom)+var(--bottom-bar-height)+14px)] left-1/2 -translate-x-1/2 w-[26rem] max-w-[calc(100vw-2rem)] z-[160] rounded-3xl bg-[#1c1c1e]/95 backdrop-blur-2xl border border-[#30d158]/30 shadow-[0_20px_60px_rgba(0,0,0,0.6)] p-4 space-y-2">
+        <div className="fixed bottom-24 left-1/2 z-[160] w-[26rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 space-y-2 rounded-xl border border-verified/30 bg-surface-raised p-4 shadow-overlay">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[10px] font-extrabold uppercase tracking-widest text-[#30d158]">
+              <div className="text-xs font-medium uppercase tracking-wide text-verified">
                 Revenge complete
               </div>
-              <div className="text-sm font-bold text-white mt-0.5 truncate">
+              <div className="mt-0.5 truncate text-sm font-semibold text-text-primary">
                 {revengeResult.title}
               </div>
-              <div className="text-[11px] text-white/60 font-mono mt-1">
+              <div className="mt-1 font-mono text-xs text-text-secondary">
                 {revengeResultLabel(revengeResult)}
               </div>
               {revengeResult.improved ? (
-                <div className="text-[11px] text-[#30d158] mt-0.5">
+                <div className="mt-0.5 text-xs text-verified">
                   Beat your own failure.
                 </div>
               ) : (
-                /* No fake speedup when either duration is missing (§44). */
-                <div className="text-[11px] text-white/50 mt-0.5">
+                <div className="mt-0.5 text-xs text-text-tertiary">
                   Solved. Durations were not both recorded, so there is no speed to claim.
                 </div>
               )}
             </div>
             <button
               onClick={() => setRevengeResult(null)}
-              className="p-1 text-white/55 hover:text-white rounded-md transition-colors cursor-pointer shrink-0"
+              className="shrink-0 rounded-md p-1 text-text-secondary transition-colors hover:text-text-primary"
               aria-label="Dismiss"
             >
-              <X className="w-4 h-4" />
+              <X className="h-4 w-4" />
             </button>
           </div>
           <div className="flex items-center gap-2 pt-1">
             <Link
               href={`/practice/${revengeResult.problemSlug}#explain`}
               onClick={() => setRevengeResult(null)}
-              className="px-3 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-white text-[11px] font-bold transition-all"
+              className="rounded-md border border-hairline bg-surface-overlay px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:brightness-110"
             >
               Write up what changed
             </Link>
             <Link
               href="/practice"
               onClick={() => setRevengeResult(null)}
-              className="px-3 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-white text-[11px] font-bold transition-all"
+              className="rounded-md border border-hairline bg-surface-overlay px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:brightness-110"
             >
               Next battle
             </Link>
@@ -397,16 +395,16 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
 
       {/* ── Scratchpad Popover ─────────────────────────── */}
       {isScratchpadOpen && activeProblem && (
-        <div className="fixed bottom-[calc(var(--dock-bottom)+var(--bottom-bar-height)+12px)] right-6 w-96 max-w-[calc(100vw-3rem)] bg-[#1c1c1e]/95 backdrop-blur-2xl border border-white/[0.1] rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] z-[150] p-4">
-          <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
-            <span className="text-xs font-semibold text-white pl-1">
+        <div className="popover-panel fixed bottom-24 right-6 z-[150] w-96 max-w-[calc(100vw-3rem)] p-4">
+          <div className="flex items-center justify-between border-b border-hairline pb-2">
+            <span className="pl-1 text-xs font-semibold text-text-primary">
               Notes • {activeProblem.title}
             </span>
             <button
               onClick={() => setIsScratchpadOpen(false)}
-              className="p-1 text-white/55 hover:text-white rounded-md transition-colors"
+              className="rounded-md p-1 text-text-secondary transition-colors hover:text-text-primary"
             >
-              <X className="w-4 h-4" />
+              <X className="h-4 w-4" />
             </button>
           </div>
           <div className="mt-3">
@@ -415,13 +413,13 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
               onChange={(e) => handleSaveNote(e.target.value)}
               placeholder="Write your intuition, time/space complexity, or edge cases..."
               rows={4}
-              className="w-full bg-white/[0.04] border border-white/[0.06] rounded-xl p-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 resize-none font-mono"
+              className="w-full resize-none rounded-md border border-hairline bg-well p-2.5 font-mono text-xs text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
             />
-            <div className="mt-2 flex justify-between items-center text-[10px] text-white/50 pl-1">
-              <span>Saved locally for this problem</span>
+            <div className="mt-2 flex items-center justify-between pl-1 text-xs text-text-tertiary">
+              <span>Saved on this device for this problem</span>
               <button
                 onClick={() => setIsScratchpadOpen(false)}
-                className="px-3 py-1 btn-accent text-white rounded-full font-medium text-xs hover:opacity-90 transition-opacity cursor-pointer"
+                className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-on-primary transition-colors hover:bg-primary-hover"
               >
                 Done
               </button>
@@ -430,167 +428,112 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
         </div>
       )}
 
-      {/* ── Centered Compact Floating Dock (Apple Music Chrome Player) ── */}
-      <div className="floating-bottom-dock-container select-none">
-        <div className="floating-bottom-bar">
-          {/* Left: Timer Controls */}
-          <div className="flex items-center gap-2 pl-1.5 shrink-0">
-            <button
-              onClick={() => setSeconds(0)}
-              disabled={!activeProblem}
-              className="w-11 h-11 md:w-8 md:h-8 rounded-full text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
-              title="Reset Timer"
-              aria-label="Reset Timer"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              onClick={() => {
-                if (!activeProblem) {
-                  if (onSearchOpen) onSearchOpen();
-                  return;
-                }
-                setIsPlaying(!isPlaying);
-              }}
-              className="w-11 h-11 md:w-8 md:h-8 rounded-full bg-white hover:bg-white/90 text-black flex items-center justify-center shadow-subtle transition-transform active:scale-95 cursor-pointer"
-              aria-label={isPlaying ? "Pause Timer" : "Start Timer"}
-            >
-              {isPlaying ? (
-                <Pause className="w-3.5 h-3.5 fill-current" />
-              ) : (
-                <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+      {/* ── Solve dock S1 (active) / idle one-liner ── */}
+      <div className="solve-dock-wrap select-none">
+        <div className="solve-dock">
+          <div className="flex shrink-0 items-center gap-2">
+            <span
+              className={cn(
+                "h-2 w-2 rounded-full",
+                isPlaying ? "animate-gold-pulse bg-primary" : "bg-text-tertiary"
               )}
-            </button>
-
-            <div className="flex flex-col ml-0.5">
-              <span className="font-mono text-[11px] font-bold text-white tracking-wider">
-                {formatTime(elapsedSec)}
-              </span>
-              <span className="text-[10px] text-white/60 uppercase tracking-wider font-semibold">
-                {activeProblem ? (isPlaying ? "Solving" : "Paused") : "Idle"}
-              </span>
-            </div>
+              aria-hidden
+            />
+            <span className="type-mono-lg text-text-primary">
+              {formatTime(elapsedSec)}
+            </span>
           </div>
 
-          {/* Center: Problem Metadata (LCD Track Info) */}
-          <div className="flex items-center justify-center gap-2.5 flex-1 min-w-0 mx-2 truncate px-2">
+          <div className="flex min-w-0 flex-1 items-center justify-center gap-2 truncate px-2">
             {activeProblem ? (
               <>
-                <div className="hidden sm:flex w-7 h-7 rounded-lg bg-white/[0.06] border border-white/[0.08] items-center justify-center shrink-0 font-mono text-[10px] font-bold text-white/80">
-                  #{activeProblem.id}
-                </div>
-
-                <div className="flex flex-col truncate min-w-0">
-                  <div className="flex items-center gap-1.5 truncate">
-                    <span className="text-[12px] font-semibold text-white truncate">
-                      {activeProblem.title}
-                    </span>
-                    <span
-                      className={cn(
-                        "px-1.5 py-0.2 rounded-full text-[10px] font-semibold border shrink-0",
-                        difficultyBadgeClass(activeProblem.difficulty)
-                      )}
-                    >
-                      {activeProblem.difficulty}
-                    </span>
-                  </div>
-                  {/* The status line is the first thing to go when width is
-                      scarce — the header row above already carries the fact. */}
-                  <div className="hidden sm:block text-[10px] text-white/50 truncate">
-                    {activeProblem.category ? `${activeProblem.category} • ` : ""}
-                    {isPlaying ? "Session in progress" : "Session paused"}
-                  </div>
-                </div>
+                <span className="truncate text-sm font-medium text-text-primary">
+                  {activeProblem.title}
+                </span>
+                <span className="shrink-0 text-xs text-text-secondary">
+                  {activeProblem.difficulty}
+                </span>
+                <span className="hidden shrink-0 font-mono text-xs text-text-tertiary sm:block">
+                  No. {activeProblem.id}
+                </span>
               </>
             ) : (
-              /* "No problem active • Select a problem to solve" used to be
-                 clipped mid-word by the Find Problem button on a 390px screen.
-                 The button already carries the instruction, so the copy only
-                 earns its place when there is room for it whole. */
-              <div className="hidden md:flex items-center justify-center text-white/60 text-[11px] truncate">
-                <span>No problem active • Select a problem to solve</span>
-              </div>
+              <span className="hidden truncate text-sm text-text-tertiary md:block">
+                No battle running
+              </span>
             )}
           </div>
 
-          {/* Right: Quick Actions */}
-          <div className="flex items-center gap-1.5 pr-1.5 shrink-0">
+          <div className="flex shrink-0 items-center gap-1.5">
             {activeProblem ? (
               <>
-                {/* Scratchpad */}
                 <button
                   onClick={() => setIsScratchpadOpen(!isScratchpadOpen)}
-                  className={cn(
-                    "px-2.5 py-1 rounded-full border text-[11px] font-semibold transition-colors hidden sm:flex items-center cursor-pointer",
-                    isScratchpadOpen
-                      ? "bg-white/[0.1] border-white/[0.14] text-white"
-                      : "bg-white/[0.03] border-white/[0.06] text-white/55 hover:text-white hover:bg-white/[0.06]"
-                  )}
+                  className="hidden h-10 items-center rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary sm:flex"
                 >
                   Notes
                 </button>
-
-                {/* LeetCode Link */}
-                <ProblemLink
-                  slug={activeProblem.slug}
-                  className="p-1.5 rounded-full bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06]"
-                />
-
-                {/* I'm Stuck */}
+                <button
+                  onClick={() => setIsPlaying(!isPlaying)}
+                  className="flex h-10 w-10 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                  aria-label={isPlaying ? "Pause battle" : "Resume battle"}
+                >
+                  {isPlaying ? (
+                    <Pause className="h-4 w-4" />
+                  ) : (
+                    <Play className="ml-0.5 h-4 w-4" />
+                  )}
+                </button>
                 <button
                   onClick={() => setStuckOpen((v) => !v)}
-                  title="Stuck? Get the smallest useful hint."
-                  className={cn(
-                    "px-2.5 py-1 rounded-full border text-[11px] font-semibold transition-colors cursor-pointer hidden sm:block",
-                    stuckOpen
-                      ? "bg-[#ff9f0a]/15 border-[#ff9f0a]/40 text-[#ff9f0a]"
-                      : "bg-white/[0.03] border-white/[0.06] text-white/55 hover:text-white hover:bg-white/[0.06]"
-                  )}
+                  className="hidden h-10 items-center rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary sm:flex"
                 >
                   Stuck?
                 </button>
-
-                {/* Mark Failed */}
-                <button
-                  onClick={handleFail}
-                  disabled={ending}
-                  title="Couldn't crack it — records an honest attempt for revenge later."
-                  className="px-2.5 py-1 rounded-full bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.06] text-white/55 hover:text-white text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-40"
-                >
-                  Failed
-                </button>
-
-                {/* Mark Solved */}
+                <ProblemLink
+                  slug={activeProblem.slug}
+                  className="rounded-md p-2 text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+                />
                 <button
                   onClick={() => handleComplete()}
                   disabled={isCompleted}
-                  className={cn(
-                    "px-3 py-1 rounded-full font-semibold text-[11px] transition-all cursor-pointer",
-                    isCompleted
-                      ? "bg-[#30d158] text-black"
-                      : "btn-accent text-white shadow-glow"
-                  )}
+                  className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-on-primary transition-colors hover:bg-primary-hover active:bg-primary-pressed disabled:bg-surface-overlay disabled:text-text-disabled"
                 >
-                  {isCompleted ? "Solved" : "Mark Solved"}
+                  {isCompleted ? "Solved" : "Submit solve"}
                 </button>
-
-                {/* Abandon */}
-                <button
-                  onClick={handleAbandon}
-                  title="Abandon battle (nothing recorded)"
-                  aria-label="Abandon battle"
-                  className="p-1.5 rounded-full text-white/25 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+                <details className="relative">
+                  <summary className="flex h-10 w-9 cursor-pointer items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface-overlay hover:text-text-primary">
+                    …
+                  </summary>
+                  <div className="popover-panel absolute bottom-11 right-0 flex w-44 flex-col p-2">
+                    <button
+                      onClick={handleFail}
+                      disabled={ending}
+                      className="rounded-md px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary disabled:opacity-40"
+                    >
+                      Mark failed
+                    </button>
+                    <button
+                      onClick={handleAbandon}
+                      className="rounded-md px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+                    >
+                      Abandon
+                    </button>
+                    <button
+                      onClick={() => setSeconds(0)}
+                      className="flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" /> Reset timer
+                    </button>
+                  </div>
+                </details>
               </>
             ) : (
               <button
                 onClick={onSearchOpen}
-                className="h-11 md:h-auto px-3 py-1 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/50 hover:text-white text-[11px] font-semibold transition-colors cursor-pointer flex items-center"
+                className="flex h-10 items-center rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
               >
-                Find Problem
+                Pick a problem
               </button>
             )}
           </div>

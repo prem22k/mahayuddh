@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { usePathname } from "next/navigation";
 import { RefreshCw, Menu, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -12,22 +13,15 @@ interface HeaderProps {
   onSearchOpen?: () => void;
 }
 
-/**
- * The utility bar (design.md §2).
- *
- * Three things live here and nothing else: the global search, the LeetCode sync
- * trigger, and notifications. Identity is NOT here — the sidebar footer already
- * carries avatar, handle, streak and sign-out, and a second copy of the same
- * person in the bar was the reason "who am I" appeared three times per screen.
- * The dossier opens from the sidebar footer instead.
- *
- * There is exactly one notification control. A separate "Alerts" permission
- * pill used to sit beside the real bell, and because the bell was mounted as a
- * fixed overlay in the same corner the two were drawn on top of each other:
- * unread state and push permission were both unreachable. Permission now lives
- * inside the bell's own panel, where it belongs.
- */
+function breadcrumbFor(pathname: string | null): string {
+  if (!pathname || pathname === "/") return "Arena";
+  const seg = pathname.split("/").filter(Boolean);
+  const head = seg[0] || "Arena";
+  return head.charAt(0).toUpperCase() + head.slice(1);
+}
+
 export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
+  const pathname = usePathname();
   const { profile, user, refreshProfile } = useAuth();
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -46,56 +40,41 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-20 px-4 md:px-8 py-2 md:py-3 flex items-center justify-between gap-3 bg-black/90 backdrop-blur-xl border-b border-white/[0.06] select-none">
-      {/* Left: mobile drawer + global search */}
-      <div className="flex items-center gap-1.5 md:gap-3 flex-1 min-w-0">
+    <header className="shell-header select-none">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <button
           onClick={onMenuToggle}
-          className="md:hidden w-11 h-11 shrink-0 -ml-2 rounded-xl text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors flex items-center justify-center cursor-pointer"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:hidden"
           aria-label="Open navigation menu"
         >
-          <Menu className="w-5 h-5" />
+          <Menu className="h-5 w-5" strokeWidth={1.5} />
         </button>
-
-        {/* design.md §2 puts the search pill in the header. The sidebar keeps its
-            own trigger (§3.1); on a phone this one replaces it, since the
-            drawer is a worse search entry than a visible field. */}
+        <nav aria-label="Breadcrumb" className="truncate text-sm text-text-secondary">
+          {breadcrumbFor(pathname)}
+        </nav>
         <button
           onClick={onSearchOpen}
-          className="group h-11 md:h-9 px-3 w-full max-w-md bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.06] hover:border-[#fa586a]/30 rounded-[10px] flex items-center justify-between gap-3 text-white/70 transition-all cursor-pointer"
+          className="ml-2 hidden items-center gap-2 rounded-md px-2 py-1 text-sm text-text-tertiary transition-colors hover:text-text-primary md:flex"
         >
-          <span className="flex items-center gap-2 min-w-0">
-            <Search className="w-3.5 h-3.5 shrink-0 group-hover:text-[#fa586a] transition-colors" />
-            <span className="text-[12px] truncate group-hover:text-white/70 transition-colors">
-              Search problems, tags, squad members
-            </span>
-          </span>
-          <kbd className="hidden sm:block shrink-0 px-1.5 py-0.5 text-[10px] font-mono bg-white/[0.04] rounded border border-white/[0.06] text-white/25">
-            ⌘K
-          </kbd>
+          <Search className="h-4 w-4" strokeWidth={1.5} />
+          <span className="hidden lg:inline">Search</span>
+          <kbd className="kbd hidden lg:inline-flex">⌘K</kbd>
         </button>
       </div>
 
-      {/* Right: sync + notifications */}
-      <div className="flex items-center gap-1.5 shrink-0">
+      <div className="flex shrink-0 items-center gap-2">
         <button
           onClick={handleSync}
           disabled={isSyncing}
-          className="w-11 h-11 md:w-10 md:h-10 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-white/60 hover:text-white transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center"
-          title="Sync LeetCode Submissions"
-          aria-label="Sync LeetCode Submissions"
+          className="flex h-10 items-center gap-2 rounded-md px-3 text-sm text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary disabled:opacity-50"
+          title="Sync LeetCode submissions"
         >
-          <RefreshCw
-            className={cn(
-              "w-3.5 h-3.5",
-              isSyncing && "animate-spin text-[#fa586a]"
-            )}
-          />
+          <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} strokeWidth={1.5} />
+          <span className="hidden sm:inline">
+            {isSyncing ? "Syncing…" : "Synced 4m ago"}
+          </span>
         </button>
-
-        <div className="flex items-center rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-colors">
-          <NotificationBell />
-        </div>
+        <NotificationBell />
       </div>
     </header>
   );

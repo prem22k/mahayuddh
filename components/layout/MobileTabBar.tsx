@@ -3,24 +3,10 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Trophy, Compass, Inbox } from "lucide-react";
+import { Swords, Dumbbell, Users, Newspaper } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/**
- * Mobile tab bar (design.md §4).
- *
- * On a phone the slide-out drawer was the only navigation, which put every
- * destination two taps away behind a hamburger and left the whole bottom edge
- * to the solving dock. design.md §4 commits to a fixed four-tab bar with
- * >= 44x44 touch targets; this is that bar. It owns the bottom edge and the
- * dock sits directly above it (see --dock-bottom in globals.css).
- *
- * Four destinations, chosen by intent rather than by which table backs them:
- * the daily loop (Arena), the social comparison (Ranks), the catalogue
- * (Topics), and the inbox (Inbox). Profile, Squad, Feed, Notebook and Practice
- * stay in the drawer — a fifth and sixth tab would push the row under 44px.
- */
 interface Tab {
   name: string;
   href: string;
@@ -29,10 +15,10 @@ interface Tab {
 }
 
 const TABS: Tab[] = [
-  { name: "Arena", href: "/home", icon: LayoutGrid, aliases: ["/"] },
-  { name: "Ranks", href: "/leaderboard", icon: Trophy, aliases: [] },
-  { name: "Topics", href: "/patterns", icon: Compass, aliases: ["/sheets"] },
-  { name: "Inbox", href: "/challenges", icon: Inbox, aliases: ["/suggestions"] },
+  { name: "Arena", href: "/home", icon: Swords, aliases: ["/"] },
+  { name: "Practice", href: "/practice", icon: Dumbbell, aliases: [] },
+  { name: "Squad", href: "/squad", icon: Users, aliases: [] },
+  { name: "Feed", href: "/feed", icon: Newspaper, aliases: [] },
 ];
 
 export function MobileTabBar() {
@@ -42,7 +28,7 @@ export function MobileTabBar() {
     pathname === tab.href || tab.aliases.includes(pathname || "");
 
   return (
-    <nav className="mobile-tab-bar" aria-label="Primary">
+    <nav className="mobile-tabbar" aria-label="Primary">
       {TABS.map((tab) => {
         const active = isActive(tab);
         const Icon = tab.icon;
@@ -53,8 +39,8 @@ export function MobileTabBar() {
             className={cn("mobile-tab", active && "active")}
             aria-current={active ? "page" : undefined}
           >
-            <Icon className="mobile-tab-icon w-[18px] h-[18px]" aria-hidden="true" />
-            <span className="mobile-tab-label">{tab.name}</span>
+            <Icon className="h-[18px] w-[18px]" strokeWidth={1.5} aria-hidden="true" />
+            <span>{tab.name}</span>
           </Link>
         );
       })}
