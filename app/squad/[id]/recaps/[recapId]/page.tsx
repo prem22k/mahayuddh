@@ -56,94 +56,92 @@ export default async function PublicRecapPage({
   const path = `/squad/${squadId}/recaps/${recapId}`;
   const metrics = [
     { label: "Solves", value: body.solves },
-    { label: "Challenges", value: body.challengesSent },
-    { label: "Answered", value: body.challengesCompleted },
+    { label: "Challenges sent", value: body.challengesSent },
+    { label: "Beaten", value: body.challengesCompleted },
     { label: "Approaches", value: body.approachesWritten },
     { label: "Stuck asks", value: body.stuckRequests },
   ];
+  const improvement = body.biggestImprovement;
 
   return (
-    <div className="min-h-screen bg-[#000] text-white">
-      <div className="max-w-2xl mx-auto px-5 py-14 space-y-8">
+    <div className="min-h-screen bg-canvas text-text-primary">
+      <div className="mx-auto w-full max-w-reading space-y-8 px-4 py-14">
         <Suspense fallback={null}>
           <TrackVisit artifact={`recap:${recapId}`} />
         </Suspense>
 
         <header className="space-y-2">
-          <div className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/55">
-            Week of {body.window?.weekStart ?? recap.week_start}
-          </div>
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">{squadName}</h1>
-          <p className="text-sm text-white/60 leading-relaxed">{body.headline}</p>
-          {/* The week is named in the page itself, not only in the metadata, so a
-              reader six weeks later cannot mistake this for the current week. */}
-          <p className="text-[10px] text-white/25 font-mono">
+          <p className="text-sm text-text-secondary">
+            {squadName} · {body.window?.weekStart ?? recap.week_start}
+          </p>
+          <h1 className="type-display-md text-text-primary">{body.headline}</h1>
+          <p className="font-mono text-xs text-text-tertiary tnum">
             {body.window?.weekStart ?? recap.week_start} →{" "}
             {body.window?.weekEnd ?? recap.week_end}
           </p>
         </header>
 
-        <dl className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        {improvement && (
+          <section className="card space-y-2">
+            <p className="text-sm text-text-secondary">
+              {improvement.username ? `@${improvement.username}` : "Biggest improvement"} ·{" "}
+              {titleFromSlug(improvement.slug)}
+            </p>
+            <p className="type-mono-display text-text-primary">
+              <span className="text-text-tertiary line-through">
+                {formatDuration(improvement.fromSec)}
+              </span>{" "}
+              → {formatDuration(improvement.toSec)}
+            </p>
+          </section>
+        )}
+
+        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
           {metrics.map((m) => (
             <div
               key={m.label}
-              className="p-3 rounded-2xl bg-white/[0.02] border border-white/[0.06] text-center"
+              className="rounded-xl border border-hairline bg-surface p-3 text-center"
             >
-              <div className="text-xl font-black text-white font-mono">{m.value}</div>
-              <div className="text-[10px] text-white/50 mt-0.5">{m.label}</div>
+              <div className="font-display text-[28px] font-semibold leading-[31px] text-text-primary tnum">
+                {m.value}
+              </div>
+              <div className="mt-0.5 text-xs text-text-tertiary">{m.label}</div>
             </div>
           ))}
         </dl>
 
-        {body.biggestImprovement && (
-          <section className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-1">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-white/50">
-              Biggest improvement
-            </div>
-            <p className="text-sm text-white/80">
-              {titleFromSlug(body.biggestImprovement.slug)}{" "}
-              {formatDuration(body.biggestImprovement.fromSec)} →{" "}
-              {formatDuration(body.biggestImprovement.toSec)}
-            </p>
-            {body.biggestImprovement.username && (
-              <p className="text-[11px] text-white/50">
-                @{body.biggestImprovement.username}
-              </p>
-            )}
+        {body.entries?.length > 0 && (
+          <section className="space-y-2">
+            <h2 className="text-lg font-semibold leading-[26px] text-text-primary">
+              What happened
+            </h2>
+            <ul className="space-y-1.5">
+              {body.entries.map((e) => (
+                <li key={e.label} className="flex items-baseline gap-3 text-sm leading-6">
+                  <span className="w-24 shrink-0 text-xs text-text-tertiary">{e.label}</span>
+                  <span className="text-text-secondary">{e.detail}</span>
+                </li>
+              ))}
+            </ul>
           </section>
         )}
 
-        {body.entries?.length > 0 && (
-          <ul className="space-y-1.5">
-            {body.entries.map((e) => (
-              <li key={e.label} className="flex items-baseline gap-2 text-sm text-white/60">
-                <span className="text-white/50 text-[10px] uppercase tracking-wider w-24 shrink-0">
-                  {e.label}
-                </span>
-                {e.detail}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {/* The empty sections are the point. A recap that only listed wins would
-            be a highlight reel, and the plan asks for the opposite. */}
         {body.empty?.length > 0 && (
-          <div className="pt-3 border-t border-white/[0.06]">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1">
-              Did not happen
-            </div>
+          <section className="space-y-1 border-t border-hairline pt-4">
+            <h2 className="text-lg font-semibold leading-[26px] text-text-primary">
+              What didn&apos;t happen
+            </h2>
             <ul className="space-y-0.5">
               {body.empty.map((line: string) => (
-                <li key={line} className="text-[11px] text-white/50">
+                <li key={line} className="text-sm leading-6 text-text-secondary">
                   · {line}
                 </li>
               ))}
             </ul>
-          </div>
+          </section>
         )}
 
-        <div className="flex items-center gap-2 flex-wrap pt-2">
+        <div className="flex flex-wrap items-center gap-2 pt-2">
           <ShareRow
             path={path}
             artifact={{ kind: "recap", id: recapId, squadId }}
@@ -152,11 +150,14 @@ export default async function PublicRecapPage({
           />
           <Link
             href="/login"
-            className="px-4 py-2 rounded-full btn-accent text-white text-[11px] font-bold transition-all"
+            className="inline-flex min-h-[44px] h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium leading-5 text-on-primary transition-colors hover:bg-primary-hover md:min-h-0"
           >
-            Track your own
+            Start your squad
           </Link>
         </div>
+        <p className="text-sm leading-6 text-text-secondary">
+          Practice with your own people.
+        </p>
       </div>
     </div>
   );

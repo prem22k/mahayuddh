@@ -12,9 +12,10 @@ import {
   Check,
   Forward,
   BellRing,
+  Lock,
+  X,
 } from "lucide-react";
 import confetti from "canvas-confetti";
-import { cn } from "@/lib/utils";
 import { slugifyTitle } from "@/lib/slug";
 import { copyText } from "@/lib/clipboard";
 import {
@@ -31,12 +32,27 @@ import { notify } from "@/lib/data/notifications";
 import { getSquadProfiles } from "@/lib/data/profiles";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
-import { DifficultyBadge } from "@/components/ui/DifficultyBadge";
+import { DifficultyBadgeNew } from "@/components/ui/Badge";
 import { ProblemLink } from "@/components/ui/ProblemLink";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { PageLoader } from "@/components/ui/PageLoader";
+import { Button } from "@/components/ui/Button";
+import { EmptyState, ErrorCard } from "@/components/ui/States";
+import { UnderlineTabs } from "@/components/ui/ProblemRow";
+import { Pass, PassSerial } from "@/components/pass/Pass";
+import { Avatar } from "@/components/ui/Avatar";
 import { Suggestion, Profile, Difficulty } from "@/types/database";
 import { track } from "@/lib/analytics";
+
+type TabKey = "all" | "for_you" | "sent" | "done";
+const TABS = ["All", "For you", "Sent", "Done"] as const;
+type TabLabel = (typeof TABS)[number];
+const TAB_TO_KEY: Record<TabLabel, TabKey> = {
+  All: "all",
+  "For you": "for_you",
+  Sent: "sent",
+  Done: "done",
+};
 
 export default function SuggestionsPage() {
   const { user, profile } = useAuth();
@@ -44,7 +60,7 @@ export default function SuggestionsPage() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"all" | "for_you" | "pending" | "completed">("all");
+  const [activeTab, setActiveTab] = useState<TabKey>("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -208,7 +224,7 @@ export default function SuggestionsPage() {
           particleCount: 60,
           spread: 60,
           origin: { y: 0.8 },
-          colors: ["#fa586a", "#ffffff", "#ffd60a"],
+          colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
         });
       } else if (res.reason === "duplicate") {
         setCreateError("This squad mate already has a pending challenge for that problem.");
@@ -319,7 +335,7 @@ export default function SuggestionsPage() {
         particleCount: 50,
         spread: 60,
         origin: { y: 0.8 },
-        colors: ["#30d158", "#ffffff"],
+        colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
       });
     } else if (res.reason === "not_solved") {
       setCompleteError("Mark the problem solved first (battle dock or roadmap), then mark complete. LeetCode sync only adds an evidence badge.");
@@ -329,140 +345,206 @@ export default function SuggestionsPage() {
   };
 
   const filteredList = suggestions.filter((s) => {
-    if (activeTab === "for_you") return s.to_user === user?.id;
-    if (activeTab === "pending") return s.status === "pending";
-    if (activeTab === "completed") return s.status === "completed";
+    if (activeTab === "for_you") return s.to_user === user?.id && s.status !== "completed";
+    if (activeTab === "sent") return s.from_user === user?.id;
+    if (activeTab === "done") return s.status === "completed";
     return true;
   });
 
   const forYouCount = suggestions.filter((s) => s.to_user === user?.id && s.status === "pending").length;
+  const sentCount = suggestions.filter((s) => s.from_user === user?.id).length;
+  const doneCount = suggestions.filter((s) => s.status === "completed").length;
+  const openForYou =
+    suggestions.find((s) => s.to_user === user?.id && s.status === "pending") ?? null;
   const eligibleRecipientProfiles = profiles.filter((p) => p.id !== user?.id);
+  const tabLabel = (Object.keys(TAB_TO_KEY) as TabLabel[]).find((k) => TAB_TO_KEY[k] === activeTab) ?? "All";
 
   return (
-    <div className="space-y-8 select-none">
-      {/* ── Header ── */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="space-y-8">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="text-[11px] font-semibold text-[#fa586a] tracking-[0.2em] uppercase mb-1">
-            Squad Challenges & Accountability
-          </div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
-            Suggestion Box
-          </h1>
-          <p className="text-xs text-white/55 mt-1">
-            Challenge squad mates with curated problems, hints, and automated sync verification.
+          <h1 className="type-display-md text-text-primary">Challenges</h1>
+          <p className="mt-1 text-sm leading-6 text-text-secondary">
+            Friendly 1v1s. Solve it, beat their time, pass it on.
           </p>
         </div>
 
-        {/* Action Button */}
-        <button
-          onClick={() => {
-            setCreateError(null);
-            setPassParent(null);
-            setIsModalOpen(true);
-          }}
-          className="px-4 py-2 rounded-full btn-accent text-white font-semibold text-xs flex items-center gap-1.5 shadow-[0_0_20px_rgba(250,88,106,0.35)] self-start md:self-auto transition-all cursor-pointer"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Challenge a Friend</span>
-        </button>
+        {!openForYou && (
+          <span className="self-start md:self-auto">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setCreateError(null);
+                setPassParent(null);
+                setIsModalOpen(true);
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
+              New challenge
+            </Button>
+          </span>
+        )}
+        {openForYou && (
+          <span className="self-start md:self-auto">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setCreateError(null);
+                setPassParent(null);
+                setIsModalOpen(true);
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
+              New challenge
+            </Button>
+          </span>
+        )}
       </div>
 
-      {loadError && (
-        <div role="alert" className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-5 py-4 rounded-2xl bg-[#ff453a]/10 border border-[#ff453a]/30">
-          <span className="text-xs text-[#ff453a] font-medium">{loadError}</span>
-          <button
-            onClick={loadData}
-            className="px-4 py-1.5 rounded-full bg-[#ff453a]/15 hover:bg-[#ff453a]/25 border border-[#ff453a]/30 text-[#ff453a] text-xs font-bold transition-all cursor-pointer shrink-0"
-          >
-            Retry
-          </button>
-        </div>
+      {loadError && <ErrorCard message={loadError} onRetry={() => void loadData()} />}
+
+      {openForYou ? (
+        <Pass
+          body={
+            <div className="space-y-4">
+              <div className="flex items-center gap-2.5">
+                <Avatar
+                  name={openForYou.from_profile?.username ?? "Challenger"}
+                  src={openForYou.from_profile?.avatar_url}
+                  size="md"
+                />
+                <p className="type-title text-text-primary">
+                  {openForYou.from_profile?.username
+                    ? `@${openForYou.from_profile.username} challenged you`
+                    : "You were challenged"}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="type-title text-text-primary">{openForYou.problem_title}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <DifficultyBadgeNew difficulty={openForYou.difficulty} />
+                <span className="font-mono text-sm text-text-tertiary tnum">
+                  No. {openForYou.problem_slug}
+                </span>
+              </div>
+              {openForYou.sender_time_sec != null ? (
+                <p className="type-mono-display text-text-primary">
+                  Beat {fmtTime(openForYou.sender_time_sec)}
+                </p>
+              ) : (
+                <p className="type-mono-display text-text-primary">Open</p>
+              )}
+              {openForYou.note && !(openForYou.spoiler && openForYou.to_user !== user?.id) && (
+                <p className="text-sm leading-6 text-text-secondary">
+                  &ldquo;{openForYou.note}&rdquo;
+                </p>
+              )}
+              {openForYou.spoiler && openForYou.to_user !== user?.id && (
+                <p className="flex items-center gap-1.5 text-sm text-text-tertiary">
+                  <Lock className="h-3.5 w-3.5" strokeWidth={1.5} />
+                  A hint unlocks when you finish.
+                </p>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="primary" size="lg" onClick={() => handleStartSolvingChallenge(openForYou)}>
+                  Accept challenge
+                </Button>
+                <Button variant="ghost" onClick={() => handlePass(openForYou)}>
+                  Pass it on
+                </Button>
+                <Button variant="ghost" onClick={() => handleDecline(openForYou)}>
+                  Not now
+                </Button>
+              </div>
+            </div>
+          }
+          stub={
+            <>
+              <PassSerial>From @{openForYou.from_profile?.username ?? "squad"}</PassSerial>
+              <PassSerial>To @{openForYou.to_profile?.username ?? "you"}</PassSerial>
+              <PassSerial>
+                {openForYou.deadline_at
+                  ? `Due ${new Date(openForYou.deadline_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
+                  : "No deadline"}
+              </PassSerial>
+              <PassSerial>Open</PassSerial>
+            </>
+          }
+        />
+      ) : (
+        !loading && (
+          <div className="card flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold leading-[26px] text-text-primary">
+                No open challenges for you
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-text-secondary">
+                Send one to someone in your squad.
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setCreateError(null);
+                setPassParent(null);
+                setIsModalOpen(true);
+              }}
+            >
+              New challenge
+            </Button>
+          </div>
+        )
       )}
 
-      {/* ── Tab Filter ── */}
-      <div className="flex items-center gap-2 p-1 bg-white/[0.04] rounded-full border border-white/[0.06] w-fit flex-wrap">
-        <button
-          onClick={() => setActiveTab("all")}
-          className={cn(
-            "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
-            activeTab === "all"
-              ? "bg-white/[0.12] text-white shadow-sm"
-              : "text-white/55 hover:text-white/80"
-          )}
-        >
-          All ({suggestions.length})
-        </button>
-        {user && (
-          <button
-            onClick={() => setActiveTab("for_you")}
-            className={cn(
-              "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5",
-              activeTab === "for_you"
-                ? "btn-accent border border-[#fa586a]/30 text-white shadow-sm"
-                : "text-white/55 hover:text-white/80"
-            )}
-          >
-            <span>Targeting You</span>
-            {forYouCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full btn-accent text-white font-bold text-[10px]">
-                {forYouCount}
-              </span>
-            )}
-          </button>
+      <UnderlineTabs
+        tabs={TABS.map((t) =>
+          t === "All"
+            ? `All ${suggestions.length}`
+            : t === "For you"
+              ? `For you ${forYouCount}`
+              : t === "Sent"
+                ? `Sent ${sentCount}`
+                : `Done ${doneCount}`
         )}
-        <button
-          onClick={() => setActiveTab("pending")}
-          className={cn(
-            "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
-            activeTab === "pending"
-              ? "bg-white/[0.12] text-white shadow-sm"
-              : "text-white/55 hover:text-white/80"
-          )}
-        >
-          Pending ({suggestions.filter((s) => s.status === "pending").length})
-        </button>
-        <button
-          onClick={() => setActiveTab("completed")}
-          className={cn(
-            "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
-            activeTab === "completed"
-              ? "bg-white/[0.12] text-white shadow-sm"
-              : "text-white/55 hover:text-white/80"
-          )}
-        >
-          Completed ({suggestions.filter((s) => s.status === "completed").length})
-        </button>
-      </div>
+        value={`${tabLabel} ${tabLabel === "All" ? suggestions.length : tabLabel === "For you" ? forYouCount : tabLabel === "Sent" ? sentCount : doneCount}`}
+        onChange={(v) => {
+          const base = (Object.keys(TAB_TO_KEY) as TabLabel[]).find((k) => v.startsWith(k));
+          if (base) setActiveTab(TAB_TO_KEY[base]);
+        }}
+      />
 
-      {/* ── Suggestion Cards Grid ── */}
       {completeError && (
-        <div role="alert" className="px-4 py-2.5 rounded-xl bg-[#ff9f0a]/10 border border-[#ff9f0a]/30 text-[#ff9f0a] text-xs font-medium">
-          {completeError}
+        <div role="alert" className="card border-error/30 bg-error-tint">
+          <p className="text-sm text-error">{completeError}</p>
         </div>
       )}
       {actionNotice && (
-        <div role="status" className="px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/60 text-xs">
-          {actionNotice}
+        <div role="status" className="card">
+          <p className="text-sm text-text-secondary">{actionNotice}</p>
         </div>
       )}
       {loading ? (
         <PageLoader label="Loading challenges..." className="h-60" />
       ) : filteredList.length === 0 ? (
-        <div className="p-12 text-center space-y-3 bg-[#1c1c1e]/60 rounded-2xl border border-white/[0.06]">
-          <p className="text-white/55 text-xs">
-            {activeTab === "for_you"
-              ? "No challenges yet. Solve a battle and challenge a friend — theirs will land here."
-              : suggestions.length === 0
-                ? "No challenges yet. Solve a battle and challenge a friend to start your squad loop."
-                : "Nothing in this view. Try another tab."}
-          </p>
-          <Link href="/" className="inline-block px-4 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-white text-xs font-bold transition-all">
-            Start a battle
-          </Link>
-        </div>
+        <EmptyState
+          heading="Nothing here yet"
+          body={
+            activeTab === "for_you"
+              ? "No challenges waiting for you. Solve a battle and challenge a friend, theirs will land here."
+              : "No challenges yet. Solve a battle and challenge a friend to start your squad loop."
+          }
+          action={
+            <Link
+              href="/home"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-[#272830]"
+            >
+              Start a battle
+            </Link>
+          }
+        />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="mx-auto w-full max-w-reading space-y-3">
           {filteredList.map((item) => {
             const isTarget = item.to_user === user?.id;
             const isCompleted = item.status === "completed";
@@ -470,141 +552,134 @@ export default function SuggestionsPage() {
             return (
               <div
                 key={item.id}
-                className={cn(
-                  "bg-[#1c1c1e]/60 border rounded-2xl p-5 flex flex-col justify-between shadow-subtle transition-all space-y-4 backdrop-blur-xl",
-                  isTarget && !isCompleted
-                    ? "border-[#fa586a]/40 bg-gradient-to-br from-[#fa586a]/10 via-[#1c1c1e]/60 to-[#1c1c1e]/60 shadow-[0_0_25px_rgba(250,88,106,0.15)]"
-                    : "border-white/[0.06] hover:border-white/[0.12]"
-                )}
+                className="rounded-xl border border-hairline bg-surface p-4"
               >
                 <div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[11px] text-white/50 font-medium">
-                      <span className="text-white font-bold">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-1.5 text-sm text-text-secondary">
+                      <span className="truncate font-medium text-text-primary">
                         @{item.from_profile?.username || "Member"}
                       </span>
-                      <ArrowRight className="w-3 h-3 text-white/50" />
-                      <span className="text-white font-bold">
+                      <ArrowRight className="h-3 w-3 shrink-0" strokeWidth={1.5} />
+                      <span className="truncate font-medium text-text-primary">
                         @{item.to_profile?.username || "Member"}
                       </span>
                       {isTarget && (
-                        <span className="px-1.5 py-0.2 rounded-full btn-accent text-white text-[9px] font-black uppercase tracking-wider">
-                          YOU
+                        <span className="shrink-0 rounded-full bg-surface-overlay px-1.5 py-0.5 text-xs font-medium text-text-primary">
+                          You
                         </span>
                       )}
                     </div>
 
                     {isCompleted ? (
-                      <span className="px-2.5 py-0.5 rounded-full bg-[#30d158]/15 text-[#30d158] border border-[#30d158]/30 text-[10px] font-bold flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
+                      <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-verified">
+                        <CheckCircle2 className="h-3 w-3" strokeWidth={1.5} />
                         <span>Solved</span>
                       </span>
                     ) : (
-                      <span className="px-2.5 py-0.5 rounded-full bg-[#ff9f0a]/15 text-[#ff9f0a] border border-[#ff9f0a]/30 text-[10px] font-bold flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
+                      <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-text-secondary">
+                        <Clock className="h-3 w-3" strokeWidth={1.5} />
                         <span>Pending</span>
                       </span>
                     )}
                   </div>
 
-                  <div className="mt-3 flex items-center gap-2 flex-wrap">
-                    <h3 className="text-base font-bold text-white">{item.problem_title}</h3>
-                    <DifficultyBadge difficulty={item.difficulty} />
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-medium text-text-primary">{item.problem_title}</h3>
+                    <DifficultyBadgeNew difficulty={item.difficulty} />
                     {item.sender_time_sec != null && (
-                      <span className="px-2 py-0.5 rounded-full bg-[#0a84ff]/15 text-[#0a84ff] border border-[#0a84ff]/30 text-[10px] font-bold font-mono">
+                      <span className="font-mono text-xs text-text-secondary tnum">
                         {item.beat_time ? `Beat ${fmtTime(item.sender_time_sec)}` : `Solved in ${fmtTime(item.sender_time_sec)}`}
                       </span>
                     )}
                     {item.deadline_at && item.status === "pending" && (
-                      <span className="text-[10px] text-white/55 font-mono">
+                      <span className="font-mono text-xs text-text-tertiary tnum">
                         due {new Date(item.deadline_at).toLocaleDateString()}
                       </span>
                     )}
                   </div>
 
                   {item.note && !(item.spoiler && !isTarget && !isCompleted) && (
-                    <div className="mt-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] text-xs text-white/70 italic">
+                    <div className="mt-3 rounded-lg border border-hairline bg-well p-3 text-sm leading-6 text-text-secondary">
                       &ldquo;{item.note}&rdquo;
                     </div>
                   )}
                   {item.spoiler && !isTarget && !isCompleted && (
-                    <div className="mt-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] text-xs text-white/50 italic">
-                      Hidden hint — reveals when accepted.
+                    <div className="mt-3 flex items-center gap-1.5 rounded-lg border border-hairline bg-well p-3 text-sm text-text-tertiary">
+                      <Lock className="h-3.5 w-3.5" strokeWidth={1.5} />
+                      Hidden hint, reveals when accepted.
                     </div>
                   )}
                   {item.parent_id && (
-                    <Link href={`/c/${item.id}`} className="mt-2 inline-block text-[11px] text-[#bf5af2] font-semibold hover:underline">
-                      View challenge chain →
+                    <Link href={`/c/${item.id}`} className="mt-2 inline-flex min-h-[44px] items-center text-sm font-medium text-text-primary underline decoration-hairline-strong underline-offset-[3px] hover:decoration-text-primary md:min-h-0">
+                      View challenge chain
                     </Link>
                   )}
                 </div>
 
-                <div className="flex items-center justify-between pt-3 border-t border-white/[0.04] text-xs gap-2 flex-wrap">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {/* Start Solving in Dock */}
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-hairline pt-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <button
                       onClick={() => handleStartSolvingChallenge(item)}
-                      className="px-3 py-1.5 rounded-full bg-[#fa586a]/15 hover:bg-[#fa586a]/25 text-[#fa586a] border border-[#fa586a]/30 font-semibold flex items-center gap-1.5 transition-colors text-[11px] cursor-pointer"
-                      title="Load into Player Dock"
+                      className="flex min-h-[44px] items-center gap-1.5 rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0 md:h-10"
+                      title="Load into solve dock"
                     >
-                      <Play className="w-3 h-3 fill-current" />
-                      <span>{isTarget && !isCompleted ? "Accept + Solve" : "Solve in Dock"}</span>
+                      <Play className="h-3 w-3" strokeWidth={1.5} />
+                      <span>{isTarget && !isCompleted ? "Accept and solve" : "Solve in dock"}</span>
                     </button>
 
-                    {/* Only the challenged member can complete (enforced server-side too). */}
                     {isTarget && !isCompleted && item.status === "pending" && (
                       <>
                         <button
                           onClick={() => handleMarkCompleted(item)}
-                          className="px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#30d158]/15 hover:text-[#30d158] hover:border-[#30d158]/30 border border-white/[0.08] text-white/60 font-semibold flex items-center gap-1.5 transition-colors text-[11px] cursor-pointer"
+                          className="flex min-h-[44px] items-center gap-1.5 rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0 md:h-10"
                         >
-                          <CheckCircle2 className="w-3 h-3" />
-                          <span>Mark Solved</span>
+                          <CheckCircle2 className="h-3 w-3" strokeWidth={1.5} />
+                          <span>Mark solved</span>
                         </button>
                         <button
                           onClick={() => handleDecline(item)}
-                          className="px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/55 hover:text-white font-semibold transition-colors text-[11px] cursor-pointer"
+                          className="flex min-h-[44px] items-center rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0 md:h-10"
                         >
                           Decline
                         </button>
                       </>
                     )}
 
-                    {/* Remind — throttled to 1 per 24h server-side (low noise). */}
                     {item.status === "pending" && (
                       <button
                         onClick={() => handleRemind(item)}
                         disabled={remindId === item.id}
-                        className="px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#ff9f0a]/15 hover:text-[#ff9f0a] hover:border-[#ff9f0a]/30 border border-white/[0.08] text-white/60 font-semibold flex items-center gap-1.5 transition-colors text-[11px] cursor-pointer disabled:opacity-40"
+                        className="flex min-h-[44px] items-center gap-1.5 rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary disabled:opacity-40 md:min-h-0 md:h-10"
                         title={
                           item.reminded_at
-                            ? `Last nudged ${new Date(item.reminded_at).toLocaleDateString()} — one nudge per 24h`
+                            ? `Last nudged ${new Date(item.reminded_at).toLocaleDateString()}, one nudge per 24h`
                             : "Nudge them (once per 24h)"
                         }
                       >
-                        <BellRing className="w-3 h-3" />
+                        <BellRing className="h-3 w-3" strokeWidth={1.5} />
                         <span>{remindId === item.id ? "…" : "Remind"}</span>
                       </button>
                     )}
 
-                    {/* Pass it on — anyone holding a challenge can forward it (chains). */}
                     {item.status === "pending" && (
                       <button
                         onClick={() => handlePass(item)}
-                        className="px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-[#bf5af2]/15 hover:text-[#bf5af2] hover:border-[#bf5af2]/30 border border-white/[0.08] text-white/60 font-semibold flex items-center gap-1.5 transition-colors text-[11px] cursor-pointer"
+                        className="flex min-h-[44px] items-center gap-1.5 rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0 md:h-10"
                         title="Forward to another squad mate"
                       >
-                        <Forward className="w-3 h-3" />
+                        <Forward className="h-3 w-3" strokeWidth={1.5} />
                         <span>Pass</span>
                       </button>
                     )}
 
                     <button
                       onClick={() => handleCopyLink(item)}
-                      className="p-1.5 rounded-full text-white/55 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
-                      title="Copy challenge link (nudge them on WhatsApp)"
+                      className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0 md:min-w-0 md:p-2"
+                      title="Copy challenge link"
+                      aria-label="Copy challenge link"
                     >
-                      {copiedLinkId === item.id ? <Check className="w-3.5 h-3.5 text-[#30d158]" /> : <Link2 className="w-3.5 h-3.5" />}
+                      {copiedLinkId === item.id ? <Check className="h-3.5 w-3.5" strokeWidth={1.5} /> : <Link2 className="h-3.5 w-3.5" strokeWidth={1.5} />}
                     </button>
                   </div>
 
@@ -616,38 +691,46 @@ export default function SuggestionsPage() {
         </div>
       )}
 
-      {/* ── Challenge Modal ── */}
       {isModalOpen && (
         <ModalShell
-          label="Challenge a friend"
+          label="Challenge someone"
           onClose={() => { setCreateError(null); setIsModalOpen(false); }}
-          panelClassName="shadow-modal p-6"
+          maxWidthClass="max-w-[560px]"
         >
-            <h2 className="text-xl font-bold text-white mb-1">{passParent ? "Pass the Challenge" : "Challenge a Friend"}</h2>
-            <p className="text-xs text-white/55 mb-5">
+            <div className="mb-1 flex items-start justify-between gap-3">
+              <h2 className="font-display text-2xl font-semibold tracking-tight text-text-primary">{passParent ? "Pass it on" : "Challenge someone"}</h2>
+              <button
+                onClick={() => { setCreateError(null); setIsModalOpen(false); }}
+                aria-label="Close"
+                className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded-md text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+              >
+                <X className="h-5 w-5" strokeWidth={1.5} />
+              </button>
+            </div>
+            <p className="mb-5 text-xs leading-5 text-text-secondary">
               {passParent
                 ? `Forwarding @${passParent.from_profile?.username || "a squad mate"}'s ${passParent.problem_title} challenge — the chain grows.`
-                : "I solved X → I challenge you to solve X. Async by default; no spoiler unless you say so."}
+                : "Pick a squad mate and a problem. They get the problem, not your solution."}
             </p>
 
             {createError && (
-              <div role="alert" className="mb-4 px-4 py-2.5 rounded-xl bg-[#ff453a]/10 border border-[#ff453a]/30 text-[#ff453a] text-xs font-medium">
+              <div role="alert" className="mb-4 rounded-md border border-error/30 bg-error-tint px-3 py-2 text-xs leading-5 text-error">
                 {createError}
               </div>
             )}
 
             <form onSubmit={handleSendChallenge} className="space-y-4">
               <div>
-                <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
-                  Recipient Squad Member
+                <label className="mb-1.5 block pl-1 text-sm font-medium text-text-secondary">
+                  Squad member
                 </label>
                 <select
                   value={targetUserId}
                   onChange={(e) => setTargetUserId(e.target.value)}
-                  className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-[#fa586a]/60 cursor-pointer"
+                  className="h-10 min-h-[44px] w-full rounded-md border border-hairline bg-well px-3 text-sm text-text-primary focus:border-hairline-strong focus:outline-none md:min-h-0"
                 >
                   {(eligibleRecipientProfiles.length > 0 ? eligibleRecipientProfiles : profiles).map((p) => (
-                    <option key={p.id} value={p.id} className="bg-[#1c1c1e] text-white">
+                    <option key={p.id} value={p.id} className="bg-surface text-text-primary">
                       @{p.username} {p.leetcode_username ? `(${p.leetcode_username})` : ""}
                     </option>
                   ))}
@@ -655,66 +738,66 @@ export default function SuggestionsPage() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
-                  Problem Title
+                <label className="mb-1.5 block pl-1 text-sm font-medium text-text-secondary">
+                  Problem title
                 </label>
                 <input
                   type="text"
                   value={problemTitle}
                   onChange={(e) => setProblemTitle(e.target.value)}
-                  placeholder="e.g. Word Ladder II or Course Schedule"
-                  className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl p-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60"
+                  placeholder="e.g. Word Ladder or Course Schedule"
+                  className="h-10 min-h-[44px] w-full rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:min-h-0"
                   required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
-                    Problem Slug (Optional)
+                  <label className="mb-1.5 block pl-1 text-sm font-medium text-text-secondary">
+                    Problem slug
                   </label>
                   <input
                     type="text"
                     value={problemSlug}
                     onChange={(e) => setProblemSlug(e.target.value)}
-                    placeholder="e.g. word-ladder-ii"
-                    className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl p-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 font-mono"
+                    placeholder="e.g. word-ladder"
+                    className="h-10 min-h-[44px] w-full rounded-md border border-hairline bg-well px-3 font-mono text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:min-h-0"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
+                  <label className="mb-1.5 block pl-1 text-sm font-medium text-text-secondary">
                     Difficulty
                   </label>
                   <select
                     value={difficulty}
                     onChange={(e) => setDifficulty(e.target.value as Difficulty)}
-                    className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-[#fa586a]/60 cursor-pointer"
+                    className="h-10 min-h-[44px] w-full rounded-md border border-hairline bg-well px-3 text-sm text-text-primary focus:border-hairline-strong focus:outline-none md:min-h-0"
                   >
-                    <option value="Easy" className="bg-[#1c1c1e] text-white">Easy</option>
-                    <option value="Medium" className="bg-[#1c1c1e] text-white">Medium</option>
-                    <option value="Hard" className="bg-[#1c1c1e] text-white">Hard</option>
+                    <option value="Easy" className="bg-surface text-text-primary">Easy</option>
+                    <option value="Medium" className="bg-surface text-text-primary">Medium</option>
+                    <option value="Hard" className="bg-surface text-text-primary">Hard</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
-                  Intuition / Hint Note
+                <label className="mb-1.5 block pl-1 text-sm font-medium text-text-secondary">
+                  Note
                 </label>
                 <textarea
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  placeholder="e.g. Try monotonic decreasing stack to find next greater element in O(N)"
+                  placeholder="e.g. Took me two tries. Think hard about the visited set."
                   rows={3}
-                  className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl p-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 resize-none"
+                  className="w-full rounded-md border border-hairline bg-well p-2.5 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="flex items-center gap-2 text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1 cursor-pointer">
-                    <input type="checkbox" checked={beatTime} onChange={(e) => setBeatTime(e.target.checked)} className="accent-[#fa586a]" />
+                  <label className="mb-1.5 flex min-h-[44px] cursor-pointer items-center gap-2 pl-1 text-sm font-medium text-text-secondary md:min-h-0">
+                    <input type="checkbox" checked={beatTime} onChange={(e) => setBeatTime(e.target.checked)} className="accent-primary" />
                     <span>Beat my time</span>
                   </label>
                   <div className="flex items-center gap-2">
@@ -724,58 +807,58 @@ export default function SuggestionsPage() {
                       onChange={(e) => setMyTime(e.target.value)}
                       placeholder="21:43"
                       disabled={!beatTime}
-                      className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl p-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 font-mono disabled:opacity-40"
+                      className="h-10 min-h-[44px] w-full rounded-md border border-hairline bg-well px-3 font-mono text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none disabled:opacity-40 md:min-h-0"
                     />
                     {beatTime && (
-                      <button type="button" onClick={fillLatestTime} className="text-[11px] text-[#fa586a] font-semibold hover:underline shrink-0 cursor-pointer">
+                      <button type="button" onClick={fillLatestTime} className="flex min-h-[44px] shrink-0 items-center text-sm font-medium text-text-primary underline decoration-hairline-strong underline-offset-[3px] hover:decoration-text-primary md:min-h-0">
                         My latest
                       </button>
                     )}
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 pl-1">
-                    Deadline (Optional)
+                  <label className="mb-1.5 block pl-1 text-sm font-medium text-text-secondary">
+                    Deadline
                   </label>
                   <input
                     type="date"
                     value={deadline}
                     onChange={(e) => setDeadline(e.target.value)}
-                    className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-[#fa586a]/60"
+                    className="h-10 min-h-[44px] w-full rounded-md border border-hairline bg-well px-3 text-sm text-text-primary focus:border-hairline-strong focus:outline-none md:min-h-0"
                   />
                 </div>
               </div>
 
-              <label className="flex items-start gap-2.5 text-[11px] text-white/55 cursor-pointer">
+              <label className="flex cursor-pointer items-start gap-2.5 text-sm text-text-secondary">
                 <input
                   type="checkbox"
                   checked={spoiler}
                   onChange={(e) => setSpoiler(e.target.checked)}
-                  className="accent-[#fa586a] mt-0.5"
+                  className="mt-1 accent-primary"
                 />
                 <span>
-                  <span className="text-white/60 font-semibold">Mark as a spoiler</span>
+                  <span className="font-medium text-text-primary">Hide the note until they finish</span>
                   <br />
                   Off by default. When on, your note stays hidden until the challenge is
-                  accepted — a challenge should invite thinking, not copy an answer.
+                  accepted.
                 </span>
               </label>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-white/[0.06]">
-                <button
+              <div className="flex justify-end gap-2 border-t border-hairline pt-3">
+                <Button
                   type="button"
+                  variant="ghost"
                   onClick={() => { setCreateError(null); setPassParent(null); setIsModalOpen(false); }}
-                  className="px-4 py-2 rounded-full bg-white/[0.04] text-white/50 hover:text-white text-xs font-semibold transition-colors cursor-pointer"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
-                  disabled={submitting}
-                  className="px-4 py-2 rounded-full btn-accent text-white text-xs font-semibold shadow-glow transition-all disabled:opacity-50 cursor-pointer"
+                  variant="primary"
+                  loading={submitting}
                 >
-                  {submitting ? "Sending..." : "Send Challenge"}
-                </button>
+                  {submitting ? "Sending..." : "Send challenge"}
+                </Button>
               </div>
             </form>
         </ModalShell>

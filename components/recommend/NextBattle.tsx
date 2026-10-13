@@ -83,22 +83,22 @@ export function NextBattle({
 
   if (loading) {
     return (
-      <div className={`rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5 ${className}`}>
-        <div className="text-[10px] uppercase tracking-widest text-white/55">Next battle</div>
-        <p className="text-xs text-white/55 mt-1">Reading your history…</p>
+      <div className={`rounded-xl border-hairline bg-surface p-5 ${className}`}>
+        <div className="text-[11px] font-semibold text-text-secondary">Next battle</div>
+        <p className="text-xs text-text-tertiary mt-1">Reading your history…</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className={`rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5 ${className}`}>
-        <div className="text-[10px] uppercase tracking-widest text-white/55">Next battle</div>
+      <div className={`rounded-xl border-hairline bg-surface p-5 ${className}`}>
+        <div className="text-[11px] font-semibold text-text-secondary">Next battle</div>
         <div className="flex items-center justify-between gap-3 mt-1">
-          <p className="text-xs text-white/50">{error}</p>
+          <p className="text-xs text-text-tertiary">{error}</p>
           <button
             onClick={() => void load()}
-            className="px-3 py-1 rounded-full bg-white/[0.06] text-[11px] font-bold text-white/70 hover:text-white cursor-pointer shrink-0"
+            className="px-3 py-1 rounded-full bg-surface-overlay text-text-secondary hover:text-text-primary cursor-pointer shrink-0"
           >
             Retry
           </button>
@@ -111,9 +111,9 @@ export function NextBattle({
   if (!rec || dismissed) {
     return (
       <div className={`space-y-3 ${className}`}>
-        <div className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5">
-        <div className="text-[10px] uppercase tracking-widest text-white/55">Next battle</div>
-        <p className="text-xs text-white/55 mt-1">
+        <div className="rounded-xl border-hairline bg-surface p-5">
+        <div className="text-[11px] font-semibold text-text-secondary">Next battle</div>
+        <p className="text-xs text-text-tertiary mt-1">
           {dismissed
             ? "Dismissed. Ask again when you want another suggestion."
             : "Nothing to recommend right now — no problem in your current sheet has a recorded reason to come back to."}
@@ -121,7 +121,7 @@ export function NextBattle({
         {!dismissed && (
           <Link
             href="/practice"
-            className="inline-block mt-3 px-4 py-2 rounded-full btn-accent text-white text-[11px] font-bold"
+            className="inline-block mt-3 px-4 py-2 rounded-full bg-primary text-on-primary hover:bg-primary-hover text-[11px] font-bold"
           >
             Browse your sheet
           </Link>
@@ -132,7 +132,7 @@ export function NextBattle({
               setDismissed(false);
               void load();
             }}
-            className="mt-3 px-4 py-2 rounded-full bg-white/[0.06] text-[11px] font-bold text-white/70 hover:text-white cursor-pointer"
+            className="mt-3 px-4 py-2 rounded-full bg-surface-overlay text-text-secondary hover:text-text-primary cursor-pointer"
           >
             Ask again
           </button>
@@ -142,8 +142,8 @@ export function NextBattle({
         {/* §24: once somebody has dismissed a suggestion there is something to
             read back. Before that the card would be an empty promise. */}
         {dismissed && (
-          <div className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-2">
-            <div className="text-[10px] uppercase tracking-widest text-white/55">
+          <div className="rounded-xl border-hairline bg-surface p-5 space-y-2">
+            <div className="text-[11px] font-semibold text-text-secondary">
               Is this helping you?
             </div>
             <RecommendationStats />
@@ -154,20 +154,20 @@ export function NextBattle({
   }
 
   return (
-    <div className={`rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-3 ${className}`}>
+    <div className={`rounded-xl border-hairline bg-surface p-5 space-y-3 ${className}`}>
       <div className="flex items-center gap-2">
-        <Sparkles className="w-3.5 h-3.5 text-[#fa586a]" />
-        <span className="text-[10px] uppercase tracking-widest text-white/55">Next battle</span>
+        <Sparkles className="w-3.5 h-3.5 text-primary" />
+        <span className="text-[11px] font-semibold text-text-secondary">Next battle</span>
       </div>
 
       <div>
         <Link
           href={`/practice/${rec.problem.titleSlug}`}
-          className="text-lg font-extrabold text-white hover:text-[#fa586a] transition-colors"
+          className="text-lg font-semibold text-text-primary hover:text-primary transition-colors"
         >
           {rec.problem.title}
         </Link>
-        <p className="text-[11px] text-white/60">
+        <p className="text-[11px] text-text-secondary">
           {rec.problem.difficulty}
           {rec.problem.patterns[0] ? ` · ${rec.problem.patterns[0]}` : ""}
         </p>
@@ -177,15 +177,15 @@ export function NextBattle({
           so a one-reason recommendation does not look like a strong one. */}
       <ul className="space-y-1">
         {rec.why.map((w) => (
-          <li key={w} className="text-[11px] text-white/70 flex gap-2">
-            <span className="text-white/55">·</span>
+          <li key={w} className="text-[11px] text-text-secondary flex gap-2">
+            <span className="text-text-tertiary">·</span>
             <span>{w}</span>
           </li>
         ))}
       </ul>
 
       {rec.blockedBy.length > 0 && (
-        <p className="text-[10px] text-[#ffd60a]/85">
+        <p className="text-[10px] text-primary/85">
           Listed despite unmet prerequisites ({rec.blockedBy.join(", ")}). You can skip it.
         </p>
       )}
@@ -193,7 +193,7 @@ export function NextBattle({
       <div className="flex items-center gap-2 pt-1">
         <button
           onClick={() => void decide("accepted")}
-          className="px-4 py-2 rounded-full btn-accent text-white text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+          className="px-4 py-2 rounded-full bg-primary text-on-primary hover:bg-primary-hover text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
         >
           <Play className="w-3 h-3 fill-current shrink-0" />
           {/* The label was a bare text node, so a narrow card broke it across
@@ -202,13 +202,13 @@ export function NextBattle({
         </button>
         <button
           onClick={() => void decide("dismissed")}
-          className="px-3 py-2 rounded-full bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.08] text-white/85 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+          className="px-3 py-2 rounded-full bg-surface-overlay hover:bg-surface-raised border border-hairline text-text-primary text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
           title="Not this one"
         >
           <X className="w-3 h-3 shrink-0" />
           <span className="whitespace-nowrap">Not this</span>
         </button>
-        <span className="text-[10px] text-white/60 ml-auto shrink-0 whitespace-nowrap">
+        <span className="text-[10px] text-text-secondary ml-auto shrink-0 whitespace-nowrap">
           {rec.reasonCount} {rec.reasonCount === 1 ? "reason" : "reasons"}
         </span>
       </div>

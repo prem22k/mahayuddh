@@ -3,9 +3,11 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft, ChevronRight } from "lucide-react";
 import { ShareRow } from "@/components/ui/ShareRow";
 import { PageLoader } from "@/components/ui/PageLoader";
+import { Button } from "@/components/ui/Button";
+import { EmptyState, ErrorCard } from "@/components/ui/States";
 import { getRecaps, generateRecap, currentWeek } from "@/lib/data/recap";
 import { getSquadDetail } from "@/lib/data/squads";
 import { dataErrorMessage } from "@/lib/data/errors";
@@ -55,7 +57,7 @@ export default function SquadRecapsPage() {
       const body = await generateRecap(squadId, squadName);
       setNotice(
         body.solves === 0
-          ? "Generated. It is a quiet week — the recap says so rather than padding."
+          ? "Generated. It is a quiet week, the recap says so rather than padding."
           : `Generated: ${body.solves} solves.`
       );
       await load();
@@ -69,144 +71,118 @@ export default function SquadRecapsPage() {
   if (loading) return <PageLoader label="Loading recaps..." />;
 
   if (loadError) {
-    return (
-      <div role="alert" className="p-12 text-center space-y-3">
-        <p className="text-xs text-[#ff453a]">{loadError}</p>
-        <button onClick={load} className="px-4 py-2 rounded-full btn-accent text-white text-xs font-bold cursor-pointer">
-          Retry
-        </button>
-      </div>
-    );
+    return <ErrorCard message={loadError} onRetry={() => void load()} />;
   }
 
   const thisWeek = currentWeek().weekStart;
+  const [latest, ...archive] = recaps;
 
   return (
-    <div className="space-y-6 select-none max-w-3xl">
-      <Link href={`/squad`} className="flex items-center gap-1.5 text-xs text-white/55 hover:text-white transition-colors">
-        <ArrowLeft className="w-3.5 h-3.5" />
+    <div className="mx-auto w-full max-w-reading space-y-8">
+      <Link href={`/squad`} className="inline-flex min-h-[44px] items-center gap-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary md:min-h-0">
+        <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.5} />
         <span>{squadName}</span>
       </Link>
 
-      <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="text-[11px] font-bold text-[#bf5af2] tracking-[0.2em] uppercase">
-            The week, frozen
-          </div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight mt-1">
-            Recaps
-          </h1>
-          <p className="text-xs text-white/55 mt-2 max-w-xl leading-relaxed">
-            Generated from what was actually logged. Every recap names the week it covers, so a
-            shared one is never mistaken for today.
+          <h1 className="type-display-md text-text-primary">Weekly recaps</h1>
+          <p className="mt-1 text-sm leading-6 text-text-secondary">
+            Frozen every Sunday night. Nothing gets back-filled.
           </p>
         </div>
-        <button
-          onClick={generate}
-          disabled={generating}
-          className="px-4 py-2 rounded-full btn-accent text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1.5 shrink-0"
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          {generating ? "Generating…" : "Generate this week"}
-        </button>
+        <Button variant="secondary" onClick={generate} loading={generating}>
+          {generating ? "Writing this week's recap…" : "Write this week's recap"}
+        </Button>
       </header>
 
       {notice && (
-        <p role="status" className="px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/60 text-xs">
+        <p role="status" className="card text-sm text-text-secondary">
           {notice}
         </p>
       )}
 
       {recaps.length === 0 ? (
-        <div className="p-12 text-center space-y-3 rounded-3xl bg-white/[0.02] border border-white/[0.06]">
-          <p className="text-sm font-bold text-white">No recaps yet.</p>
-          <p className="text-xs text-white/55 max-w-sm mx-auto">
-            A recap summarises one week of what your squad logged. Generate one above — even a
-            quiet week is worth writing down.
-          </p>
-        </div>
+        <EmptyState
+          heading="Your first recap appears after your squad's first full week"
+          body="A recap summarises one week of what your squad logged. Generate one above, even a quiet week is worth writing down."
+        />
       ) : (
-        <div className="space-y-6">
-          {recaps.map((r) => {
+        <div className="space-y-3">
+          {latest && (
+            <LatestRecapCard squadId={squadId} squadName={squadName} recap={latest} thisWeek={thisWeek} />
+          )}
+
+          {archive.map((r) => {
             const body = r.body_json;
-            const isThis = r.week_start === thisWeek;
             return (
-              <article key={r.id} className="p-6 rounded-3xl bg-gradient-to-br from-white/[0.04] to-transparent border border-white/[0.06] space-y-4">
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div>
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-white/50">
-                      <Link
-                        href={`/squad/${squadId}/recaps/${r.id}`}
-                        className="hover:text-white transition-colors"
-                      >
-                        Week of {body.window?.weekStart ?? r.week_start}
-                      </Link>
-                      {isThis ? " · current week" : ""}
-                    </div>
-                    <p className="text-sm font-bold text-white mt-1">{body.headline}</p>
-                  </div>
-                  {/* The per-week route, not this list: a frozen week stays
-                      shareable after the week it describes has scrolled away. */}
-                  <ShareRow
-                    path={`/squad/${squadId}/recaps/${r.id}`}
-                    artifact={{ kind: "recap", id: r.id, squadId }}
-                    text={recapShareText({ squadName, body, url: "" }).trim()}
-                  />
+              <Link
+                key={r.id}
+                href={`/squad/${squadId}/recaps/${r.id}`}
+                className="card-interactive flex min-h-[56px] items-center gap-3 rounded-xl border border-hairline bg-surface px-4 py-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-text-primary">
+                    {body.window?.weekStart ?? r.week_start}
+                  </p>
+                  <p className="mt-0.5 truncate font-mono text-xs text-text-tertiary tnum">
+                    {body.solves} solves · {body.headline}
+                  </p>
                 </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                  {[
-                    { label: "Solves", value: body.solves },
-                    { label: "Challenges", value: body.challengesSent },
-                    { label: "Answered", value: body.challengesCompleted },
-                    { label: "Approaches", value: body.approachesWritten },
-                    { label: "Stuck asks", value: body.stuckRequests },
-                  ].map((m) => (
-                    <div key={m.label} className="p-3 rounded-2xl bg-white/[0.02] border border-white/[0.06] text-center">
-                      <div className="text-xl font-black text-white font-mono">{m.value}</div>
-                      <div className="text-[10px] text-white/50 mt-0.5">{m.label}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {body.entries?.length > 0 && (
-                  <dl className="space-y-2">
-                    {body.entries.map((e: { label: string; detail: string }) => (
-                      <div key={e.label} className="grid grid-cols-[110px_1fr] gap-3">
-                        <dt className="text-[10px] font-bold uppercase tracking-wider text-white/50 pt-0.5">
-                          {e.label}
-                        </dt>
-                        <dd className="text-xs text-white/70 leading-relaxed">{e.detail}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                )}
-
-                {/* Honest about what did not happen — padding a recap would be a
-                    lie, and a zero on a chart hides the reason. */}
-                {body.empty?.length > 0 && (
-                  <div className="pt-2 border-t border-white/[0.06]">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1">
-                      Did not happen
-                    </div>
-                    <ul className="space-y-0.5">
-                      {body.empty.map((line: string) => (
-                        <li key={line} className="text-[11px] text-white/50">
-                          · {line}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {body.entries?.length === 0 && body.empty?.length === 0 && (
-                  <p className="text-xs text-white/50">Nothing was logged in this window.</p>
-                )}
-              </article>
+                <ChevronRight className="h-4 w-4 shrink-0 text-text-tertiary" strokeWidth={1.5} />
+              </Link>
             );
           })}
         </div>
       )}
     </div>
+  );
+}
+
+function LatestRecapCard({
+  squadId,
+  squadName,
+  recap,
+  thisWeek,
+}: {
+  squadId: string;
+  squadName: string;
+  recap: SquadRecap;
+  thisWeek: string;
+}) {
+  const body = recap.body_json;
+  const isThis = recap.week_start === thisWeek;
+  return (
+    <article className="card space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-mono text-xs text-text-tertiary tnum">
+            {body.window?.weekStart ?? recap.week_start}
+            {isThis ? " · current week" : ""}
+          </p>
+          <h2 className="mt-1 text-lg font-semibold leading-[26px] text-text-primary">
+            {body.headline}
+          </h2>
+        </div>
+        <ShareRow
+          path={`/squad/${squadId}/recaps/${recap.id}`}
+          artifact={{ kind: "recap", id: recap.id, squadId }}
+          text={recapShareText({ squadName, body, url: "" }).trim()}
+        />
+      </div>
+
+      <p className="font-mono text-xs text-text-tertiary tnum">
+        Solves {body.solves} · Challenges {body.challengesSent} sent, {body.challengesCompleted} beaten · Approaches {body.approachesWritten} · Stuck asks {body.stuckRequests}
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Link
+          href={`/squad/${squadId}/recaps/${recap.id}`}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-[#272830]"
+        >
+          Open recap
+        </Link>
+      </div>
+    </article>
   );
 }

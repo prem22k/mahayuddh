@@ -57,72 +57,142 @@ export default async function SeasonResultPage({
     { label: "Solves", value: result.solves },
     { label: "Problems", value: result.problems },
     { label: "Challenges", value: result.challengesSent },
-    { label: "Answered", value: result.challengesCompleted },
+    { label: "Beaten", value: result.challengesCompleted },
     { label: "Approaches", value: result.approachesWritten },
     { label: "Active days", value: result.activeDays },
   ];
+  const maxSolves = Math.max(1, ...result.members.map((m) => m.solves));
 
   return (
-    <div className="min-h-screen bg-[#000] text-white">
-      <div className="max-w-2xl mx-auto px-5 py-14 space-y-8">
+    <div className="min-h-screen bg-canvas text-text-primary">
+      <div className="mx-auto w-full max-w-reading space-y-8 px-4 py-14">
         <Suspense fallback={null}>
           <TrackVisit artifact={`season:${seasonId}`} />
         </Suspense>
 
         <header className="space-y-2">
-          <div className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/55">
-            {result.startsAt}
-            {result.endsAt ? ` → ${result.endsAt}` : ""}
-            {result.status === "complete" ? " · complete" : ""}
-          </div>
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
-            {result.squadName}
-          </h1>
-          <p className="text-sm text-white/60">{result.name}</p>
-          {result.objective && <p className="text-xs text-white/55">{result.objective}</p>}
-          <p className="text-sm text-white/50 leading-relaxed">{result.headline}</p>
+          <h1 className="type-display-md text-text-primary">{result.name}</h1>
+          <p className="text-sm leading-6 text-text-secondary">
+            {result.squadName} · {result.startsAt}
+            {result.endsAt ? ` – ${result.endsAt}` : ""}
+          </p>
+          {result.objective && (
+            <p className="text-sm leading-6 text-text-secondary">
+              Objective: {result.objective}
+            </p>
+          )}
+          {result.objectiveProgress && (
+            <div
+              className="rounded-xl border border-hairline bg-surface p-4"
+              role="progressbar"
+              aria-valuenow={Math.min(
+                100,
+                Math.round((result.objectiveProgress.done / result.objectiveProgress.target) * 100)
+              )}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`Season objective progress: ${result.objectiveProgress.done} of ${result.objectiveProgress.target}`}
+            >
+              <p className="font-mono text-sm text-text-primary tnum">
+                {result.objectiveProgress.done} of {result.objectiveProgress.target}
+                {result.objectiveProgress.pattern ? ` ${result.objectiveProgress.pattern} ` : " "}
+                solves
+              </p>
+              <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-overlay">
+                <div
+                  className="h-full rounded-full bg-text-primary transition-all duration-200"
+                  style={{
+                    width: `${Math.max(
+                      2,
+                      Math.min(
+                        100,
+                        Math.round(
+                          (result.objectiveProgress.done / result.objectiveProgress.target) * 100
+                        )
+                      )
+                    )}%`,
+                  }}
+                />
+              </div>
+              <p className="mt-1.5 text-xs leading-4 text-text-tertiary">
+                {result.objectiveProgress.basis === "parsed"
+                  ? "Parsed from the objective text — set a measured target to track this exactly."
+                  : result.objectiveProgress.pattern && !result.objectiveProgress.filtered
+                    ? "Pattern filter couldn't be measured against the catalog — counting all solves."
+                    : result.objectiveProgress.filtered
+                      ? `Counted from squad solves in this season${result.objectiveProgress.pattern ? ` matching ${result.objectiveProgress.pattern}` : ""}.`
+                      : "Counted from squad solves in this season."}
+              </p>
+            </div>
+          )}
         </header>
 
-        <dl className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <section className="card space-y-2">
+          <p className="type-numeral-xl text-text-primary">
+            {result.solves} <span className="text-text-secondary">solves</span>
+          </p>
+          <p className="text-sm leading-6 text-text-secondary">{result.headline}</p>
+        </section>
+
+        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {stats.map((s) => (
-            <div key={s.label} className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-center">
-              <div className="text-2xl font-black font-mono">{s.value}</div>
-              <div className="text-[10px] uppercase tracking-wider text-white/50 mt-1">{s.label}</div>
+            <div key={s.label} className="rounded-xl border border-hairline bg-surface p-4 text-center">
+              <div className="font-display text-[28px] font-semibold leading-[31px] text-text-primary tnum">
+                {s.value}
+              </div>
+              <div className="mt-1 text-xs text-text-tertiary">{s.label}</div>
             </div>
           ))}
         </dl>
 
         {result.bestImprovement && (
-          <section className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-1">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-white/50">
+          <section className="card space-y-2">
+            <h2 className="text-lg font-semibold leading-[26px] text-text-primary">
               Biggest improvement
-            </div>
-            <p className="text-sm text-white/80">
-              {result.bestImprovement.slug.replace(/-/g, " ")}{" "}
-              {formatDuration(result.bestImprovement.fromSec)} →{" "}
-              {formatDuration(result.bestImprovement.toSec)}
+            </h2>
+            <p className="text-sm text-text-secondary">@{result.bestImprovement.username}</p>
+            <p className="text-sm text-text-secondary">
+              {result.bestImprovement.slug.replace(/-/g, " ")}
             </p>
-            <p className="text-[11px] text-white/50">@{result.bestImprovement.username}</p>
+            <p className="type-mono-display text-text-primary">
+              <span className="text-text-tertiary line-through">
+                {formatDuration(result.bestImprovement.fromSec)}
+              </span>{" "}
+              → {formatDuration(result.bestImprovement.toSec)}
+            </p>
           </section>
         )}
 
         {result.members.length > 0 && (
           <section className="space-y-2">
-            <h2 className="text-lg font-bold">Who practised</h2>
-            <ul className="space-y-1">
+            <h2 className="text-lg font-semibold leading-[26px] text-text-primary">
+              Who practised
+            </h2>
+            <ul className="space-y-2">
               {result.members.map((m) => (
-                <li key={m.username} className="flex items-center justify-between gap-3 text-xs">
-                  <Link href={profileHref(m.username)} className="font-bold text-white/80 hover:text-white">
+                <li key={m.username} className="flex items-center gap-3">
+                  <Link
+                    href={profileHref(m.username)}
+                    className="w-28 shrink-0 truncate text-sm font-medium text-text-primary"
+                  >
                     @{m.username}
                   </Link>
-                  <span className="font-mono text-white/50">{m.solves}</span>
+                  <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-overlay">
+                    <span
+                      className="block h-full rounded-full bg-text-secondary"
+                      style={{ width: `${Math.round((m.solves / maxSolves) * 100)}%` }}
+                    />
+                  </span>
+                  <span className="w-12 shrink-0 text-right font-mono text-xs text-text-secondary tnum">
+                    {m.solves}
+                  </span>
                 </li>
               ))}
             </ul>
           </section>
         )}
 
-        <div className="flex items-center gap-2 flex-wrap pt-1">
+        <div className="flex flex-wrap items-center gap-2 pt-1">
           <ShareRow
             path={path}
             artifact={{ kind: "season", id: seasonId, squadId }}
@@ -130,10 +200,10 @@ export default async function SeasonResultPage({
             label="Share season"
           />
           <Link
-            href="/login"
-            className="px-4 py-2 rounded-full btn-accent text-white text-[11px] font-bold"
+            href="/squad"
+            className="inline-flex min-h-[44px] h-10 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium leading-5 text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0"
           >
-            Track your own
+            Back to squad
           </Link>
         </div>
       </div>

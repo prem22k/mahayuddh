@@ -3,11 +3,19 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { MoreHorizontal } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { PageLoader } from "@/components/ui/PageLoader";
 import { DiscussComposer } from "@/components/feed/DiscussComposer";
 import { FeedComposer } from "@/components/feed/FeedComposer";
+import { Avatar } from "@/components/ui/Avatar";
+import {
+  VerifiedBadge,
+  SelfReportedBadge,
+  DifficultyBadgeNew,
+  PatternChip,
+} from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { EmptyState, ErrorCard, Skeleton } from "@/components/ui/States";
+import { UnderlineTabs } from "@/components/ui/ProblemRow";
 import {
   blockUser,
   createDiscussionReply,
@@ -22,20 +30,25 @@ import {
   type RankedFeedEvent,
 } from "@/lib/data/feed";
 import { dataErrorMessage } from "@/lib/data/errors";
-import { FEED_ACTIONS, SCOPE_PURPOSE, actionabilityLabel, type FeedScope } from "@/lib/feedPolicy";
+import { FEED_ACTIONS, actionabilityLabel, type FeedScope } from "@/lib/feedPolicy";
 import { track } from "@/lib/analytics";
 
-/**
- * Feed (Step 21, Bible §19).
- *
- * Four scopes, Squad first because §19 makes it the default: accountability
- * against the people you chose. Following is for learning, Global is discovery,
- * Platform is announcements and is not activity at all.
- *
- * Ranking is §20 and happens in SQL. The one thing this file does with ranking
- * is show it: an event that earned its place says so, and one that has not
- * says that too. A feed that silently reorders itself looks arbitrary.
- */
+const PAGE_SIZE = 20;
+
+const TAB_LABELS = ["Squad", "Following", "Global", "Updates"] as const;
+type TabLabel = (typeof TAB_LABELS)[number];
+const TAB_TO_SCOPE: Record<TabLabel, FeedScope> = {
+  Squad: "squad",
+  Following: "following",
+  Global: "global",
+  Updates: "platform",
+};
+const SCOPE_TO_TAB: Record<FeedScope, TabLabel> = {
+  squad: "Squad",
+  following: "Following",
+  global: "Global",
+  platform: "Updates",
+};
 
 const TYPE_LABEL: Record<string, string> = {
   solve: "solved",
@@ -62,12 +75,41 @@ function timeAgo(iso: string): string {
   return `${Math.round(hrs / 24)}d ago`;
 }
 
+function fmtClock(sec: number): string {
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+}
+
+function metaDuration(ev: RankedFeedEvent): number | null {
+  const v = ev.metadata?.duration_sec;
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function metaPattern(ev: RankedFeedEvent): string | null {
+  const v = ev.metadata?.pattern;
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+function metaVerified(ev: RankedFeedEvent): boolean | null {
+  const v = ev.metadata?.verified ?? ev.metadata?.evidence;
+  if (v === true || v === "leetcode" || v === "verified") return true;
+  if (v === false || v === "self" || v === "self-reported") return false;
+  return null;
+}
+
+/** Optional one-line note the author added in the composer. Old rows have none. */
+function metaCaption(ev: RankedFeedEvent): string | null {
+  const v = ev.metadata?.caption;
+  return typeof v === "string" && v.trim().length > 0 ? v.trim().slice(0, 280) : null;
+}
+
 function describe(ev: RankedFeedEvent): string {
   const who = ev.actor?.username ? `@${ev.actor.username}` : "Someone";
   switch (ev.event_type) {
     case "solve":
-    case "solved":
-      return `${who} solved ${ev.problem_title || "a problem"}`;
+    case "solved": {
+      const t = metaDuration(ev);
+      return `${who} solved ${ev.problem_title || "a problem"}${t != null ? ` in ${fmtClock(t)}` : ""}`;
+    }
     case "challenge":
       return `${who} sent a challenge${ev.problem_title ? `: ${ev.problem_title}` : ""}`;
     case "complete":
@@ -82,19 +124,6 @@ function describe(ev: RankedFeedEvent): string {
     default:
       return `${who} · ${TYPE_LABEL[ev.event_type] || ev.event_type}`;
   }
-}
-
-function Avatar({ actor }: { actor?: RankedFeedEvent["actor"] }) {
-  return (
-    <div className="w-7 h-7 rounded-full bg-white/[0.06] border border-white/[0.08] flex items-center justify-center font-bold text-[10px] text-white shrink-0 overflow-hidden">
-      {actor?.avatar_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={actor.avatar_url} alt={actor.username} className="w-full h-full object-cover" />
-      ) : (
-        (actor?.username || "?").charAt(0).toUpperCase()
-      )}
-    </div>
-  );
 }
 
 /** §51 primitives on every row. Narrow by design — no moderation platform. */
@@ -139,9 +168,9 @@ function RowMenu({
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label="More actions"
-        className="p-1.5 rounded-full text-white/25 hover:text-white/60 hover:bg-white/[0.06] transition-all cursor-pointer"
+        className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-text-tertiary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0 md:min-w-0 md:p-1.5"
       >
-        <MoreHorizontal className="w-3.5 h-3.5" />
+        <MoreHorizontal className="h-3.5 w-3.5" strokeWidth={1.5} />
       </button>
       {open && (
         <>
@@ -151,13 +180,13 @@ function RowMenu({
             onClick={() => setOpen(false)}
             className="fixed inset-0 z-10 cursor-default"
           />
-          <div className="absolute right-0 top-full mt-1 z-20 min-w-[9rem] rounded-2xl border border-white/[0.08] bg-[#0e0e0e] p-1.5 shadow-2xl">
+          <div className="popover-panel absolute right-0 top-full z-20 mt-1 min-w-[9rem] p-1.5">
             {FEED_ACTIONS.map((a) => (
               <button
                 key={a.id}
                 disabled={busy}
                 onClick={() => void run(a.id)}
-                className="block w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold text-white/60 hover:text-white hover:bg-white/[0.06] transition-all disabled:opacity-40"
+                className="block min-h-[44px] w-full rounded-md px-3 py-2 text-left text-sm font-medium text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary disabled:opacity-40 md:min-h-0"
               >
                 {a.label}
               </button>
@@ -165,7 +194,41 @@ function RowMenu({
           </div>
         </>
       )}
-      {note && <span className="absolute right-0 top-full mt-1 z-20 text-[10px] text-white/50 whitespace-nowrap">{note}</span>}
+      {note && (
+        <span className="absolute right-0 top-full z-20 mt-1 whitespace-nowrap text-xs text-text-tertiary">
+          {note}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Mini proof embed for solve rows: title, time, pattern, number. */
+function MiniProof({ ev }: { ev: RankedFeedEvent }) {
+  const t = metaDuration(ev);
+  const pattern = metaPattern(ev);
+  const verified = metaVerified(ev);
+  return (
+    <div className="rounded-lg border border-hairline bg-well p-3">
+      <p className="truncate text-sm font-medium text-text-primary">
+        {ev.problem_title ?? "A problem"}
+      </p>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        {t != null && (
+          <span className="font-mono text-sm text-text-primary tnum">{fmtClock(t)}</span>
+        )}
+        {ev.problem_slug && (
+          <span className="font-mono text-xs text-text-tertiary tnum">
+            No. {ev.problem_slug}
+          </span>
+        )}
+        {pattern && <PatternChip label={pattern} />}
+        {ev.difficulty && (
+          <DifficultyBadgeNew difficulty={String(ev.difficulty)} />
+        )}
+        {verified === true && <VerifiedBadge />}
+        {verified === false && <SelfReportedBadge />}
+      </div>
     </div>
   );
 }
@@ -203,52 +266,47 @@ function DiscussionCard({ d }: { d: Discussion }) {
   };
 
   return (
-    <article className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-2">
+    <article className="card space-y-2">
       <div className="flex items-start gap-3">
-        <Avatar actor={d.author ?? undefined} />
-        <div className="flex-1 min-w-0">
-          <p className="text-[11px] text-white/50">
+        <Avatar name={d.author?.username ?? "Someone"} src={d.author?.avatar_url} size="md" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-text-tertiary">
             @{d.author?.username ?? "someone"} · {timeAgo(d.created_at)} ·{" "}
             {d.visibility === "global" ? "Global" : "Squad"}
           </p>
-          <p className="text-xs text-white/80 whitespace-pre-wrap mt-1">{d.body_md}</p>
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
+          <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-text-primary">{d.body_md}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <Link
               href={`/practice/${d.problem_slug}`}
               onClick={() => track("feed_action", { via: "open_problem_from_discussion" })}
-              className="px-2.5 py-1 rounded-full bg-white/[0.05] border border-white/[0.08] text-[10px] text-white/60 hover:text-white transition-all"
+              className="rounded-full border border-hairline bg-well px-2.5 py-1 font-mono text-xs text-text-secondary transition-colors hover:text-text-primary"
             >
               {d.problem_slug}
             </Link>
             {d.pattern_tags.map((t) => (
-              <span
-                key={t}
-                className="px-2 py-0.5 rounded-full bg-[#ffd60a]/10 border border-[#ffd60a]/20 text-[10px] text-[#ffd60a]/80"
-              >
-                {t}
-              </span>
+              <PatternChip key={t} label={t} />
             ))}
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-3 pl-10">
+      <div className="flex items-center gap-3 pl-11">
         <button
           onClick={() => setOpen((v) => !v)}
-          className="text-[10px] font-bold text-white/50 hover:text-white/70 transition-all cursor-pointer"
+          className="flex min-h-[44px] items-center text-sm font-medium text-text-secondary transition-colors hover:text-text-primary md:min-h-0"
         >
           {open ? "Hide" : `${d.reply_count ?? 0} ${d.reply_count === 1 ? "reply" : "replies"}`}
         </button>
       </div>
 
       {open && (
-        <div className="pl-10 space-y-2 border-l border-white/[0.06] pl-3">
+        <div className="space-y-2 border-l border-hairline pl-3">
           {replies.map((r) => (
             <div key={r.id}>
-              <p className="text-[10px] text-white/50">
+              <p className="text-xs text-text-tertiary">
                 @{r.author?.username ?? "someone"} · {timeAgo(r.created_at)}
               </p>
-              <p className="text-[11px] text-white/70 whitespace-pre-wrap">{r.body_md}</p>
+              <p className="whitespace-pre-wrap text-sm leading-6 text-text-primary">{r.body_md}</p>
             </div>
           ))}
           <form onSubmit={reply} className="flex items-center gap-2 pt-1">
@@ -256,17 +314,17 @@ function DiscussionCard({ d }: { d: Discussion }) {
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder="Add what you tried…"
-              className="flex-1 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-[11px] text-white placeholder:text-white/55 focus:outline-none focus:border-white/20"
+              className="h-10 min-h-[44px] flex-1 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:min-h-0"
             />
-            <button
+            <Button
               type="submit"
+              variant="secondary"
               disabled={busy || draft.trim().length === 0}
-              className="px-3 py-1.5 rounded-full bg-white/[0.08] text-[11px] font-bold text-white disabled:opacity-40 cursor-pointer"
             >
               Reply
-            </button>
+            </Button>
           </form>
-          {error && <p className="text-[10px] text-[#ff453a]">{error}</p>}
+          {error && <p className="text-xs text-error">{error}</p>}
         </div>
       )}
     </article>
@@ -281,10 +339,9 @@ export default function FeedPage() {
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [composerOpen, setComposerOpen] = useState(false);
   const [discussOpen, setDiscussOpen] = useState(false);
-  // Loaded once and only when the composer is opened: it is a count, and it is
-  // the gate's number (logged solves), not the LeetCode sync total.
   const [solveCount, setSolveCount] = useState(0);
 
   const squadId = profile?.active_squad_id ?? null;
@@ -300,14 +357,9 @@ export default function FeedPage() {
         return;
       }
       const rows = await getRankedFeed(tab, { squadId, limit: 40 });
-      // feed_view is the denominator of the Step 21 useful-action rate. The
-      // numerator is feed_action, fired when somebody acts on a row — kept as
-      // a separate event so the rate cannot collapse to 1 by construction.
       track("feed_view", { scope: tab, rows: rows.length });
       setEvents(rows);
       setPlatform([]);
-      // Discussions are shown alongside activity: prose is additive to the
-      // auto-generated feed (§50), never a prerequisite for it having content.
       setDiscussions(await getDiscussions({ problemSlug: null, squadId, limit: 10 }));
     } catch (err) {
       setLoadError(dataErrorMessage(err, "Couldn't load feed. Retry."));
@@ -320,193 +372,257 @@ export default function FeedPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [tab]);
+
   const noSquad = tab === "squad" && !squadId;
+  const visibleEvents = events.slice(0, visibleCount);
+
+  const weekSolves = events.filter(
+    (e) => e.event_type === "solve" || e.event_type === "solved"
+  ).length;
+  const weekChallenges = events.filter(
+    (e) => e.event_type === "challenge" || e.event_type === "complete" || e.event_type === "completed"
+  ).length;
+  const weekTeaches = events.filter((e) => e.event_type === "teach").length;
 
   return (
-    <div className="space-y-6 select-none max-w-2xl">
+    <div className="space-y-8">
       <div>
-        <div className="text-[11px] font-semibold text-[#fa586a] tracking-[0.2em] uppercase mb-1">
-          What are people learning?
-        </div>
-        <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">Feed</h1>
-        <p className="text-xs text-white/55 mt-1">
-          Activity generated by learning — never posts for posting&apos;s sake.
+        <h1 className="type-display-md text-text-primary">Feed</h1>
+        <p className="mt-1 text-sm leading-6 text-text-secondary">
+          What Kshatriya has been up to.
         </p>
       </div>
 
-      <div className="flex items-center gap-1 p-1 bg-white/[0.04] rounded-full border border-white/[0.06] w-fit max-w-full overflow-x-auto">
-        {(["squad", "following", "global", "platform"] as FeedScope[]).map((t) => (
+      <UnderlineTabs
+        tabs={TAB_LABELS}
+        value={SCOPE_TO_TAB[tab]}
+        onChange={(v) => setTab(TAB_TO_SCOPE[v as TabLabel])}
+      />
+
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="mx-auto w-full max-w-reading space-y-3">
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={cn(
-              "px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer capitalize whitespace-nowrap",
-              tab === t ? "bg-white/[0.12] text-white shadow-sm" : "text-white/55 hover:text-white/80"
-            )}
+            onClick={() => {
+              track("composer_opened", { surface: "feed" });
+              setComposerOpen(true);
+            }}
+            className="card-interactive flex w-full items-center gap-3 rounded-xl border border-hairline bg-surface p-4 text-left"
           >
-            {t}
+            <Avatar name={profile?.username ?? "You"} src={profile?.avatar_url} size="md" />
+            <span className="min-w-0 flex-1 truncate text-sm text-text-tertiary">
+              Share a solve, teach something, or ask for help…
+            </span>
+            <span className="shrink-0">
+              <Button variant="secondary" type="button">
+                Post
+              </Button>
+            </span>
           </button>
-        ))}
+
+          {loadError && (
+            <ErrorCard message={loadError} onRetry={() => void load()} />
+          )}
+
+          {loading ? (
+            <div className="space-y-3" aria-label="Loading feed">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-20 w-full" />
+              ))}
+            </div>
+          ) : tab === "platform" ? (
+            <div className="space-y-3">
+              {platform.length === 0 ? (
+                <EmptyState
+                  heading="No announcements right now"
+                  body="Contests, product changes and maintenance notices land here, nothing else does."
+                />
+              ) : (
+                platform.map((p) => (
+                  <div key={p.id} className="card space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-text-secondary">{p.kind}</span>
+                      {p.pinned && (
+                        <span className="rounded-sm bg-surface-overlay px-2 py-0.5 text-xs font-medium text-text-primary">
+                          Pinned
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm font-medium text-text-primary">{p.title}</p>
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-text-secondary">
+                      {p.body_md}
+                    </p>
+                    {p.href && (
+                      <a
+                        href={p.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block min-h-[44px] text-sm font-medium text-text-primary underline decoration-hairline-strong underline-offset-[3px] hover:decoration-text-primary md:min-h-0"
+                      >
+                        Open
+                      </a>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          ) : noSquad ? (
+            <EmptyState
+              heading="Join or start a squad to see your people here"
+              body="Solves, challenges and approaches from your squad land here on their own."
+              action={
+                <Link
+                  href="/squad"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium leading-5 text-on-primary transition-colors hover:bg-primary-hover"
+                >
+                  Start a squad
+                </Link>
+              }
+            />
+          ) : events.length === 0 && discussions.length === 0 ? (
+            <EmptyState
+              heading={tab === "following" ? "Nobody followed yet" : "Quiet, for now"}
+              body={
+                tab === "following"
+                  ? "Follow people from their profile to see their solves here."
+                  : tab === "global"
+                    ? "Nothing public yet. Global posts need a problem, a pattern, and something for the reader to try."
+                    : "Solves, challenges, and completions land here on their own. Start today's battle."
+              }
+              action={
+                <Link
+                  href={tab === "following" ? "/u/prem" : "/home"}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-[#272830]"
+                >
+                  {tab === "following" ? "Find people" : "Go to today's battle"}
+                </Link>
+              }
+            />
+          ) : (
+            <div className="space-y-3">
+              {visibleEvents.map((ev) => (
+                <article
+                  key={ev.id}
+                  className="card-interactive rounded-xl border border-hairline bg-surface p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <Avatar
+                      name={ev.actor?.username ?? "Someone"}
+                      src={ev.actor?.avatar_url}
+                      size="md"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm leading-6 text-text-primary">{describe(ev)}</p>
+                      <p className="mt-0.5 text-xs text-text-tertiary">
+                        {timeAgo(ev.created_at)}
+                        {Number(ev.usefulness ?? 0) > 0
+                          ? ` · ${actionabilityLabel(
+                              Number(ev.usefulness ?? 0),
+                              (Date.now() - new Date(ev.created_at).getTime()) / 3600000
+                            )}`
+                          : ""}
+                      </p>
+                      {metaCaption(ev) && (
+                        <p className="mt-1 text-sm leading-6 text-text-secondary">
+                          &ldquo;{metaCaption(ev)}&rdquo;
+                        </p>
+                      )}
+                    </div>
+                    <RowMenu ev={ev} onDone={() => void load()} />
+                  </div>
+
+                  {(ev.event_type === "solve" || ev.event_type === "solved") &&
+                    ev.problem_title && (
+                      <div className="mt-3 pl-11">
+                        <MiniProof ev={ev} />
+                      </div>
+                    )}
+
+                  <div className="mt-3 flex items-center gap-1 pl-11">
+                    {ev.problem_slug && (
+                      <Link
+                        href={`/practice/${ev.problem_slug}`}
+                        onClick={() => track("feed_action", { via: "open_problem" })}
+                        className="flex min-h-[44px] items-center rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0 md:h-10"
+                      >
+                        Open
+                      </Link>
+                    )}
+                    {(ev.event_type === "solve" || ev.event_type === "solved") &&
+                      ev.problem_slug && (
+                        <Link
+                          href={`/practice/${ev.problem_slug}/compare`}
+                          onClick={() => track("feed_action", { via: "compare" })}
+                          className="flex min-h-[44px] items-center rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0 md:h-10"
+                        >
+                          Compare
+                        </Link>
+                      )}
+                    {ev.event_type === "stuck" && (
+                      <Link
+                        href="/stuck"
+                        onClick={() => track("feed_action", { via: "help" })}
+                        className="flex min-h-[44px] items-center"
+                      >
+                        <Button variant="secondary" type="button">
+                          Help
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+                </article>
+              ))}
+
+              {visibleCount < events.length && (
+                <Button variant="ghost" onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}>
+                  Show older
+                </Button>
+              )}
+
+              {discussions.length > 0 && (
+                <>
+                  {discussions.slice(0, visibleCount).map((d) => (
+                    <DiscussionCard key={d.id} d={d} />
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        <aside className="space-y-4 lg:pt-1">
+          <div className="card">
+            <h2 className="text-lg font-semibold leading-[26px] text-text-primary">
+              This week in Kshatriya
+            </h2>
+            <dl className="mt-3 space-y-2">
+              {[
+                { label: "Solves", value: weekSolves },
+                { label: "Challenges", value: weekChallenges },
+                { label: "Approaches", value: weekTeaches },
+              ].map((s) => (
+                <div key={s.label} className="flex items-baseline justify-between gap-3">
+                  <dt className="text-sm text-text-secondary">{s.label}</dt>
+                  <dd className="font-display text-[28px] font-semibold leading-[31px] text-text-primary tnum">
+                    {s.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            {squadId && (
+              <Link
+                href={`/squad/${squadId}/recaps`}
+                className="mt-3 inline-flex min-h-[44px] items-center text-sm font-medium text-text-primary underline decoration-hairline-strong underline-offset-[3px] hover:decoration-text-primary md:min-h-0"
+              >
+                Last week&apos;s recap is ready
+              </Link>
+            )}
+          </div>
+        </aside>
       </div>
 
-      {/* Each scope says what it is for. A feed with no stated purpose is a list. */}
-      <p className="text-[11px] text-white/50 -mt-3">{SCOPE_PURPOSE[tab]}</p>
-
-      {/* Composer: six structured tiles (§18), not a blank box. Five of them
-          create the object they name — Challenge really sends a challenge,
-          Ask help really raises a stuck request — and Discuss is the one tile
-          that takes prose, behind the §51 gates. */}
-      <button
-        onClick={() => {
-          track("composer_opened", { surface: "feed" });
-          setComposerOpen(true);
-        }}
-        className="w-full p-4 rounded-3xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] text-left transition-all cursor-pointer"
-      >
-        <span className="text-xs font-bold text-white/80">Post something</span>
-        <span className="text-[11px] text-white/50 ml-2">
-          Share a solve · Teach · Challenge · Ask help · Share resource · Discuss
-        </span>
-      </button>
-
-      {loadError && (
-        <div role="alert" className="flex items-center justify-between gap-3 px-5 py-4 rounded-2xl bg-[#ff453a]/10 border border-[#ff453a]/30">
-          <span className="text-xs text-[#ff453a] font-medium">{loadError}</span>
-          <button
-            onClick={() => void load()}
-            className="px-4 py-1.5 rounded-full bg-[#ff453a]/15 text-[#ff453a] text-xs font-bold cursor-pointer shrink-0"
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-      {loading ? (
-        <PageLoader label="Loading feed..." className="h-40" />
-      ) : tab === "platform" ? (
-        <div className="space-y-2">
-          {platform.length === 0 ? (
-            <div className="p-10 text-center rounded-3xl bg-white/[0.02] border border-white/[0.06]">
-              <p className="text-xs text-white/55">
-                No announcements right now. Contests, product changes and maintenance
-                notices land here — nothing else does.
-              </p>
-            </div>
-          ) : (
-            platform.map((p) => (
-              <div
-                key={p.id}
-                className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-1"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#ffd60a]">
-                    {p.kind}
-                  </span>
-                  {p.pinned && (
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">
-                      pinned
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm font-bold text-white">{p.title}</p>
-                <p className="text-xs text-white/55 whitespace-pre-wrap">{p.body_md}</p>
-                {p.href && (
-                  <a
-                    href={p.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-block text-[11px] font-bold text-[#fa586a] hover:underline"
-                  >
-                    Open →
-                  </a>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      ) : noSquad ? (
-        <div className="p-12 text-center space-y-3 bg-[#1c1c1e]/60 rounded-3xl border border-white/[0.06]">
-          <p className="text-sm font-bold text-white">No active squad.</p>
-          <p className="text-xs text-white/55 max-w-sm mx-auto">
-            Join or create a squad — solves and challenges will appear here automatically.
-            No prose required.
-          </p>
-          <Link href="/squad" className="inline-block px-4 py-2 rounded-full btn-accent text-white text-xs font-bold">
-            Find your squad
-          </Link>
-        </div>
-      ) : events.length === 0 && discussions.length === 0 ? (
-        <div className="p-12 text-center space-y-3 bg-[#1c1c1e]/60 rounded-3xl border border-white/[0.06]">
-          <p className="text-sm font-bold text-white">
-            {tab === "following" ? "Nobody followed yet." : "Quiet… for now."}
-          </p>
-          <p className="text-xs text-white/55 max-w-sm mx-auto">
-            {tab === "following"
-              ? "Follow people whose approaches you want to see. Their solves, teaching and discussions land here."
-              : tab === "global"
-                ? "Nothing public yet. Global posts need a problem, a pattern, and something for the reader to try."
-                : "Solves, challenges, and completions land here on their own. Start today's battle."}
-          </p>
-          <Link
-            href={tab === "following" ? "/patterns" : "/"}
-            className="inline-block px-4 py-2 rounded-full btn-accent text-white text-xs font-bold"
-          >
-            {tab === "following" ? "Find people" : "Start today's battle"}
-          </Link>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {/* §20 says a useful post is one that changes what another developer
-              does next. The label says whether that has happened yet, so the
-              ordering is legible instead of magic. */}
-          {events.length > 0 && (
-            <div className="text-[10px] uppercase tracking-wider text-white/55">
-              Ranked by what people actually did with it
-            </div>
-          )}
-          {events.map((ev) => (
-            <div
-              key={ev.id}
-              className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/[0.02] border border-white/[0.06] text-xs"
-            >
-              <Avatar actor={ev.actor} />
-              <div className="flex-1 min-w-0">
-                <p className="text-white/80 truncate">{describe(ev)}</p>
-                <p className="text-[10px] text-white/50 font-mono">
-                  {timeAgo(ev.created_at)} ·{" "}
-                  {actionabilityLabel(
-                    Number(ev.usefulness ?? 0),
-                    (Date.now() - new Date(ev.created_at).getTime()) / 3600000
-                  )}
-                </p>
-              </div>
-              {ev.problem_slug && (
-                <Link
-                  href={`/practice/${ev.problem_slug}`}
-                  onClick={() => track("feed_action", { via: "open_problem" })}
-                  className="px-3 py-1 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-white/60 text-[11px] font-semibold shrink-0 transition-all"
-                >
-                  Open
-                </Link>
-              )}
-              <RowMenu ev={ev} onDone={() => void load()} />
-            </div>
-          ))}
-
-          {discussions.length > 0 && (
-            <>
-              <div className="text-[10px] uppercase tracking-wider text-white/55 pt-2">
-                Discussions
-              </div>
-              {discussions.map((d) => (
-                <DiscussionCard key={d.id} d={d} />
-              ))}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Five tiles create their object; Discuss hands off to its own modal. */}
       {composerOpen && (
         <FeedComposer
           onClose={() => setComposerOpen(false)}
@@ -519,9 +635,6 @@ export default function FeedPage() {
         />
       )}
 
-      {/* The discuss composer gets no `key` on purpose. The solve count arrives
-          asynchronously, and remounting on it would wipe a draft already in
-          progress. */}
       {discussOpen && (
         <DiscussComposer
           squadId={squadId}

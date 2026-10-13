@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
-import { PageLoader } from "@/components/ui/PageLoader";
+import { ArrowLeft, Flame } from "lucide-react";
+import { EmptyState, ErrorCard, Skeleton } from "@/components/ui/States";
+import { VerifiedBadge } from "@/components/ui/Badge";
+import { ShareRow } from "@/components/ui/ShareRow";
 import { getWall } from "@/lib/data/wall";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { relativeDays } from "@/lib/format";
@@ -44,68 +46,127 @@ export default function SquadWallPage() {
     load();
   }, [load]);
 
-  if (loading) return <PageLoader label="Loading the wall..." />;
+  const groups = useMemo(() => {
+    const byMonth = new Map<string, SquadMilestone[]>();
+    for (const m of items.slice(1)) {
+      const d = new Date(m.occurred_at);
+      const key = Number.isNaN(d.getTime())
+        ? "Undated"
+        : d.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+      const list = byMonth.get(key) ?? [];
+      list.push(m);
+      byMonth.set(key, list);
+    }
+    return [...byMonth.entries()];
+  }, [items]);
 
-  if (loadError) {
+  const [latest, ...rest] = items;
+  void rest;
+
+  if (loading)
     return (
-      <div role="alert" className="p-12 text-center space-y-3">
-        <p className="text-xs text-[#ff453a]">{loadError}</p>
-        <button onClick={load} className="px-4 py-2 rounded-full btn-accent text-white text-xs font-bold cursor-pointer">
-          Retry
-        </button>
+      <div className="mx-auto w-full max-w-reading space-y-3" aria-label="Loading the wall">
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
       </div>
     );
+
+  if (loadError) {
+    return <ErrorCard message={loadError} onRetry={() => void load()} />;
   }
 
   return (
-    <div className="space-y-6 select-none max-w-2xl">
-      <Link href="/squad" className="flex items-center gap-1.5 text-xs text-white/55 hover:text-white transition-colors">
-        <ArrowLeft className="w-3.5 h-3.5" />
+    <div className="mx-auto w-full max-w-reading space-y-8">
+      <Link
+        href="/squad"
+        className="inline-flex min-h-[44px] items-center gap-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary md:min-h-0"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.5} />
         <span>{squadName}</span>
       </Link>
 
       <header>
-        <div className="text-[11px] font-bold text-[#30d158] tracking-[0.2em] uppercase">
-          What actually happened
-        </div>
-        <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight mt-1">
-          Wall
-        </h1>
-        <p className="text-xs text-white/55 mt-2 max-w-xl leading-relaxed">
-          Milestones are written by the database when the event happens, so nothing here can be
-          back-dated into looking better than it was.
+        <h1 className="type-display-md text-text-primary">{squadName}&rsquo;s wall</h1>
+        <p className="mt-1 text-sm leading-6 text-text-secondary">
+          Every milestone here happened. Verified ones are marked.
         </p>
       </header>
 
       {items.length === 0 ? (
-        <div className="p-12 text-center space-y-3 rounded-3xl bg-white/[0.02] border border-white/[0.06]">
-          <p className="text-sm font-bold text-white">Nothing on the wall yet.</p>
-          <p className="text-xs text-white/55 max-w-sm mx-auto">
-            The first entry appears when somebody joins, solves, or challenges a squad mate.
-          </p>
-          <Link href="/practice" className="inline-block px-4 py-2 rounded-full bg-white/[0.06] border border-white/[0.1] text-white text-xs font-bold">
-            Start a battle
-          </Link>
-        </div>
+        <EmptyState
+          heading="Nothing on the wall yet"
+          body="Milestones show up here as your squad hits them, like a first hard solve, a 7-day squad streak, or a finished goal."
+          action={
+            <Link
+              href="/squad"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-[#272830]"
+            >
+              Set a squad goal
+            </Link>
+          }
+        />
       ) : (
-        <ol className="relative border-l border-white/[0.08] pl-6 space-y-6">
-          {items.map((m) => (
-            <li key={m.id} className="relative">
-              <span
-                aria-hidden
-                className="absolute -left-[31px] top-1 w-3 h-3 rounded-full bg-white/20 border-2 border-[#0a0a0a]"
-              />
-              <div className="text-sm font-bold text-white">{m.title}</div>
-              {m.detail && <p className="text-xs text-white/50 mt-0.5 leading-relaxed">{m.detail}</p>}
-              <div className="text-[10px] text-white/25 font-mono mt-1">
-                {relativeDays(daysBetweenFor(m.occurred_at))}
+        <>
+          {latest && (
+            <article className="card">
+              <div className="flex items-start justify-between gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-tint text-primary">
+                  <Flame className="h-5 w-5" strokeWidth={1.5} fill="currentColor" />
+                </span>
+                <ShareRow
+                  path={`/squad/${squadId}/wall`}
+                  artifact={{ kind: "squad", id: squadId }}
+                  text={`${squadName}: ${latest.title}`}
+                  label="Share"
+                />
               </div>
-            </li>
-          ))}
-        </ol>
+              <h2 className="type-title mt-3 text-text-primary">{latest.title}</h2>
+              {latest.detail && (
+                <p className="mt-1 text-sm leading-6 text-text-secondary">{latest.detail}</p>
+              )}
+              <p className="mt-2 font-mono text-xs text-text-tertiary tnum">
+                {relativeDays(daysBetweenFor(latest.occurred_at))}
+              </p>
+            </article>
+          )}
+
+          <ol className="relative space-y-8 border-l border-hairline pl-6">
+            {groups.map(([month, ms]) => (
+              <li key={month} className="space-y-3">
+                <h2 className="text-lg font-semibold leading-[26px] text-text-primary">{month}</h2>
+                <ol className="space-y-3">
+                  {ms.map((m) => (
+                    <li key={m.id} className="relative rounded-xl border border-hairline bg-surface p-4">
+                      <span
+                        aria-hidden
+                        className="absolute -left-[31px] top-5 h-2.5 w-2.5 rounded-full bg-surface-overlay ring-2 ring-canvas"
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-text-primary">{m.title}</p>
+                        {isVerified(m) && <VerifiedBadge />}
+                      </div>
+                      {m.detail && (
+                        <p className="mt-0.5 text-sm leading-6 text-text-secondary">{m.detail}</p>
+                      )}
+                      <p className="mt-1 font-mono text-xs text-text-tertiary tnum">
+                        {relativeDays(daysBetweenFor(m.occurred_at))}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              </li>
+            ))}
+          </ol>
+        </>
       )}
     </div>
   );
+}
+
+function isVerified(m: SquadMilestone): boolean {
+  const hay = `${m.title} ${m.detail ?? ""}`.toLowerCase();
+  return hay.includes("verified");
 }
 
 function daysBetweenFor(iso: string): number {

@@ -88,11 +88,11 @@ export function GlobalLeaderboard() {
             }}
             aria-label="Pattern to rank by, for example Graphs"
             placeholder="Pattern, e.g. Graphs"
-            className="px-3 py-1.5 min-h-11 rounded-full bg-white/[0.04] border border-white/[0.08] text-xs text-white placeholder:text-white/55 focus:border-white/20"
+            className="px-3 py-1.5 min-h-11 rounded-full bg-well border border-hairline text-xs text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong"
           />
           <button
             onClick={() => void load()}
-            className="px-3 py-1.5 min-h-11 rounded-full bg-white/[0.06] text-[11px] font-bold text-white/70 hover:text-white cursor-pointer flex items-center"
+            className="px-3 py-1.5 min-h-11 rounded-full bg-surface-overlay text-text-secondary hover:text-text-primary cursor-pointer flex items-center"
           >
             Apply
           </button>
@@ -101,7 +101,7 @@ export function GlobalLeaderboard() {
 
       {/* The ranking basis is stated, always. */}
       {meta && (
-        <p className="text-[11px] text-white/50">
+        <p className="text-[11px] text-text-tertiary">
           {meta.ranks}.
           {isLifetimeView(segment) &&
             " Lifetime totals — this one is honest about being a long-run tally, which is why it is not the default view."}
@@ -109,11 +109,11 @@ export function GlobalLeaderboard() {
       )}
 
       {error && (
-        <div role="alert" className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-[#ff453a]/10 border border-[#ff453a]/30">
-          <span className="text-xs text-[#ff453a]">{error}</span>
+        <div role="alert" className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-error/10 border border-error/30">
+          <span className="text-xs text-error">{error}</span>
           <button
             onClick={() => void load()}
-            className="px-3 py-1 rounded-full bg-[#ff453a]/15 text-[#ff453a] text-[11px] font-bold cursor-pointer"
+            className="px-3 py-1 rounded-full bg-error/15 text-error text-[11px] font-bold cursor-pointer"
           >
             Retry
           </button>
@@ -123,8 +123,8 @@ export function GlobalLeaderboard() {
       {loading ? (
         <PageLoader label="Loading..." className="h-32" />
       ) : rows.length === 0 ? (
-        <div className="p-10 text-center rounded-3xl bg-white/[0.02] border border-white/[0.06]">
-          <p className="text-xs text-white/55">
+        <div className="p-10 text-center rounded-xl bg-surface border border-hairline">
+          <p className="text-xs text-text-secondary">
             {segment === "pattern"
               ? "Nobody has logged a solve on that pattern yet. Try a broader pattern name."
               : "Nobody has anything recorded in this view yet. It fills up as people log activity — nothing here is back-filled."}
@@ -135,12 +135,12 @@ export function GlobalLeaderboard() {
           {rows.map((r, i) => (
             <div
               key={r.user_id}
-              className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/[0.06]"
+              className="flex items-center gap-3 p-3 rounded-2xl bg-surface border border-hairline"
             >
-              <span className="w-6 text-right font-mono text-xs text-white/25">
+              <span className="w-6 text-right font-mono text-xs text-text-disabled">
                 {page * PAGE + i + 1}
               </span>
-              <div className="w-8 h-8 rounded-full bg-white/[0.06] border border-white/[0.08] flex items-center justify-center font-bold text-[11px] text-white shrink-0 overflow-hidden">
+              <div className="w-8 h-8 rounded-full bg-surface-overlay border border-hairline flex items-center justify-center font-bold text-[11px] text-text-primary shrink-0 overflow-hidden">
                 {r.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={r.avatar_url} alt={r.username} className="w-full h-full object-cover" />
@@ -151,11 +151,11 @@ export function GlobalLeaderboard() {
               <div className="flex-1 min-w-0">
                 <Link
                   href={profileHref(r.username)}
-                  className="inline-block text-xs font-bold text-white hover:text-[#fa586a] transition-colors py-2.5 -my-1"
+                  className="inline-block text-xs font-bold text-text-primary hover:text-primary transition-colors py-2.5 -my-1"
                 >
                   @{r.username}
                 </Link>
-                <p className="text-[10px] text-white/50">{r.segment_label}</p>
+                <p className="text-[10px] text-text-tertiary">{r.segment_label}</p>
               </div>
             </div>
           ))}
@@ -167,14 +167,14 @@ export function GlobalLeaderboard() {
           <button
             onClick={() => setPage((p) => Math.max(0, p - 1))}
             disabled={page === 0}
-            className="px-3 py-1.5 rounded-full bg-white/[0.05] text-[11px] font-bold text-white/60 hover:text-white disabled:opacity-40 cursor-pointer"
+            className="px-3 py-1.5 rounded-full bg-surface-overlay text-text-secondary hover:text-text-primary disabled:opacity-40 cursor-pointer"
           >
             ← Previous
           </button>
-          <span className="text-[10px] text-white/25">Page {page + 1}</span>
+          <span className="text-[10px] text-text-disabled">Page {page + 1}</span>
           <button
             onClick={() => setPage((p) => p + 1)}
-            className="px-3 py-1.5 rounded-full bg-white/[0.05] text-[11px] font-bold text-white/60 hover:text-white cursor-pointer"
+            className="px-3 py-1.5 rounded-full bg-surface-overlay text-text-secondary hover:text-text-primary cursor-pointer"
           >
             Next →
           </button>

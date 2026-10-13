@@ -2,8 +2,9 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { X } from "lucide-react";
 import { ModalShell } from "@/components/ui/ModalShell";
-import { Spinner } from "@/components/ui/Spinner";
+import { Button } from "@/components/ui/Button";
 import {
   checkDiscussionDraft,
   draftMessage,
@@ -81,76 +82,85 @@ export function DiscussComposer({
     }
   };
 
+  const inputCls =
+    "w-full min-h-[44px] rounded-md border border-hairline bg-well px-3 py-2.5 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none";
+  const labelCls = "mb-1.5 block text-sm font-medium text-text-secondary";
+
   return (
-    <ModalShell label="Start a discussion" onClose={onClose} alignTop>
+    <ModalShell label="Start a discussion" onClose={onClose} maxWidthClass="max-w-[560px]">
       <form onSubmit={submit} className="space-y-4">
-        <div>
-          <h2 className="text-lg font-bold text-white">Start a discussion</h2>
-          <p className="text-[11px] text-white/55 mt-1">
-            Problem-linked and pattern-linked, or it won&apos;t be findable later.
-          </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-display text-2xl font-semibold tracking-tight">Start a discussion</h2>
+            <p className="mt-1 text-xs leading-5 text-text-secondary">
+              Problem-linked and pattern-linked, or it won&apos;t be findable later.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded-md text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+          >
+            <X className="h-5 w-5" strokeWidth={1.5} />
+          </button>
         </div>
 
-        <label className="block space-y-1">
-          <span className="text-[10px] uppercase tracking-wider text-white/55">
-            Problem slug
-          </span>
+        <label className="block">
+          <span className={labelCls}>Problem slug</span>
           <input
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
             placeholder="two-sum"
-            className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-white/20"
+            className={inputCls}
           />
         </label>
 
-        <label className="block space-y-1">
-          <span className="text-[10px] uppercase tracking-wider text-white/55">
-            Patterns (comma separated)
-          </span>
+        <label className="block">
+          <span className={labelCls}>Patterns (comma separated)</span>
           <input
             value={patterns}
             onChange={(e) => setPatterns(e.target.value)}
             placeholder="Arrays, Hash Table"
-            className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-white/20"
+            className={inputCls}
           />
         </label>
 
-        <label className="block space-y-1">
-          <span className="text-[10px] uppercase tracking-wider text-white/55">
-            What did you try, and what should the reader try?
-          </span>
+        <label className="block">
+          <span className={labelCls}>What did you try, and what should the reader try?</span>
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
             rows={5}
             placeholder="Try solving it without the hash map first — what breaks?"
-            className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-white/20 resize-y"
+            className="w-full resize-y rounded-md border border-hairline bg-well px-3 py-2.5 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none"
           />
         </label>
 
         <div className="space-y-2">
-          <span className="text-[10px] uppercase tracking-wider text-white/55">Who sees it</span>
-          <div className="flex gap-2">
+          <span className="text-sm font-medium text-text-secondary">Who sees it</span>
+          <div className="flex gap-1.5 rounded-md bg-well p-1">
             {(["squad", "global"] as const).map((v) => (
               <button
                 key={v}
                 type="button"
                 onClick={() => setVisibility(v)}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold capitalize transition-all cursor-pointer ${
+                aria-pressed={visibility === v}
+                className={`flex min-h-[44px] flex-1 cursor-pointer items-center justify-center rounded-sm px-3 text-xs font-medium capitalize transition-colors ${
                   visibility === v
-                    ? "bg-white/[0.12] text-white"
-                    : "bg-white/[0.04] text-white/55 hover:text-white/70"
+                    ? "bg-surface-overlay text-text-primary"
+                    : "text-text-secondary hover:text-text-primary"
                 }`}
               >
-                {v}
+                {v === "global" ? "Everyone" : "Squad"}
               </button>
             ))}
           </div>
           {globalBlocked && (
-            <p className="text-[11px] text-[#ffd60a]">
-              Posting to Global needs 3 logged solves. You have {solveCount}. Your squad
+            <p className="text-xs leading-5 text-primary">
+              Posting to Everyone needs 3 logged solves. You have {solveCount}. Your squad
               feed is open now —{" "}
-              <Link href="/practice" className="underline">
+              <Link href="/practice" className="underline underline-offset-4">
                 solve something
               </Link>
               .
@@ -161,31 +171,28 @@ export function DiscussComposer({
         {/* The verdict is shown as guidance, not as an error. It is a preview of
             a rule the database will apply for real. */}
         {!verdict.ok && body.length > 0 && (
-          <p className="text-[11px] text-white/55">{draftMessage(verdict)}</p>
+          <p className="text-xs leading-5 text-text-secondary">{draftMessage(verdict)}</p>
         )}
 
         {error && (
-          <div role="alert" className="text-[11px] text-[#ff453a]">
+          <div role="alert" className="rounded-md border border-error/30 bg-error-tint px-3 py-2 text-xs leading-5 text-error">
             {error}
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-full text-xs font-bold text-white/50 hover:text-white cursor-pointer"
-          >
+        <div className="flex items-center justify-end gap-2 border-t border-hairline pt-4">
+          <Button variant="ghost" type="button" onClick={onClose} className="min-h-[44px]">
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             type="submit"
             disabled={!verdict.ok || globalBlocked || busy}
-            className="px-5 py-2 rounded-full btn-accent text-white text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+            loading={busy}
+            className="min-h-[44px]"
           >
-            {busy && <Spinner size="xs" tone="inverse" />}
-            Post
-          </button>
+            {!busy && "Post"}
+          </Button>
         </div>
       </form>
     </ModalShell>
