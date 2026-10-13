@@ -278,6 +278,9 @@ NEXT_PUBLIC_VAPID_PUBLIC_KEY=your-vapid-public-key  # optional; for web push
 VAPID_PRIVATE_KEY=your-vapid-private-key        # optional; server-only
 VAPID_SUBJECT=mailto:you@example.com            # optional
 NEXT_PUBLIC_SITE_URL=https://your-domain        # canonical origin for OG/sitemap
+ALLOWED_ORIGINS=https://your-domain           # optional; extra CORS origins
+# AI provider (optional — app runs without it):
+# OPENAI_API_KEY=sk-... / ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 Generate VAPID keys with `npx web-push generate-vapid-keys`.

@@ -64,8 +64,11 @@
 
 ## Brand
 
-- Visual world: Apple Music web app (pitch-black surfaces, frosted glass,
-  bento gradients, rose `#fa586a` accent). Pinned.
+- Visual world: dark precision interface in the Linear / Raycast / Vercel
+  lineage: obsidian canvas, hairline-layered surfaces, one warm gold for
+  action and streaks, emerald for verified proof, indigo for patterns, and
+  perforated "Pass" artifacts as the signature. Replaced the Apple Music
+  world on 2026-10-12. DESIGN.md (v4) owns the tokens and rules.
 - Wordmark, "Developer Arena" descriptor, taglines, and brand copy **may
   evolve with design passes** (confirmed 2026-10-05).
 - Voice: plain, honest, no internal jargon in user-facing copy (no "Bible §N",

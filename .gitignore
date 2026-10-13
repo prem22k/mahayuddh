@@ -44,3 +44,6 @@ next-env.d.ts
 # Reference source files (not ours)
 sourcecode.*
 sorucecode.*
+
+# Stitch pulled frames (local only, regenerate via /tmp/pull_frames.py)
+stitch_frames/

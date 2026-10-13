@@ -2,6 +2,9 @@
   "name": "mahayuddh",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,6 +12,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:smoke": "node --no-warnings --test tests/smoke.test.mjs",
+    "test:security": "node --no-warnings --test tests/security/securityBaseline.test.mjs",
     "test:static": "node tests/static/auditRlsInserts.mjs",
     "test:integration:wall": "node tests/integration/wallMilestones.mjs",
     "test:integration:feed": "node tests/integration/feedSurfaces.mjs",
@@ -16,6 +20,7 @@
     "test:integration:notify": "node tests/integration/notifications.mjs",
     "test:integration:composer": "node --no-warnings --experimental-strip-types tests/integration/composer.mjs",
     "test:integration:ai": "node tests/integration/aiGates.mjs",
+    "test:integration:security": "node tests/integration/securityAbuse.mjs",
     "test:integration:impact": "node --no-warnings tests/integration/impact.mjs",
     "test:integration:referral": "node --no-warnings tests/integration/referral.mjs",
     "sync:contests": "node scripts/sync-contests.mjs",

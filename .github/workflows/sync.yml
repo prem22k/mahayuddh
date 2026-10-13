@@ -12,19 +12,36 @@ jobs:
   sync:
     name: Sync Squad LeetCode Stats
     runs-on: ubuntu-latest
+    env:
+      # Set as a repo Variable (Settings → Variables → APP_URL), e.g.
+      # mahayuddh.vercel.app or your-app.onrender.com (host only, no scheme).
+      APP_URL: ${{ vars.APP_URL }}
     steps:
       - name: Trigger LeetCode Sync Endpoint
         run: |
-          curl -X GET "https://${{ secrets.VERCEL_URL || 'mahayuddh.vercel.app' }}/api/sync/leetcode" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -f || echo "Sync completed or pending live deployment"
+          if [ -z "$APP_URL" ]; then echo "::error::APP_URL repo variable is not set"; exit 1; fi
+          # Page through handles (5/invocation) so each call stays under the
+          # Vercel Hobby 10s function cap. Stops when hasMore != true.
+          OFFSET=0
+          for i in $(seq 1 40); do
+            RESP=$(curl -sS -f "https://${APP_URL}/api/sync/leetcode?limit=5&offset=${OFFSET}" \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}") || { echo "Sync page offset=$OFFSET failed"; echo "$RESP"; exit 1; }
+            echo "$RESP"
+            MORE=$(echo "$RESP" | jq -r '.hasMore // false')
+            COUNT=$(echo "$RESP" | jq -r '.synced // 0')
+            if [ "$COUNT" = "0" ] || [ "$MORE" != "true" ]; then break; fi
+            OFFSET=$((OFFSET + 5))
+          done
 
   catalog:
     name: Sync LeetCode Problem Catalog
     runs-on: ubuntu-latest
+    env:
+      APP_URL: ${{ vars.APP_URL }}
     steps:
       - name: Trigger LeetCode Catalog Sync
         run: |
-          curl -X POST "https://${{ secrets.VERCEL_URL || 'mahayuddh.vercel.app' }}/api/sync/catalog" \
+          if [ -z "$APP_URL" ]; then echo "::error::APP_URL repo variable is not set"; exit 1; fi
+          curl -X POST "https://${APP_URL}/api/sync/catalog" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -f || echo "Catalog sync completed or pending live deployment"
