@@ -6,19 +6,19 @@ import { PrimerList } from "@/components/primers/PrimerList";
 
 export default function PrimersPage() {
   return (
-    <div className="space-y-6 select-none max-w-3xl">
+    <div className="space-y-6">
       <div>
-        <div className="text-[11px] font-semibold text-[#fa586a] tracking-[0.2em] uppercase mb-1">
-          Learn before battle
-        </div>
-        <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">Pattern Primers</h1>
-        <p className="text-xs text-white/55 mt-1">
-          5–10 minute reads. One concept, immediately usable. Skim one, then start battling.
+        <h1 className="type-display-md text-text-primary">Primers</h1>
+        <p className="mt-1 text-sm leading-6 text-text-secondary">
+          One pattern, ten minutes, then the problems that teach it.
         </p>
       </div>
       <PrimerList />
-      <Link href="/practice" className="inline-block text-xs text-[#fa586a] font-semibold hover:underline">
-        ← Back to practice
+      <Link
+        href="/practice"
+        className="inline-flex min-h-[44px] items-center text-sm font-medium leading-5 text-text-secondary transition-colors hover:text-text-primary md:min-h-0"
+      >
+        Back to practice
       </Link>
     </div>
   );

@@ -1,13 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
-import { Plus, Copy, Check, Trash2, BookOpen } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Plus, Copy, Check, Trash2, Pencil, Search } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { MyImpact } from "@/components/impact/MyImpact";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { ModalShell } from "@/components/ui/ModalShell";
+import { Button } from "@/components/ui/Button";
+import { PatternChip } from "@/components/ui/Badge";
+import { UnderlineTabs, FilterChips } from "@/components/ui/ProblemRow";
+import { EmptyState, ErrorCard, Skeleton } from "@/components/ui/States";
 import { getSharedResources } from "@/lib/data/vault";
 import {
   getMyNotes,
@@ -23,6 +26,62 @@ import { dataErrorMessage } from "@/lib/data/errors";
 import { NotebookNoteSummary, SharedResource, NoteVisibility } from "@/types/database";
 
 type Tab = "mine" | "vault" | "shared" | "impact";
+
+/** Minimal markdown rendering for note bodies: paragraphs, bullets, code fences. */
+function NoteBody({ md }: { md: string }) {
+  const parts = md.split("```");
+  return (
+    <div className="space-y-4">
+      {parts.map((part, i) => {
+        if (i % 2 === 1) {
+          const lines = part.replace(/^\w+\n/, "").replace(/\n$/, "");
+          return (
+            <pre
+              key={i}
+              className="overflow-x-auto rounded-md border border-hairline bg-well p-4 font-mono text-sm leading-6 text-text-primary"
+            >
+              <code>{lines}</code>
+            </pre>
+          );
+        }
+        const blocks = part.split(/\n{2,}/);
+        return (
+          <div key={i} className="space-y-3">
+            {blocks.map((block, j) => {
+              const lines = block.split("\n").filter((l) => l.trim());
+              if (lines.length === 0) return null;
+              if (lines.every((l) => /^[-*]\s+/.test(l))) {
+                return (
+                  <ul key={j} className="list-disc space-y-1.5 pl-5 text-[15px] leading-6 text-text-primary">
+                    {lines.map((l, k) => (
+                      <li key={k}>{l.replace(/^[-*]\s+/, "")}</li>
+                    ))}
+                  </ul>
+                );
+              }
+              if (lines.length === 1 && /^#{1,3}\s+/.test(lines[0])) {
+                return (
+                  <h3 key={j} className="font-sans text-lg font-semibold leading-7 text-text-primary">
+                    {lines[0].replace(/^#{1,3}\s+/, "")}
+                  </h3>
+                );
+              }
+              return (
+                <p key={j} className="whitespace-pre-wrap text-[15px] leading-6 text-text-primary">
+                  {block.trim()}
+                </p>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function visibilityLabel(v: string) {
+  return v.charAt(0).toUpperCase() + v.slice(1);
+}
 
 export default function NotebookPage() {
   const { user, profile } = useAuth();
@@ -43,6 +102,15 @@ export default function NotebookPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [shareName, setShareName] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // List chrome state: search, pattern filter, open note.
+  const [query, setQuery] = useState("");
+  const [patternFilter, setPatternFilter] = useState("All");
+  const [vaultFilter, setVaultFilter] = useState("All");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [bodyCache, setBodyCache] = useState<Record<string, string>>({});
+  const [selectedLoading, setSelectedLoading] = useState(false);
+  const noteRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -118,6 +186,7 @@ export default function NotebookPage() {
       setEditing(null);
       setTitle("");
       setBody("");
+      setBodyCache({});
       await load();
     } catch (err) {
       setFormError(dataErrorMessage(err, "Couldn't save note."));
@@ -126,43 +195,416 @@ export default function NotebookPage() {
     }
   };
 
+  const handleShare = async (noteId: string) => {
+    if (!shareName.trim()) return;
+    try {
+      await shareNoteWith(noteId, shareName);
+      setShareName("");
+      setFormError(null);
+    } catch (err) {
+      setFormError(dataErrorMessage(err, "Couldn't share."));
+    }
+  };
+
   const [showEditor, setShowEditor] = useState(false);
+
+  const patternOptions = useMemo(() => {
+    const tags = new Set<string>();
+    notes.forEach((n) => (n.pattern_tags ?? []).forEach((t) => tags.add(t)));
+    return ["All", ...Array.from(tags)];
+  }, [notes]);
+
+  const vaultOptions = useMemo(() => {
+    const cats = new Set(vault.map((r) => r.category));
+    return ["All", ...Array.from(cats)];
+  }, [vault]);
+
+  const filteredNotes = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return notes.filter((n) => {
+      if (patternFilter !== "All" && !(n.pattern_tags ?? []).includes(patternFilter)) return false;
+      if (!q) return true;
+      return (
+        n.title.toLowerCase().includes(q) ||
+        (n.problem_slug ?? "").toLowerCase().includes(q) ||
+        (n.pattern_tags ?? []).some((t) => t.toLowerCase().includes(q))
+      );
+    });
+  }, [notes, query, patternFilter]);
+
+  const filteredVault = useMemo(
+    () => (vaultFilter === "All" ? vault : vault.filter((r) => r.category === vaultFilter)),
+    [vault, vaultFilter]
+  );
+
+  // Default to the first note open, per the two-pane spec.
+  useEffect(() => {
+    if (!selectedId && filteredNotes.length > 0) {
+      setSelectedId(filteredNotes[0].id);
+    }
+  }, [filteredNotes, selectedId]);
+
+  const selected = notes.find((n) => n.id === selectedId) ?? null;
+
+  useEffect(() => {
+    if (!selected || bodyCache[selected.id] !== undefined) return;
+    let cancelled = false;
+    setSelectedLoading(true);
+    import("@/lib/data/notebook").then(({ getNoteById }) =>
+      getNoteById(selected.id)
+        .then((full) => {
+          if (cancelled) return;
+          setBodyCache((c) => ({ ...c, [selected.id]: full?.body_md ?? "" }));
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setSelectedLoading(false);
+        })
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, bodyCache]);
+
+  const selectNote = (id: string) => {
+    setSelectedId(id);
+    if (window.innerWidth < 1024) {
+      requestAnimationFrame(() => noteRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+  };
 
   if (loading) return <PageLoader label="Loading notebook..." />;
 
+  const tabLabels = [
+    `My notes (${notes.length})`,
+    "Vault",
+    `Shared with me (${shared.length})`,
+    "Impact",
+  ] as const;
+  const tabIds: Tab[] = ["mine", "vault", "shared", "impact"];
+  const activeLabel = tabLabels[tabIds.indexOf(tab)];
+
   return (
-    <div className="space-y-6 select-none max-w-3xl">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="text-[11px] font-semibold text-[#fa586a] tracking-[0.2em] uppercase mb-1 flex items-center gap-1.5">
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>What do I know?</span>
-          </div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">Notebook</h1>
-          <p className="text-xs text-white/55 mt-1">Private by default. Sharing is intentional and reversible.</p>
+          <h1 className="type-display-md text-text-primary">Notebook</h1>
+          <p className="mt-1 text-sm leading-6 text-text-secondary">
+            Private by default. Sharing is intentional and reversible.
+          </p>
         </div>
-        <button onClick={() => { openNew(); setShowEditor(true); }}
-          className="px-4 py-2 rounded-full btn-accent text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 self-start md:self-auto">
-          <Plus className="w-3.5 h-3.5" />
-          <span>New note</span>
-        </button>
+        <Button
+          variant="primary"
+          onClick={() => {
+            openNew();
+            setShowEditor(true);
+          }}
+          className="min-h-[44px] self-start md:min-h-0 md:self-auto"
+        >
+          <Plus className="h-4 w-4" strokeWidth={1.5} />
+          New note
+        </Button>
       </div>
 
-      <div className="flex items-center gap-2 p-1 bg-white/[0.04] rounded-full border border-white/[0.06] w-fit">
-        {(["mine", "vault", "shared", "impact"] as Tab[]).map((t) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={cn("px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
-              tab === t ? "bg-white/[0.12] text-white shadow-sm" : "text-white/55 hover:text-white/80")}>
-            {t === "mine"
-              ? `My Notes (${notes.length})`
-              : t === "vault"
-                ? "Vault"
-                : t === "shared"
-                  ? `Shared with me (${shared.length})`
-                  : "Impact"}
-          </button>
-        ))}
-      </div>
+      <UnderlineTabs
+        tabs={tabLabels}
+        value={activeLabel}
+        onChange={(label) => setTab(tabIds[tabLabels.indexOf(label as (typeof tabLabels)[number])])}
+      />
+
+      {loadError && <ErrorCard message={loadError} onRetry={load} />}
+
+      {tab === "mine" && (
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3">
+            <label className="relative block">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary"
+                strokeWidth={1.5}
+              />
+              <span className="sr-only">Search your notes</span>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search your notes"
+                className="h-10 w-full rounded-md border border-hairline bg-well pl-9 pr-3 text-sm leading-5 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
+              />
+            </label>
+            {patternOptions.length > 1 && (
+              <FilterChips options={patternOptions} value={patternFilter} onChange={setPatternFilter} />
+            )}
+          </div>
+
+          {notes.length === 0 ? (
+            <EmptyState
+              heading="Your notebook is empty"
+              body="Write what a problem taught you — or copy a squad template and make it yours."
+              action={
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    openNew();
+                    setShowEditor(true);
+                  }}
+                >
+                  Write the first note
+                </Button>
+              }
+            />
+          ) : filteredNotes.length === 0 ? (
+            <EmptyState
+              heading="Nothing matches that filter"
+              body="Try a different search, or clear the pattern filter."
+              action={
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setQuery("");
+                    setPatternFilter("All");
+                  }}
+                >
+                  Clear filters
+                </Button>
+              }
+            />
+          ) : (
+            <div className="grid gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+              <ul className="space-y-2">
+                {filteredNotes.map((n) => {
+                  const active = n.id === selectedId;
+                  return (
+                    <li key={n.id}>
+                      <button
+                        type="button"
+                        onClick={() => selectNote(n.id)}
+                        aria-current={active}
+                        className={`flex min-h-[44px] w-full items-start justify-between gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${
+                          active
+                            ? "border-hairline-strong bg-surface-overlay"
+                            : "border-hairline bg-surface hover:bg-surface-raised"
+                        }`}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium leading-5 text-text-primary">
+                            {n.title}
+                          </span>
+                          <span className="mt-1 flex flex-wrap items-center gap-2">
+                            {(n.pattern_tags ?? []).slice(0, 1).map((t) => (
+                              <PatternChip key={t} label={t} />
+                            ))}
+                            <span className="text-xs leading-4 text-text-tertiary">
+                              {visibilityLabel(n.visibility)}
+                            </span>
+                            {n.fork_from && (
+                              <span className="text-xs italic leading-4 text-text-tertiary">
+                                Forked from @{n.fork_from}
+                              </span>
+                            )}
+                          </span>
+                        </span>
+                        <span className="shrink-0 font-mono text-xs text-text-tertiary">
+                          {new Date(n.updated_at).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+
+              <div ref={noteRef} className="card scroll-mt-20">
+                {!selected ? (
+                  <p className="text-sm leading-6 text-text-secondary">Select a note to read it.</p>
+                ) : (
+                  <article>
+                    <h2 className="type-title text-text-primary">{selected.title}</h2>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {(selected.pattern_tags ?? []).map((t) => (
+                        <PatternChip key={t} label={t} />
+                      ))}
+                      <span className="text-xs leading-4 text-text-tertiary">
+                        {visibilityLabel(selected.visibility)}
+                      </span>
+                      {selected.problem_slug && (
+                        <Link
+                          href={`/practice/${selected.problem_slug}`}
+                          className="font-mono text-xs text-text-primary underline decoration-hairline-strong underline-offset-[3px] hover:decoration-text-primary"
+                        >
+                          No. {selected.problem_slug}
+                        </Link>
+                      )}
+                      <span className="text-xs leading-4 text-text-tertiary">
+                        Edited{" "}
+                        {new Date(selected.updated_at).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
+                    </div>
+                    {selected.fork_from && (
+                      <p className="mt-2 text-xs italic leading-5 text-text-tertiary">
+                        Forked from @{selected.fork_from} — your copy, your edits.
+                      </p>
+                    )}
+                    <div className="my-4 h-px bg-hairline" />
+                    {selectedLoading && bodyCache[selected.id] === undefined ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-11/12" />
+                        <Skeleton className="h-32 w-full" />
+                      </div>
+                    ) : (
+                      <NoteBody md={bodyCache[selected.id] ?? ""} />
+                    )}
+                    <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-hairline pt-4">
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          openEdit(selected);
+                          setShowEditor(true);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" strokeWidth={1.5} />
+                        Edit
+                      </Button>
+                      {user?.id === selected.owner_id && (
+                        <span className="flex min-h-[44px] items-center gap-2 md:min-h-0">
+                          <label className="sr-only" htmlFor="note-share-user">
+                            Share 1:1 with
+                          </label>
+                          <input
+                            id="note-share-user"
+                            value={shareName}
+                            onChange={(e) => setShareName(e.target.value)}
+                            placeholder="Share 1:1 with @username"
+                            className="h-10 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
+                          />
+                          <Button variant="ghost" onClick={() => handleShare(selected.id)}>
+                            Share
+                          </Button>
+                        </span>
+                      )}
+                      <Button
+                        variant="ghost"
+                        aria-label="Delete note"
+                        onClick={async () => {
+                          if (window.confirm("Delete this note?")) {
+                            await deleteNote(selected.id);
+                            setSelectedId(null);
+                            setBodyCache({});
+                            await load();
+                          }
+                        }}
+                        className="text-text-tertiary hover:text-error"
+                      >
+                        <Trash2 className="h-4 w-4" strokeWidth={1.5} />
+                      </Button>
+                    </div>
+                    {formError && <p className="mt-2 text-xs leading-4 text-error">{formError}</p>}
+                  </article>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "vault" && (
+        <div className="space-y-4">
+          {vaultOptions.length > 1 && (
+            <FilterChips options={vaultOptions} value={vaultFilter} onChange={setVaultFilter} />
+          )}
+          {vault.length === 0 ? (
+            <EmptyState
+              heading="Vault is empty"
+              body="Shared templates and guides from the squad will land here."
+            />
+          ) : filteredVault.length === 0 ? (
+            <EmptyState
+              heading="Nothing in that category"
+              body="Try a different vault filter."
+              action={
+                <Button variant="ghost" onClick={() => setVaultFilter("All")}>
+                  Clear filter
+                </Button>
+              }
+            />
+          ) : (
+            <ul className="space-y-2">
+              {filteredVault.slice(0, 30).map((r) => (
+                <li
+                  key={r.id}
+                  className="flex min-h-[44px] items-center justify-between gap-3 rounded-lg border border-hairline bg-surface px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium leading-5 text-text-primary">{r.title}</div>
+                    <div className="mt-0.5 text-xs leading-4 text-text-tertiary">
+                      {r.category} · by @{r.author_profile?.username || "squad"}
+                    </div>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    onClick={async () => {
+                      try {
+                        await copyVaultToNotebook(r.id);
+                        setCopiedId(r.id);
+                        setTimeout(() => setCopiedId(null), 2000);
+                        await load();
+                      } catch {
+                        // logged-out: vault rows still stay readable
+                      }
+                    }}
+                    title="Private editable copy with attribution"
+                    className="shrink-0"
+                  >
+                    {copiedId === r.id ? (
+                      <Check className="h-4 w-4 text-verified" strokeWidth={1.5} />
+                    ) : (
+                      <Copy className="h-4 w-4" strokeWidth={1.5} />
+                    )}
+                    {copiedId === r.id ? "Copied" : "Copy to my notebook"}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {tab === "shared" && (
+        <div className="space-y-4">
+          {shared.length === 0 ? (
+            <EmptyState
+              heading="Nothing shared with you yet"
+              body="Squad notes and 1:1 shares appear here — with attribution to whoever taught you."
+            />
+          ) : (
+            <ul className="space-y-2">
+              {shared.map((n) => (
+                <li key={n.id} className="rounded-lg border border-hairline bg-surface px-4 py-3">
+                  <div className="text-sm font-medium leading-5 text-text-primary">{n.title}</div>
+                  <div className="mt-0.5 text-xs leading-4 text-text-tertiary">
+                    From @{n.owner?.username || "squad"} · {visibilityLabel(n.visibility)} · Read-only
+                    {n.problem_slug && (
+                      <span>
+                        {" · "}
+                        <Link
+                          href={`/practice/${n.problem_slug}`}
+                          className="font-mono text-text-primary underline decoration-hairline-strong underline-offset-[3px] hover:decoration-text-primary"
+                        >
+                          {n.problem_slug}
+                        </Link>
+                      </span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Loop C (§56): does your writing change what anybody does? A fourth tab
           rather than another card, because it is a different question from
@@ -170,8 +612,8 @@ export default function NotebookPage() {
       {tab === "impact" && (
         <section className="space-y-3">
           <div>
-            <h2 className="text-lg font-bold text-white">Your impact</h2>
-            <p className="text-xs text-white/55 mt-0.5">
+            <h2 className="font-sans text-lg font-semibold leading-7 text-text-primary">Your impact</h2>
+            <p className="mt-0.5 text-sm leading-6 text-text-secondary">
               Who copied what you wrote, and whether they went on to solve it.
             </p>
           </div>
@@ -179,139 +621,89 @@ export default function NotebookPage() {
         </section>
       )}
 
-      {loadError && (
-        <div role="alert" className="flex items-center justify-between gap-3 px-5 py-4 rounded-2xl bg-[#ff453a]/10 border border-[#ff453a]/30">
-          <span className="text-xs text-[#ff453a] font-medium">{loadError}</span>
-          <button onClick={load} className="px-4 py-1.5 rounded-full bg-[#ff453a]/15 text-[#ff453a] text-xs font-bold cursor-pointer shrink-0">Retry</button>
-        </div>
-      )}
-
-      {tab === "mine" && (
-        notes.length === 0 ? (
-          <div className="p-12 text-center space-y-3 bg-[#1c1c1e]/60 rounded-3xl border border-white/[0.06]">
-            <p className="text-sm font-bold text-white">Your notebook is empty.</p>
-            <p className="text-xs text-white/55">Write what a problem taught you — or copy a squad template and make it yours.</p>
-            <button onClick={() => { openNew(); setShowEditor(true); }} className="inline-block px-4 py-2 rounded-full btn-accent text-white text-xs font-bold cursor-pointer">Write the first note</button>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {notes.map((n) => (
-              <div key={n.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06] flex items-center justify-between gap-3">
-                <button onClick={() => { openEdit(n); setShowEditor(true); }} className="text-left flex-1 min-w-0 cursor-pointer">
-                  <div className="text-sm font-bold text-white truncate">{n.title}</div>
-                  <div className="text-[10px] text-white/50 mt-0.5 flex items-center gap-2 flex-wrap">
-                    <span className="uppercase">{n.visibility}</span>
-                    {n.problem_slug && <Link href={`/practice/${n.problem_slug}`} onClick={(e) => e.stopPropagation()} className="text-[#fa586a] hover:underline font-mono">{n.problem_slug}</Link>}
-                    {n.fork_from && <span className="italic">Forked from @{n.fork_from}</span>}
-                  </div>
-                </button>
-                <button onClick={async () => { if (window.confirm("Delete this note?")) { await deleteNote(n.id); await load(); } }}
-                  className="p-2 rounded-full text-white/50 hover:text-[#ff453a] cursor-pointer" title="Delete note">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )
-      )}
-
-      {tab === "vault" && (
-        vault.length === 0 ? (
-          <div className="p-12 text-center space-y-3 bg-[#1c1c1e]/60 rounded-3xl border border-white/[0.06]">
-            <p className="text-sm font-bold text-white">Vault is empty.</p>
-            <p className="text-xs text-white/55">Shared templates and guides from the squad will land here.</p>
-            <Link href="/vault" className="inline-block px-4 py-2 rounded-full bg-white/[0.06] border border-white/[0.1] text-white text-xs font-bold">Open full vault</Link>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {vault.slice(0, 30).map((r) => (
-              <div key={r.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06] flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-sm font-bold text-white truncate">{r.title}</div>
-                  <div className="text-[10px] text-white/50 mt-0.5">{r.category} · by @{r.author_profile?.username || "squad"}</div>
-                </div>
-                <button
-                  onClick={async () => {
-                    try {
-                      await copyVaultToNotebook(r.id);
-                      setCopiedId(r.id);
-                      setTimeout(() => setCopiedId(null), 2000);
-                      await load();
-                    } catch {
-                      // logged-out: vault page still allows reading
-                    }
-                  }}
-                  className="px-3.5 py-1.5 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-white/80 text-[11px] font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5"
-                  title="Private editable copy with attribution"
-                >
-                  {copiedId === r.id ? <Check className="w-3.5 h-3.5 text-[#30d158]" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedId === r.id ? "Copied!" : "Copy to my notebook"}</span>
-                </button>
-              </div>
-            ))}
-          </div>
-        )
-      )}
-
-      {tab === "shared" && (
-        shared.length === 0 ? (
-          <div className="p-12 text-center space-y-2 bg-[#1c1c1e]/60 rounded-3xl border border-white/[0.06]">
-            <p className="text-sm font-bold text-white">Nothing shared with you yet.</p>
-            <p className="text-xs text-white/55">Squad notes and 1:1 shares appear here — with attribution to whoever taught you.</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {shared.map((n) => (
-              <div key={n.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
-                <div className="text-sm font-bold text-white">{n.title}</div>
-                <div className="text-[10px] text-white/50 mt-0.5">
-                  by @{n.owner?.username || "squad"} · {n.visibility}
-                  {n.problem_slug && <span> · <Link href={`/practice/${n.problem_slug}`} className="text-[#fa586a] hover:underline font-mono">{n.problem_slug}</Link></span>}
-                </div>
-              </div>
-            ))}
-          </div>
-        )
-      )}
-
       {showEditor && (
         <ModalShell label={editing ? "Edit note" : "New note"} onClose={() => setShowEditor(false)}>
-          <form onSubmit={handleSave} className="space-y-4 p-1">
-            <h3 className="text-base font-bold text-white">{editing ? "Edit note" : "New note"}</h3>
-            {editing?.fork_from && <p className="text-[11px] text-white/55 italic">Forked from @{editing.fork_from} — your copy, your edits.</p>}
-            {formError && <div className="text-xs text-[#ff453a]">{formError}</div>}
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" maxLength={120} required
-              className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60" />
-            <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8}
-              placeholder="Markdown: what did you learn? Code fences welcome."
-              className="w-full bg-white/[0.04] border border-white/[0.06] rounded-xl p-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60 resize-y font-mono" />
-            <div className="flex items-center gap-2 flex-wrap">
-              <select value={visibility} onChange={(e) => setVisibility(e.target.value as NoteVisibility)}
-                className="bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1.5 text-[11px] text-white cursor-pointer">
-                <option value="private">Private (default)</option>
-                <option value="squad">Squad</option>
-                <option value="public">Public</option>
-              </select>
-              <button type="submit" disabled={saving} className="px-4 py-1.5 rounded-full btn-accent text-white text-[11px] font-bold disabled:opacity-40 cursor-pointer">
-                {saving ? "Saving…" : editing ? "Save changes" : "Save note"}
-              </button>
+          <form onSubmit={handleSave} className="space-y-4">
+            <h3 className="type-title text-text-primary">{editing ? "Edit note" : "New note"}</h3>
+            {editing?.fork_from && (
+              <p className="text-xs italic leading-5 text-text-tertiary">
+                Forked from @{editing.fork_from} — your copy, your edits.
+              </p>
+            )}
+            {formError && (
+              <p role="alert" className="text-sm leading-5 text-error">
+                {formError}
+              </p>
+            )}
+            <div>
+              <label htmlFor="note-title" className="mb-1 block text-sm font-medium leading-5 text-text-primary">
+                Title
+              </label>
+              <input
+                id="note-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="What did this teach you?"
+                maxLength={120}
+                required
+                className="h-10 w-full rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
+              />
+            </div>
+            <div>
+              <label htmlFor="note-body" className="mb-1 block text-sm font-medium leading-5 text-text-primary">
+                Note
+              </label>
+              <textarea
+                id="note-body"
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={8}
+                placeholder="Markdown: what did you learn? Code fences welcome."
+                className="w-full resize-y rounded-md border border-hairline bg-well p-3 font-mono text-sm leading-6 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
+              />
+            </div>
+            <div
+              role="group"
+              aria-label="Visibility"
+              className="flex h-9 w-fit items-center gap-1 rounded-md border border-hairline bg-well p-1"
+            >
+              {(["private", "squad", "public"] as NoteVisibility[]).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  aria-pressed={visibility === v}
+                  onClick={() => setVisibility(v)}
+                  className={`flex h-full min-h-[44px] items-center rounded-sm px-3 text-sm font-medium leading-5 transition-colors md:min-h-0 ${
+                    visibility === v ? "bg-surface-overlay text-text-primary" : "text-text-secondary"
+                  }`}
+                >
+                  {visibilityLabel(v)}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="submit" variant="primary" loading={saving}>
+                {editing ? "Save changes" : "Save note"}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setShowEditor(false)}>
+                Cancel
+              </Button>
             </div>
             {editing && user?.id === editing.owner_id && (
-              <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06]">
-                <input value={shareName} onChange={(e) => setShareName(e.target.value)} placeholder="Share 1:1 with @username"
-                  className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-xl px-3 py-1.5 text-[11px] text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60" />
-                <button type="button" onClick={async () => {
-                  if (!shareName.trim()) return;
-                  try {
-                    await shareNoteWith(editing.id, shareName);
-                    setShareName("");
-                    setFormError(null);
-                  } catch (err) {
-                    setFormError(dataErrorMessage(err, "Couldn't share."));
-                  }
-                }} className="px-3 py-1.5 rounded-full bg-white/[0.06] border border-white/[0.1] text-white text-[11px] font-bold cursor-pointer">
+              <div className="flex items-center gap-2 border-t border-hairline pt-4">
+                <label htmlFor="note-share-editor" className="sr-only">
+                  Share 1:1 with
+                </label>
+                <input
+                  id="note-share-editor"
+                  value={shareName}
+                  onChange={(e) => setShareName(e.target.value)}
+                  placeholder="Share 1:1 with @username"
+                  className="h-10 flex-1 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
+                />
+                <Button type="button" variant="secondary" onClick={() => handleShare(editing.id)}>
                   Share
-                </button>
+                </Button>
               </div>
             )}
           </form>

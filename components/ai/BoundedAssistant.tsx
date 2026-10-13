@@ -154,26 +154,26 @@ export function BoundedAssistant({
   return (
     <section
       aria-label={copy.title}
-      className="rounded-2xl border border-white/[0.07] bg-[#1c1c1e]/50 p-4 space-y-3"
+      className="rounded-2xl border border-hairline bg-surface p-4 space-y-3"
     >
       <header className="space-y-1.5">
         <p className="flex items-center gap-1.5 text-sm font-bold">
-          <Sparkles className="h-3.5 w-3.5 text-[#fa586a]" aria-hidden />
+          <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden />
           {copy.title}
-          <span className="text-[10px] font-normal text-white/25">§45</span>
+          <span className="text-[10px] font-normal text-text-disabled">§45</span>
         </p>
-        <p className="text-[11px] text-white/60 leading-relaxed">{copy.blurb}</p>
+        <p className="text-[11px] text-text-secondary leading-relaxed">{copy.blurb}</p>
       </header>
 
       <label className="block">
-        <span className="text-[11px] text-white/50">{copy.inputLabel}</span>
+        <span className="text-[11px] text-text-secondary">{copy.inputLabel}</span>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={3}
           maxLength={8000}
           placeholder={copy.placeholder}
-          className="mt-1 w-full rounded-lg border border-white/[0.08] bg-black/30 p-2 text-[12px] leading-relaxed text-white/85 placeholder:text-white/20 focus:border-[#fa586a]/40 focus:outline-none"
+          className="mt-1 w-full rounded-lg border border-hairline bg-well p-2 text-[12px] leading-relaxed text-text-primary placeholder:text-text-disabled focus:border-primary/40 focus:outline-none"
         />
       </label>
 
@@ -181,7 +181,7 @@ export function BoundedAssistant({
         type="button"
         onClick={ask}
         disabled={disabled}
-        className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.08] px-3 py-1.5 text-[11px] font-bold text-white/80 hover:bg-white/[0.14] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+        className="inline-flex items-center gap-1.5 rounded-full bg-surface-overlay px-3 py-1.5 text-[11px] font-bold text-text-primary hover:bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed transition-all"
       >
         {busy && <Spinner className="h-3 w-3" />}
         {busy ? "Asking…" : copy.cta}
@@ -200,17 +200,17 @@ export function BoundedAssistant({
 
       {answer && (
         <div className="space-y-2">
-          <p className="rounded-xl border border-white/[0.07] bg-black/25 p-3 text-[12px] leading-relaxed text-white/80 whitespace-pre-wrap">
+          <p className="rounded-xl border border-hairline bg-well p-3 text-[12px] leading-relaxed text-text-secondary whitespace-pre-wrap">
             {answer}
           </p>
           {stripped && (
-            <p className="text-[10px] text-white/50">
+            <p className="text-[10px] text-text-tertiary">
               Code was removed from that answer — this feature explains, it does not
               hand over an implementation.
             </p>
           )}
           {feature === "interview-sim" && (
-            <p className="text-[10px] text-white/50">
+            <p className="text-[10px] text-text-tertiary">
               One at a time. Answer that question first — then come back for the next.
             </p>
           )}

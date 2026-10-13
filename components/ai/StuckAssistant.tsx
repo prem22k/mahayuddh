@@ -92,15 +92,15 @@ export function StuckAssistant({
   };
 
   return (
-    <div className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-3">
+    <div className="rounded-xl border border-hairline bg-surface p-4 space-y-3">
       <div className="flex items-center gap-2">
-        <Sparkles className="w-3.5 h-3.5 text-[#ffd60a]" />
-        <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+        <Sparkles className="w-3.5 h-3.5 text-primary" />
+        <span className="text-[11px] font-semibold text-text-secondary">
           Stuck assistant
         </span>
       </div>
 
-      <p className="text-[11px] text-white/55">
+      <p className="text-[11px] text-text-secondary">
         Hints only, at the level you choose. It will not answer above it.
       </p>
 
@@ -111,15 +111,15 @@ export function StuckAssistant({
             onClick={() => setLevel(l)}
             className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all cursor-pointer ${
               level === l
-                ? "bg-white/[0.12] text-white"
-                : "bg-white/[0.04] text-white/55 hover:text-white/70"
+                ? "bg-surface-overlay text-text-primary"
+                : "bg-surface text-text-secondary hover:text-text-primary"
             }`}
           >
             {LEVEL_LABEL[l]}
           </button>
         ))}
         {allowedLevels.length < STUCK_LEVELS.length && (
-          <span className="text-[10px] text-white/20">
+          <span className="text-[10px] text-text-disabled">
             you asked for {LEVEL_LABEL[requestedLevel]}
           </span>
         )}
@@ -130,35 +130,35 @@ export function StuckAssistant({
         onChange={(e) => setRequest(e.target.value)}
         rows={2}
         placeholder="What have you tried? (optional)"
-        className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] text-[11px] text-white placeholder:text-white/20 focus:outline-none focus:border-white/20 resize-y"
+        className="w-full px-3 py-2 rounded-xl bg-well border border-hairline text-[11px] text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-hairline-strong resize-y"
       />
 
       <button
         onClick={() => void ask()}
         disabled={busy}
-        className="px-4 py-2 rounded-full bg-white/[0.08] hover:bg-white/[0.12] border border-white/[0.08] text-white text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
+        className="px-4 py-2 rounded-full bg-surface-overlay hover:bg-surface-raised border border-hairline text-text-primary text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
       >
         {busy && <Spinner size="xs" />}
         Ask for a {LEVEL_LABEL[level].toLowerCase()}
       </button>
 
       {blocked && (
-        <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] p-3 space-y-1">
-          <p className="text-[11px] text-white/50">{blocked}</p>
-          <p className="text-[10px] text-white/50">
+        <div className="rounded-2xl bg-well border border-hairline p-3 space-y-1">
+          <p className="text-[11px] text-text-secondary">{blocked}</p>
+          <p className="text-[10px] text-text-tertiary">
             This is not a placeholder answer. No AI feature here will invent one.
           </p>
         </div>
       )}
 
       {answer && (
-        <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] p-3 space-y-1">
-          <div className="text-[10px] uppercase tracking-wider text-white/25">
+        <div className="rounded-2xl bg-well border border-hairline p-3 space-y-1">
+          <div className="text-[11px] font-semibold text-text-tertiary">
             {LEVEL_LABEL[answeredLevel ?? level]}
           </div>
-          <p className="text-xs text-white/70 whitespace-pre-wrap">{answer}</p>
+          <p className="text-xs text-text-primary whitespace-pre-wrap">{answer}</p>
           {pulledDown && (
-            <p className="text-[10px] text-[#ffd60a]/70">
+            <p className="text-[10px] text-primary">
               Pulled back to your level — the answer came in above what you asked for.
             </p>
           )}

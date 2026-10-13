@@ -33,7 +33,7 @@ export default async function PrimerOpengraphImage({
           fontFamily: "sans-serif",
         }}
       >
-        <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 6, color: "#ffd60a" }}>
+        <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 6, color: "#F5B83D" }}>
           {primer ? primer.pattern.toUpperCase() : "PATTERN PRIMER"}
         </div>
 
