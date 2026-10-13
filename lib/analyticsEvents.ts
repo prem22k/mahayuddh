@@ -108,6 +108,10 @@ export const ANALYTICS_EVENTS = [
   // Misc
   "sync_completed",
   "stuck_requested",
+  // Auth security telemetry (controls 12/17). Counters only — never an email,
+  // password, token, or any failure string that names the cause.
+  "signin_failed",
+  "password_reset_requested",
 ] as const;
 
 export type AnalyticsEvent = (typeof ANALYTICS_EVENTS)[number];
