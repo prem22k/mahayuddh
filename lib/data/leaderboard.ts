@@ -86,3 +86,165 @@ export function defaultSegmentFor(lifetimeSolves: number | null | undefined): Le
 export function isLifetimeView(segment: LeaderboardSegment): boolean {
   return segment === "most_solved";
 }
+
+// ── Windowed squad-board counts ─────────────────────────────────────────────
+// The squad leaderboard's "Last 7 days" scope ranks measured event windows,
+// not profile lifetime totals. problem_events is publicly readable, so these
+// run as the viewer; an empty squad is an empty map, never an error.
+
+function emptyCounts(userIds: string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const id of userIds) counts.set(id, 0);
+  return counts;
+}
+
+/**
+ * Verified solves per user since `sinceISO`: kind='solved' events whose
+ * battle-derived metadata marks them LeetCode-verified (source='leetcode').
+ * Counts client-side from the filtered rows.
+ */
+export async function getVerifiedSolvesWindow(
+  userIds: string[],
+  sinceISO: string
+): Promise<Map<string, number>> {
+  const counts = emptyCounts(userIds);
+  if (userIds.length === 0) return counts;
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("problem_events")
+    .select("user_id")
+    .in("user_id", userIds)
+    .eq("kind", "solved")
+    .gte("created_at", sinceISO)
+    .filter("metadata->>source", "eq", "leetcode");
+  if (error) throw new DataError("leaderboard", "Couldn't load weekly verified solves. Retry.", { cause: error });
+  for (const row of (data ?? []) as Array<{ user_id: string }>) {
+    counts.set(row.user_id, (counts.get(row.user_id) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * All solves per user since `sinceISO` (no source filter): the activity
+ * fallback behind the week scope's streak-ish column.
+ */
+export async function getSolvesWindow(
+  userIds: string[],
+  sinceISO: string
+): Promise<Map<string, number>> {
+  const counts = emptyCounts(userIds);
+  if (userIds.length === 0) return counts;
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("problem_events")
+    .select("user_id")
+    .in("user_id", userIds)
+    .eq("kind", "solved")
+    .gte("created_at", sinceISO);
+  if (error) throw new DataError("leaderboard", "Couldn't load weekly activity. Retry.", { cause: error });
+  for (const row of (data ?? []) as Array<{ user_id: string }>) {
+    counts.set(row.user_id, (counts.get(row.user_id) ?? 0) + 1);
+  }
+  return counts;
+}
+
+// ── Rank snapshots (change indicators) ──────────────────────────────────────
+// There is no rank-history source in the schema, so the board freezes one
+// snapshot per (scope, metric, day) in leaderboard_snapshots and compares the
+// current order against the latest snapshot before today.
+
+export interface SnapshotRow {
+  user_id: string;
+  rank: number;
+  value: number;
+}
+
+export interface PreviousRanks {
+  ranks: Map<string, number>;
+  /** Latest snapshot date strictly before today, or null when there is none. */
+  snapshotDate: string | null;
+}
+
+function todayDateISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Previous frozen ranks for this scope+metric (latest date before today). */
+export async function getPreviousSnapshotRanks(
+  scope: string,
+  metric: string,
+  userIds: string[]
+): Promise<PreviousRanks> {
+  const ranks = new Map<string, number>();
+  if (userIds.length === 0 || !scope || !metric) return { ranks, snapshotDate: null };
+  const supabase = createClient();
+  const today = todayDateISO();
+  const { data, error } = await supabase
+    .from("leaderboard_snapshots")
+    .select("user_id,rank,snapshot_date")
+    .eq("scope", scope)
+    .eq("metric", metric)
+    .lt("snapshot_date", today)
+    .in("user_id", userIds)
+    .order("snapshot_date", { ascending: false })
+    .limit(1000);
+  if (error) throw new DataError("leaderboard", "Couldn't load rank movement. Retry.", { cause: error });
+  const rows = (data ?? []) as Array<{ user_id: string; rank: number; snapshot_date: string }>;
+  if (rows.length === 0) return { ranks, snapshotDate: null };
+  const latest = rows[0].snapshot_date;
+  for (const row of rows) {
+    if (row.snapshot_date !== latest) break;
+    if (!ranks.has(row.user_id)) ranks.set(row.user_id, row.rank);
+  }
+  return { ranks, snapshotDate: latest };
+}
+
+/**
+ * Freeze today's ranks via the service route, once per (scope, metric, day).
+ * Never throws: a failed write means the indicators honestly render "—".
+ * Call fire-and-forget (`void snapshotRanks(...)`).
+ */
+export async function snapshotRanks(
+  scope: string,
+  metric: string,
+  rows: SnapshotRow[]
+): Promise<void> {
+  try {
+    if (rows.length === 0 || !scope || !metric) return;
+    const supabase = createClient();
+    const today = todayDateISO();
+    const { data, error } = await supabase
+      .from("leaderboard_snapshots")
+      .select("id")
+      .eq("scope", scope)
+      .eq("metric", metric)
+      .eq("snapshot_date", today)
+      .limit(1);
+    if (error) return;
+    if (data && data.length > 0) return;
+    await fetch("/api/leaderboard/snapshot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope, metric, rows }),
+    }).catch(() => undefined);
+  } catch {
+    // Intentionally silent: movement is decoration, the board is the product.
+  }
+}
+
+/**
+ * Change indicator for one row: previous frozen rank vs the current rank.
+ * "New" when the read succeeded but this user has no prior rank; "—" when the
+ * read itself failed, so a missing snapshot never poses as stability.
+ */
+export function rankChangeLabel(
+  prevRank: number | undefined,
+  currentRank: number,
+  readOk: boolean
+): string {
+  if (prevRank == null) return readOk ? "New" : "—";
+  const diff = prevRank - currentRank;
+  if (diff > 0) return `↑${diff}`;
+  if (diff < 0) return `↓${-diff}`;
+  return "—";
+}

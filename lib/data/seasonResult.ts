@@ -14,12 +14,31 @@ export const dynamic = "force-dynamic";
  * approaches, no per-battle detail — the numbers are what the squad did
  * together, and anything finer would make this a dossier.
  */
+export interface SeasonObjectiveProgress {
+  target: number;
+  pattern: string | null;
+  /** Squad solve events in the season window (revisits included). */
+  done: number;
+  /**
+   * True only when `done` counts pattern-matching solves. False when there is
+   * no pattern or the pattern filter wasn't measurable — then `done` counts
+   * all solves and the UI must label it honestly.
+   */
+  filtered: boolean;
+  /** "measured" from objective_target, "parsed" from the free-text fallback. */
+  basis: "measured" | "parsed";
+}
+
 export interface SeasonResult {
   seasonId: string;
   squadId: string;
   squadName: string;
   name: string;
   objective: string | null;
+  objectiveTarget: number | null;
+  objectivePattern: string | null;
+  /** Null when there is nothing measurable and nothing parseable. */
+  objectiveProgress: SeasonObjectiveProgress | null;
   startsAt: string;
   endsAt: string | null;
   status: "upcoming" | "active" | "complete";
@@ -48,11 +67,22 @@ export async function getSeasonResult(
 
   const { data: season } = await supabase
     .from("squad_seasons")
-    .select("id,squad_id,name,objective,starts_at,ends_at,status")
+    .select("*")
     .eq("id", seasonId)
     .eq("squad_id", squadId)
     .maybeSingle();
   if (!season) return null;
+  const seasonRow = season as {
+    id: string;
+    squad_id: string;
+    name: string;
+    objective: string | null;
+    objective_target?: number | null;
+    objective_pattern?: string | null;
+    starts_at: string;
+    ends_at: string | null;
+    status: "upcoming" | "active" | "complete";
+  };
 
   const { data: squad } = await supabase
     .from("squads")
@@ -64,9 +94,9 @@ export async function getSeasonResult(
     await supabase.from("squad_members").select("user_id").eq("squad_id", squadId)
   ).data?.map((m) => ({ user_id: (m as { user_id: string }).user_id })) ?? [];
 
-  const from = new Date(season.starts_at).toISOString();
-  const to = season.ends_at
-    ? new Date(new Date(season.ends_at).getTime() + 86_400_000).toISOString()
+  const from = new Date(seasonRow.starts_at).toISOString();
+  const to = seasonRow.ends_at
+    ? new Date(new Date(seasonRow.ends_at).getTime() + 86_400_000).toISOString()
     : new Date().toISOString();
 
   const [solvesRes, approachesRes, primersRes, challengesRes, profilesRes] = await Promise.all([
@@ -174,14 +204,20 @@ export async function getSeasonResult(
   }
 
   const result: SeasonResult = {
-    seasonId: season.id,
+    seasonId: seasonRow.id,
     squadId,
     squadName: squad?.name ?? "A squad",
-    name: season.name,
-    objective: season.objective,
-    startsAt: season.starts_at,
-    endsAt: season.ends_at,
-    status: season.status,
+    name: seasonRow.name,
+    objective: seasonRow.objective,
+    objectiveTarget:
+      typeof seasonRow.objective_target === "number" && seasonRow.objective_target > 0
+        ? seasonRow.objective_target
+        : null,
+    objectivePattern: seasonRow.objective_pattern?.trim() || null,
+    objectiveProgress: null,
+    startsAt: seasonRow.starts_at,
+    endsAt: seasonRow.ends_at,
+    status: seasonRow.status,
     solves: allSolves,
     challengesSent: challenges.length,
     challengesCompleted: challenges.filter((c) => c.status === "completed").length,
@@ -205,7 +241,114 @@ export async function getSeasonResult(
         ? `${result.solves} solves, but nobody challenged anybody — the loop was only half running.`
         : `${result.solves} solves, ${result.challengesSent} challenges out${result.challengesCompleted > 0 ? `, ${result.challengesCompleted} answered` : ""}.`;
 
+  // Measured objective progress. A stored target wins; the free-text parse is
+  // only a labeled fallback, and a pattern scope only narrows the count when
+  // the catalog can actually measure it.
+  const windowSlugs = [
+    ...solves.map((s) => s.problem_slug),
+    ...revisits.filter((r) => memberSet.has(r.user_id)).map((r) => r.problem_slug),
+  ];
+  if (result.objectiveTarget != null) {
+    const pattern = result.objectivePattern;
+    const done = pattern
+      ? await countSlugsMatchingPattern(supabase, windowSlugs, pattern, allSolves)
+      : { done: allSolves, filtered: false };
+    result.objectiveProgress = {
+      target: result.objectiveTarget,
+      pattern,
+      done: done.done,
+      filtered: done.filtered,
+      basis: "measured",
+    };
+  } else if (result.objective) {
+    const parsed = parseSeasonObjectiveText(result.objective);
+    if (parsed) {
+      const done = parsed.pattern
+        ? await countSlugsMatchingPattern(supabase, windowSlugs, parsed.pattern, allSolves)
+        : { done: allSolves, filtered: false };
+      result.objectiveProgress = {
+        target: parsed.target,
+        pattern: parsed.pattern,
+        done: done.done,
+        filtered: done.filtered,
+        basis: "parsed",
+      };
+    }
+  }
+
   return result;
+}
+
+/**
+ * Fallback parse of a free-text objective like "41 of 40 graph problems".
+ * Only matches when the text names a count of problems:
+ * /(\d+)\s*(\w+)?\s*problems/i. The target is the last number in the string
+ * ("41 of 40" -> 40); the pattern is the word before "problems", or null for
+ * a bare "N problems". Anything else returns null — never invent a target.
+ */
+export function parseSeasonObjectiveText(text: string): { target: number; pattern: string | null } | null {
+  if (!/problems/i.test(text)) return null;
+  const numbers = [...text.matchAll(/(\d+)/g)].map((m) => parseInt(m[1], 10));
+  if (numbers.length === 0) return null;
+  const target = numbers[numbers.length - 1];
+  if (!Number.isFinite(target) || target <= 0 || target > 100000) return null;
+  const patternMatch = text.match(/([A-Za-z][\w&+\- ]*?)\s+problems/i);
+  let pattern: string | null = null;
+  if (patternMatch) {
+    const words = patternMatch[1].trim().split(/\s+/);
+    const last = words[words.length - 1];
+    // Skip quantifiers ("40 graph" -> pattern "graph", not "40").
+    pattern = /^\d+$/.test(last) ? null : last || null;
+    // A bare "N problems" yields the number as the "pattern" — drop it.
+    if (pattern && /^\d+$/.test(pattern)) pattern = null;
+  }
+  return { target, pattern };
+}
+
+/** Count window slugs carrying a pattern's topic; falls back to all solves. */
+async function countSlugsMatchingPattern(
+  supabase: ReturnType<typeof getServiceClient> & object,
+  windowSlugs: string[],
+  pattern: string,
+  fallback: number
+): Promise<{ done: number; filtered: boolean }> {
+  const client = supabase as unknown as {
+    from: (t: string) => {
+      select: (c: string) => {
+        in: (col: string, vals: string[]) => Promise<{ data: unknown; error: unknown }>;
+      };
+    };
+  };
+  try {
+    const unique = Array.from(new Set(windowSlugs.map((s) => s.toLowerCase())));
+    if (unique.length === 0) return { done: 0, filtered: true };
+    const topicsBySlug = new Map<string, string[]>();
+    for (let i = 0; i < unique.length; i += 200) {
+      const slice = unique.slice(i, i + 200);
+      const res = await client.from("problems").select("title_slug, topics").in("title_slug", slice);
+      const rows = (res.data ?? []) as { title_slug: string; topics: string[] }[];
+      for (const r of rows) topicsBySlug.set(r.title_slug.toLowerCase(), r.topics ?? []);
+    }
+    if (topicsBySlug.size === 0) return { done: fallback, filtered: false };
+    const pat = pattern.toLowerCase();
+    const matches = (topics: string[]) =>
+      topics.some((t) => {
+        const low = t.toLowerCase();
+        return low.includes(pat) || pat.includes(low);
+      });
+    let done = 0;
+    for (const slug of unique) {
+      const topics = topicsBySlug.get(slug);
+      // Slugs missing from the catalog are unmeasurable for a pattern scope:
+      // skip them rather than counting them as pattern solves.
+      if (topics && matches(topics)) {
+        done += windowSlugs.filter((s) => s.toLowerCase() === slug).length;
+      }
+    }
+    return { done, filtered: true };
+  } catch {
+    return { done: fallback, filtered: false };
+  }
 }
 
 /** Formatted duration for the OG card and the page. */

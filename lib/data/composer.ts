@@ -178,6 +178,19 @@ export async function getMySolvedProblems(limit = 25): Promise<{ slug: string; t
 }
 
 /**
+ * Caption for a feed event: trimmed, capped at 280, omitted when empty.
+ * Never store an empty string — old rows simply have no caption key.
+ */
+export function captionMetadata(
+  base: Record<string, unknown>,
+  caption?: string | null
+): Record<string, unknown> {
+  const c = (caption ?? "").trim().slice(0, 280);
+  if (!c) return base;
+  return { ...base, caption: c };
+}
+
+/**
  * Share one solved battle.
  *
  * Creates the feed event only — the battle already exists, and the plan's §64
@@ -185,7 +198,10 @@ export async function getMySolvedProblems(limit = 25): Promise<{ slug: string; t
  * projection picks this up, so sharing a battle is what makes a Battle Card
  * exist.
  */
-export async function shareSolvedBattle(battle: PickableBattle): Promise<{ ok: boolean; error?: string }> {
+export async function shareSolvedBattle(
+  battle: PickableBattle,
+  caption?: string | null
+): Promise<{ ok: boolean; error?: string }> {
   const supabase = createClient();
   const {
     data: { user },
@@ -210,7 +226,10 @@ export async function shareSolvedBattle(battle: PickableBattle): Promise<{ ok: b
     squad_id: row.squad_id,
     object_type: "battle",
     object_id: row.id,
-    metadata: { duration_sec: battle.duration_sec, evidence: battle.evidence, source: "composer" },
+    metadata: captionMetadata(
+      { duration_sec: battle.duration_sec, evidence: battle.evidence, source: "composer" },
+      caption
+    ),
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
@@ -219,7 +238,8 @@ export async function shareSolvedBattle(battle: PickableBattle): Promise<{ ok: b
 /** Share an approach or primer into the feed. */
 export async function shareTeaching(
   item: { id: string; kind: "approach" | "primer"; label: string },
-  squadId: string | null
+  squadId: string | null,
+  caption?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
   const supabase = createClient();
   const {
@@ -246,7 +266,7 @@ export async function shareTeaching(
     squad_id: squadId,
     object_type: item.kind,
     object_id: item.id,
-    metadata: { source: "composer" },
+    metadata: captionMetadata({ source: "composer" }, caption),
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
@@ -255,7 +275,8 @@ export async function shareTeaching(
 /** Share a vault resource into the feed. */
 export async function shareVaultResource(
   item: { id: string; label: string },
-  squadId: string | null
+  squadId: string | null,
+  caption?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
   const supabase = createClient();
   const {
@@ -277,7 +298,7 @@ export async function shareVaultResource(
     squad_id: squadId,
     object_type: "resource",
     object_id: row.id,
-    metadata: { source: "composer" },
+    metadata: captionMetadata({ source: "composer" }, caption),
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };

@@ -22,7 +22,26 @@ export async function getPrimer(slug: string): Promise<Primer | null> {
 }
 
 /** Primers whose pattern matches any of the given topic/category names. */
-export async function getPrimersForPatterns(patterns: string[]): Promise<Primer[]> {
+export function primerReadMinutes(p: {
+  recognize_when: string[];
+  mental_model: string | null;
+  template_md: string | null;
+  complexity: string | null;
+  mistakes: string[];
+}): number {
+  // Client-side estimate from content length only. There is no read-time
+  // column and no read tracking, so this is labeled as an estimate wherever
+  // it renders — never as measured read state.
+  const text = [
+    ...(p.recognize_when ?? []),
+    p.mental_model ?? "",
+    p.template_md ?? "",
+    p.complexity ?? "",
+    ...(p.mistakes ?? []),
+  ].join(" ");
+  const words = text.split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.ceil(words / 200));
+}export async function getPrimersForPatterns(patterns: string[]): Promise<Primer[]> {
   if (patterns.length === 0) return [];
   const supabase = createClient();
   const lowered = patterns.map((p) => p.toLowerCase());

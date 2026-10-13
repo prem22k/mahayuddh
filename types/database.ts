@@ -284,6 +284,10 @@ export interface SquadSeason {
   squad_id: string;
   name: string;
   objective: string | null;
+  /** Measured target; null = text-only objective, render as before. */
+  objective_target: number | null;
+  /** Optional pattern scope for the measured target. */
+  objective_pattern: string | null;
   starts_at: string;
   ends_at: string | null;
   status: "upcoming" | "active" | "complete";

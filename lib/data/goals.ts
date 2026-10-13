@@ -160,6 +160,8 @@ export async function createSeason(params: {
   squadId: string;
   name: string;
   objective?: string | null;
+  objectiveTarget?: number | null;
+  objectivePattern?: string | null;
   startsAt?: string | null;
   endsAt?: string | null;
 }): Promise<SquadSeason> {
@@ -167,12 +169,22 @@ export async function createSeason(params: {
   const name = params.name.trim().slice(0, 80);
   if (!name) throw new DataError("seasons", "Give the season a name.");
 
+  const target =
+    params.objectiveTarget != null && Number.isFinite(params.objectiveTarget)
+      ? Math.min(Math.max(Math.trunc(params.objectiveTarget), 1), 100000)
+      : null;
+  const pattern = params.objectivePattern?.trim().slice(0, 80) || null;
+
   const { data, error } = await supabase
     .from("squad_seasons")
     .insert({
       squad_id: params.squadId,
       name,
       objective: params.objective?.trim().slice(0, 500) || null,
+      // Measured-objective columns are only sent when set, so seasons can
+      // still be created on a database that predates the migration.
+      ...(target != null ? { objective_target: target } : {}),
+      ...(pattern ? { objective_pattern: pattern } : {}),
       starts_at: params.startsAt || new Date().toISOString().slice(0, 10),
       ends_at: params.endsAt || null,
       status: "active",
