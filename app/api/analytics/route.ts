@@ -5,6 +5,8 @@ import {
   resolveUser,
 } from "@/lib/supabase/service";
 import { ANALYTICS_EVENTS } from "@/lib/analyticsEvents";
+import { rateLimit, rateLimitKey, RATE_RULES, clientIp } from "@/lib/security/rateLimit";
+import { readJsonBounded } from "@/lib/security/body";
 
 // Single source of truth, shared with lib/analytics.ts and the smoke tests —
 // a hand-copied list here silently dropped newly added events.
@@ -43,11 +45,30 @@ export async function POST(request: Request) {
   }
   // Anonymous is allowed: a logged-out visitor opening /c/[id] is exactly the
   // top of Loop A, and dropping that event would hide the funnel's entry point.
+  //
+  // That makes this the cheapest endpoint in the app to flood, and it writes
+  // with the service key, so the cap is per-caller with the IP as the subject
+  // whenever there is no session. Every field is sanitised below, but a row per
+  // request is still a row per request.
   const user = await resolveUser(extractBearerToken(request));
   const userId = user?.id ?? null;
 
-  const body = await request.json().catch(() => null);
-  const events: unknown[] = Array.isArray(body?.events) ? body.events : [];
+  const limit = rateLimit({
+    ...RATE_RULES.analytics,
+    key: rateLimitKey("analytics", { userId, ip: clientIp(request) }),
+  });
+  if (!limit.ok) {
+    return NextResponse.json(
+      { accepted: 0 },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSec) } }
+    );
+  }
+
+  const parsed = await readJsonBounded<{ events?: unknown }>(request);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: "Request body too large." }, { status: 413 });
+  }
+  const events: unknown[] = Array.isArray(parsed.value?.events) ? parsed.value.events : [];
   if (events.length === 0) {
     return NextResponse.json({ accepted: 0 });
   }

@@ -142,7 +142,16 @@ export async function updateSession(request: NextRequest) {
             request,
           });
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            // Flags enforced here, not taken from the library's defaults:
+            // @supabase/ssr 0.5.2 sets no `secure` at all. See
+            // SESSION_COOKIE_OPTIONS in lib/supabase/server.ts for the full
+            // reasoning, including why httpOnly stays false.
+            supabaseResponse.cookies.set(name, value, {
+              ...options,
+              path: "/",
+              sameSite: "lax",
+              secure: process.env.NODE_ENV === "production",
+            })
           );
         },
       },

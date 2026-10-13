@@ -8,7 +8,16 @@ import {
 } from "@/lib/supabase/service";
 import { fetchLeetCodeProfile, fetchRecentSubmissions, fetchUserCalendar, fetchSolvedSlugsFromSession } from "@/lib/leetcode";
 import { decryptSession } from "@/lib/leetcodeSession";
+import { readJsonBounded } from "@/lib/security/body";
 import type { Profile } from "@/types/database";
+
+// Squad-wide GET fans out to LeetCode per handle with a 1.5s politeness
+// delay, so large squads exceed Vercel Hobby's 10s cap. Cron-only path:
+// invoked by GitHub Actions, never from the UI. `?limit=&offset=` lets the
+// caller page through handles to stay under the timeout. maxDuration
+// applies on Pro/Render; on Hobby the cron caller pages via limit/offset.
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 async function fetchLeetCode(username: string): Promise<{
   profile: NonNullable<Awaited<ReturnType<typeof fetchLeetCodeProfile>>>;
@@ -338,13 +347,22 @@ export async function GET(request: Request) {
     }
 
     const service = getServiceClient();
-    const handles = username
+    const allHandles = username
       ? [username.trim()]
       : service
         ? ((await service.from("profiles").select("leetcode_username").not("leetcode_username", "is", null)).data || [])
             .map((r) => r.leetcode_username as string | null)
             .filter((h): h is string => !!h)
         : [];
+    // Paging keeps each invocation under serverless timeouts: with a 1.5s
+    // politeness delay, ~5 handles ≈ 8s. Cron pages with ?limit=5&offset=N.
+    // No limit param = legacy behaviour (whole squad in one call).
+    const limitRaw = searchParams.get("limit");
+    const offsetRaw = searchParams.get("offset");
+    const limit = limitRaw === null ? allHandles.length : Math.min(Math.max(parseInt(limitRaw, 10) || 0, 1), 50);
+    const offset = Math.max(parseInt(offsetRaw ?? "0", 10) || 0, 0);
+    const handles = allHandles.slice(offset, offset + limit);
+    const totalHandles = allHandles.length;
     // Politeness delay between LeetCode hits so squad scale doesn't throttle.
     const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -394,6 +412,9 @@ export async function GET(request: Request) {
       inferredSolved: inferred,
       sessionImported,
       synced: handles.length,
+      totalHandles,
+      offset,
+      hasMore: offset + handles.length < totalHandles,
       failed,
     });
   } catch (error) {
@@ -404,8 +425,14 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { username } = body;
+    // Bounded read: this route is a credentialed sync, so an unbounded body is
+    // both a memory-exhaustion vector and an unauthenticated upstream-call
+    // amplifier if the auth check below were ever moved after the parse.
+    const parsed = await readJsonBounded<{ username?: unknown }>(request);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: "Request body too large." }, { status: 413 });
+    }
+    const { username } = parsed.value ?? {};
 
     if (!username || typeof username !== "string") {
       return NextResponse.json({ error: "Username is required" }, { status: 400 });

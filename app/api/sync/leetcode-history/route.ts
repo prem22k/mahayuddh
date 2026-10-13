@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/service";
 import { loginLeetCode, fetchSolvedSlugsFromSession } from "@/lib/leetcode";
 import { encryptSession, decryptSession } from "@/lib/leetcodeSession";
+import { readJsonBounded } from "@/lib/security/body";
 
 // Marks a batch of solved slugs via the existing SECURITY DEFINER RPC, preserving
 // manual "attempted" flags. Chunked to stay within RPC array limits.
@@ -67,7 +68,18 @@ export async function POST(request: Request) {
     }
   }
 
-  const body = await request.json().catch(() => ({}));
+  // Bounded read. This body carries the caller's LeetCode password, so an
+  // unbounded parse is both a memory-exhaustion vector and a place where a
+  // secret sits in an arbitrarily large buffer.
+  const parsed = await readJsonBounded(request);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: "Request body too large." }, { status: 413 });
+  }
+  const body = (parsed.value ?? {}) as {
+    username?: string;
+    password?: string;
+    sessionCookie?: string;
+  };
   const {
     username,
     password,

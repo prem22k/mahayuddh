@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
-import { extractBearerToken, resolveUser } from "@/lib/supabase/service";
+import { requireUser } from "@/lib/supabase/service";
 import { getAiGate } from "@/lib/ai/gate";
 import { askExplainBack } from "@/lib/ai/bounded";
+import { rateLimit, rateLimitKey, RATE_RULES } from "@/lib/security/rateLimit";
+import { readJsonBounded } from "@/lib/security/body";
+import { logSecurityEvent } from "@/lib/security/log";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +23,30 @@ export const dynamic = "force-dynamic";
  * The explanation is the member's own writing. It is not stored here.
  */
 export async function POST(request: Request) {
-  const user = await resolveUser(extractBearerToken(request));
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireUser(request, "/api/ai/explain-back");
+  if (auth.response) return auth.response;
+  const user = auth.user;
 
-  const body = await request.json().catch(() => ({}));
+  const limit = rateLimit({
+    ...RATE_RULES.aiCall,
+    key: rateLimitKey("aiCall", { userId: user.id }),
+  });
+  if (!limit.ok) {
+    logSecurityEvent("rate_limit.exceeded", {
+      route: "/api/ai/explain-back",
+      actor_id: user.id,
+    });
+    return NextResponse.json(
+      { error: "Too many AI requests. Try again shortly." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSec) } }
+    );
+  }
+
+  const parsed = await readJsonBounded<Record<string, unknown>>(request);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: "Request body too large." }, { status: 413 });
+  }
+  const body = (parsed.value ?? {}) as Record<string, unknown>;
   const squadId = typeof body.squadId === "string" && body.squadId ? body.squadId : null;
   const problemSlug = typeof body.problemSlug === "string" ? body.problemSlug : "";
   const problemTitle = typeof body.problemTitle === "string" ? body.problemTitle.slice(0, 200) : null;
@@ -34,9 +57,16 @@ export async function POST(request: Request) {
   }
 
   try {
-    const gate = await getAiGate(squadId);
+    const gate = await getAiGate(squadId, user.id);
+    if (gate.notAMember) {
+      return NextResponse.json(
+        { error: "You are not a member of that squad." },
+        { status: 403 }
+      );
+    }
+
     const result = await askExplainBack({
-      squadId,
+      squadId: gate.squadId,
       userId: user.id,
       aiEnabled: gate.aiEnabled,
       remainingBudget: gate.remainingBudget,
@@ -52,7 +82,15 @@ export async function POST(request: Request) {
       stripped: Boolean(result.stripped),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    logSecurityEvent("input.rejected", {
+      route: "/api/ai/explain-back",
+      actor_id: user.id,
+      detail: "unhandled gate failure",
+    });
+    console.error("explain-back failure:", err);
+    return NextResponse.json(
+      { error: "Something went wrong reaching the assistant." },
+      { status: 500 }
+    );
   }
 }

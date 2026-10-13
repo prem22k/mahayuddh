@@ -4,6 +4,7 @@ import {
   extractBearerToken,
   resolveUser,
 } from "@/lib/supabase/service";
+import { readJsonBounded } from "@/lib/security/body";
 import type { Profile } from "@/types/database";
 
 const PUBLIC_PROFILE_SELECT =
@@ -135,7 +136,11 @@ export async function PATCH(request: Request) {
   }
   const { user } = authed;
 
-  const body = await request.json().catch(() => ({}));
+  const parsed = await readJsonBounded<Record<string, unknown>>(request);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: "Request body too large." }, { status: 413 });
+  }
+  const body = (parsed.value ?? {}) as Record<string, unknown>;
   const patch: Record<string, string> = {};
 
   if (typeof body.objective === "string") {

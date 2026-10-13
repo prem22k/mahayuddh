@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import {
-  getServiceClient,
-  extractBearerToken,
-  resolveUser,
-} from "@/lib/supabase/service";
+import { getServiceClient, requireUser } from "@/lib/supabase/service";
+import { rateLimit, rateLimitKey, RATE_RULES } from "@/lib/security/rateLimit";
+import { readJsonBounded } from "@/lib/security/body";
+import { logSecurityEvent } from "@/lib/security/log";
 
 export const dynamic = "force-dynamic";
 
@@ -25,17 +24,38 @@ export async function POST(request: Request) {
   if (!supabase) {
     return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
   }
-  const caller = await resolveUser(extractBearerToken(request));
-  if (!caller) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireUser(request, "/api/notify");
+  if (auth.response) return auth.response;
+  const caller = auth.user;
+
+  /**
+   * This route turns any authenticated caller into a push-delivery service for
+   * an arbitrary user id, with arbitrary text, up to the push provider's
+   * throughput. Without a cap it is a spam cannon aimed at a stranger's phone,
+   * and push is not something a user can rate-limit their way out of. Thirty an
+   * hour is far above any real product flow.
+   */
+  const limit = rateLimit({
+    ...RATE_RULES.notify,
+    key: rateLimitKey("notify", { userId: caller.id }),
+  });
+  if (!limit.ok) {
+    logSecurityEvent("rate_limit.exceeded", { route: "/api/notify", actor_id: caller.id });
+    return NextResponse.json(
+      { error: "You've sent a lot of notifications. Try again shortly." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSec) } }
+    );
   }
 
-  const body = await request.json().catch(() => ({}));
+  const parsed = await readJsonBounded<Record<string, unknown>>(request);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: "Request body too large." }, { status: 413 });
+  }
+  const body = (parsed.value ?? {}) as Record<string, unknown>;
   const userId = typeof body.userId === "string" ? body.userId : "";
   const kind = typeof body.kind === "string" ? body.kind : "";
   const title = typeof body.title === "string" ? body.title.trim().slice(0, 140) : "";
   const text = typeof body.body === "string" ? body.body.trim().slice(0, 500) : null;
-  const actorId = typeof body.actorId === "string" ? body.actorId : caller.id;
   const urgent = body.urgent === true;
 
   if (!userId || !KINDS.includes(kind as (typeof KINDS)[number]) || !title) {
@@ -43,6 +63,20 @@ export async function POST(request: Request) {
   }
   if (userId === caller.id) {
     return NextResponse.json({ error: "Can't notify yourself." }, { status: 400 });
+  }
+
+  /**
+   * `actorId` is not trusted. It is the name rendered next to the notification
+   * and it is what a recipient would click to see who acted, so accepting a
+   * caller-supplied value lets anyone send a "challenge from <victim>" to
+   * anybody. The actor is always the authenticated caller.
+   */
+  if (typeof body.actorId === "string" && body.actorId !== caller.id) {
+    logSecurityEvent("input.rejected", {
+      route: "/api/notify",
+      actor_id: caller.id,
+      detail: "attempted to forge a notification actor",
+    });
   }
 
   // Quiet hours: batchable nudges (goal / recap) are suppressed, direct
@@ -63,7 +97,7 @@ export async function POST(request: Request) {
     title,
     body: text,
     deep_link: deepLink,
-    actor_id: actorId,
+    actor_id: caller.id,
   });
 
   if (error) {

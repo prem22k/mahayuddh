@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getServiceClient, extractBearerToken, resolveUser } from "@/lib/supabase/service";
+import { getServiceClient, requireUser } from "@/lib/supabase/service";
+import { readJsonBounded, maxBodyBytesFor } from "@/lib/security/body";
 
 const SLUG_RE = /^[a-z0-9-]{1,80}$/;
 
@@ -8,10 +9,28 @@ const SLUG_RE = /^[a-z0-9-]{1,80}$/;
 export async function POST(request: Request) {
   const supabase = getServiceClient();
   if (!supabase) return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
-  const user = await resolveUser(extractBearerToken(request));
-  if (!user) return NextResponse.json({ error: "Unauthorized. Please log in first." }, { status: 401 });
+  const auth = await requireUser(request, "/api/battles");
+  if (auth.response) return auth.response;
+  const user = auth.user;
 
-  const body = await request.json().catch(() => ({}));
+  // Bounded read: a scratchpad heartbeat is capped at 20k downstream, so
+  // anything past the path limit is pure waste of memory before that check runs.
+  const parsed = await readJsonBounded<Record<string, unknown>>(request, maxBodyBytesFor("/api/battles"));
+  if (!parsed.ok) {
+    return NextResponse.json({ error: "Request body too large." }, { status: 413 });
+  }
+  const body = (parsed.value ?? {}) as {
+    action?: unknown;
+    problem_slug?: unknown;
+    squad_id?: unknown;
+    challenge_id?: unknown;
+    battle_id?: unknown;
+    scratchpad_md?: unknown;
+    duration_sec?: unknown;
+    outcome?: unknown;
+    evidence?: unknown;
+    confidence?: unknown;
+  };
   const action = body.action;
 
   if (action === "start") {
@@ -78,7 +97,10 @@ export async function POST(request: Request) {
     const battleId = typeof body.battle_id === "string" ? body.battle_id : "";
     const outcome = body.outcome;
     if (!battleId) return NextResponse.json({ error: "battle_id is required." }, { status: 400 });
-    if (!["solved", "failed", "abandoned"].includes(outcome)) {
+    if (
+      typeof outcome !== "string" ||
+      !["solved", "failed", "abandoned"].includes(outcome)
+    ) {
       return NextResponse.json({ error: "Bad outcome." }, { status: 400 });
     }
     const patch: Record<string, unknown> = {

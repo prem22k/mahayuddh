@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { extractBearerToken, resolveUser } from "@/lib/supabase/service";
+import { requireUser } from "@/lib/supabase/service";
 import { askStuckAssistant, getAiGate } from "@/lib/ai/gate";
+import { rateLimit, rateLimitKey, RATE_RULES } from "@/lib/security/rateLimit";
+import { readJsonBounded } from "@/lib/security/body";
+import { logSecurityEvent } from "@/lib/security/log";
 import type { StuckLevel } from "@/types/database";
 
 export const dynamic = "force-dynamic";
@@ -22,14 +25,40 @@ export const dynamic = "force-dynamic";
  * requestedLevel is validated against the ladder rather than passed through: an
  * unrecognised level makes the ceiling comparison undefined, and "undefined
  * ceiling" is not a state this feature should have.
+ *
+ * `squadId` is verified as a squad the caller is actually in, inside getAiGate.
  */
 const LEVELS: StuckLevel[] = ["nudge", "pattern", "direction", "full"];
 
 export async function POST(request: Request) {
-  const user = await resolveUser(extractBearerToken(request));
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireUser(request, "/api/ai/stuck-assistant");
+  if (auth.response) return auth.response;
+  const user = auth.user;
 
-  const body = await request.json().catch(() => ({}));
+  // Per-account ceiling on top of the per-squad budget in Postgres. Without it,
+  // one member cycling squad ids spends other people's allowance.
+  const limit = rateLimit({
+    ...RATE_RULES.aiCall,
+    key: rateLimitKey("aiCall", { userId: user.id }),
+  });
+  if (!limit.ok) {
+    logSecurityEvent("rate_limit.exceeded", {
+      route: "/api/ai/stuck-assistant",
+      actor_id: user.id,
+    });
+    return NextResponse.json(
+      { error: "Too many AI requests. Try again shortly." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSec) } }
+    );
+  }
+
+  // Bounded parse: a 100MB body is rejected before it is JSON.parse'd, rather
+  // than after being read into memory and then sliced down to 20k characters.
+  const parsed = await readJsonBounded<Record<string, unknown>>(request);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: "Request body too large." }, { status: 413 });
+  }
+  const body = (parsed.value ?? {}) as Record<string, unknown>;
   const squadId = typeof body.squadId === "string" && body.squadId ? body.squadId : null;
   const problemSlug = typeof body.problemSlug === "string" ? body.problemSlug : "";
   const requestedLevel = body.requestedLevel as StuckLevel;
@@ -44,9 +73,20 @@ export async function POST(request: Request) {
   }
 
   try {
-    const gate = await getAiGate(squadId);
+    const gate = await getAiGate(squadId, user.id);
+
+    if (gate.notAMember) {
+      // Refuse rather than silently downgrade to "AI is off": the caller asked a
+      // question, and an honest 403 is better than a squad-mate suggestion that
+      // explains nothing.
+      return NextResponse.json(
+        { error: "You are not a member of that squad." },
+        { status: 403 }
+      );
+    }
+
     const result = await askStuckAssistant({
-      squadId,
+      squadId: gate.squadId,
       // Resolved from the request above, so the ai_calls row is attributable.
       userId: user.id,
       aiEnabled: gate.aiEnabled,
@@ -66,7 +106,19 @@ export async function POST(request: Request) {
       pulledDown: Boolean(result.pulledDown),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    // Provider errors already carry a message written for a person and are
+    // scrubbed of anything upstream. Anything else here is ours — a database
+    // error, a bug — and its text can name tables, columns and internal hosts.
+    // Logged in full, returned as a sentence.
+    logSecurityEvent("input.rejected", {
+      route: "/api/ai/stuck-assistant",
+      actor_id: user.id,
+      detail: "unhandled gate failure",
+    });
+    console.error("stuck-assistant failure:", err);
+    return NextResponse.json(
+      { error: "Something went wrong reaching the assistant." },
+      { status: 500 }
+    );
   }
 }

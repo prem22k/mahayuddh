@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { getServiceClient, extractBearerToken, resolveUser } from "@/lib/supabase/service";
+import { getServiceClient, requireUser } from "@/lib/supabase/service";
+import { rateLimit, rateLimitKey, RATE_RULES, clientIp } from "@/lib/security/rateLimit";
+import { readJsonBounded } from "@/lib/security/body";
+import { logSecurityEvent } from "@/lib/security/log";
 
 // POST /api/squads/join {invite_code, ref?}
 //
@@ -13,10 +16,43 @@ import { getServiceClient, extractBearerToken, resolveUser } from "@/lib/supabas
 export async function POST(request: Request) {
   const supabase = getServiceClient();
   if (!supabase) return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
-  const user = await resolveUser(extractBearerToken(request));
-  if (!user) return NextResponse.json({ error: "Unauthorized. Please log in first." }, { status: 401 });
+  const auth = await requireUser(request, "/api/squads/join");
+  if (auth.response) return auth.response;
+  const user = auth.user;
 
-  const body = await request.json().catch(() => ({}));
+  /**
+   * An invite code is the thing that authorises a join, so this endpoint is the
+   * one place where unlimited attempts is unlimited squad access. Two caps: a
+   * tight one per account, and a much looser one per address to catch account
+   * rotation without punishing a shared office or campus network.
+   */
+  const byUser = rateLimit({
+    ...RATE_RULES.squadJoin,
+    key: rateLimitKey("squadJoin", { userId: user.id }),
+  });
+  const ip = clientIp(request);
+  const byIp = rateLimit({
+    ...RATE_RULES.squadJoinByIp,
+    key: rateLimitKey("squadJoinByIp", { ip }),
+  });
+  if (!byUser.ok || !byIp.ok) {
+    logSecurityEvent("rate_limit.exceeded", {
+      route: "/api/squads/join",
+      actor_id: user.id,
+      ip,
+    });
+    const retryAfter = Math.max(byUser.retryAfterSec, byIp.retryAfterSec);
+    return NextResponse.json(
+      { error: "Too many join attempts. Wait a bit." },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } }
+    );
+  }
+
+  const parsed = await readJsonBounded<Record<string, unknown>>(request);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: "Request body too large." }, { status: 413 });
+  }
+  const body = (parsed.value ?? {}) as Record<string, unknown>;
   const code = typeof body.invite_code === "string" ? body.invite_code.trim().toUpperCase() : "";
   if (!/^[A-Z0-9]{8}$/.test(code)) {
     return NextResponse.json({ error: "Invite code looks wrong — 8 letters/digits." }, { status: 400 });

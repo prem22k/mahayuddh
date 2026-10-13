@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { getServiceClient, extractBearerToken, resolveUser } from "@/lib/supabase/service";
+import { getServiceClient, requireUser } from "@/lib/supabase/service";
 import { randomBytes } from "node:crypto";
+import { readJsonBounded } from "@/lib/security/body";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +21,15 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const supabase = getServiceClient();
   if (!supabase) return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
-  const user = await resolveUser(extractBearerToken(request));
-  if (!user) return NextResponse.json({ error: "Log in to get an invite link." }, { status: 401 });
+  const auth = await requireUser(request, "/api/squads/referral");
+  if (auth.response) return auth.response;
+  const user = auth.user;
 
-  const body = await request.json().catch(() => ({}));
+  const parsed = await readJsonBounded<{ squad_id?: unknown }>(request);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: "Request body too large." }, { status: 413 });
+  }
+  const body = parsed.value ?? {};
   const squadId = typeof body.squad_id === "string" ? body.squad_id : "";
   if (!/^[0-9a-f-]{36}$/i.test(squadId)) {
     return NextResponse.json({ error: "Which squad?" }, { status: 400 });
@@ -122,8 +128,9 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   const supabase = getServiceClient();
   if (!supabase) return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
-  const user = await resolveUser(extractBearerToken(request));
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireUser(request, "/api/squads/referral");
+  if (auth.response) return auth.response;
+  const user = auth.user;
 
   // The user id is passed in because auth.uid() is NULL for a service-role
   // caller, which silently returned an empty list for everybody.

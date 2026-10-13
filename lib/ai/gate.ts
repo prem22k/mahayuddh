@@ -10,8 +10,8 @@
  * INSERT policy, on purpose, so a bug in a client cannot fabricate usage and
  * the ladder check cannot be bypassed by simply not writing the row.
  */
-import { createClient } from "@/lib/supabase/client";
 import { getServiceClient } from "@/lib/supabase/service";
+import { logSecurityEvent } from "@/lib/security/log";
 import {
   AI_CALLS_PER_HOUR,
   decideStuckAssistant,
@@ -52,23 +52,77 @@ export interface GateContext {
   squadId: string | null;
   aiEnabled: boolean;
   remainingBudget: number;
+  /** True when the caller is not a member of the squad they named. */
+  notAMember: boolean;
 }
 
-/** Read the gate's state for a squad. */
-export async function getAiGate(squadId: string | null): Promise<GateContext> {
-  if (!squadId) {
-    return { squadId: null, aiEnabled: false, remainingBudget: 0 };
+/** What a caller who is not in the squad gets: off, no budget, and a reason. */
+const DENIED_FOR_NON_MEMBER: GateContext = {
+  squadId: null,
+  aiEnabled: false,
+  remainingBudget: 0,
+  notAMember: true,
+};
+
+/**
+ * Read the gate's state for a squad.
+ *
+ * `squadId` arrives from the client, so it is an untrusted claim about whose
+ * budget is being spent. Before this was verified, any authenticated user could
+ * name any squad id and have that squad's `ai_enabled` flag read and its hourly
+ * budget charged — a way to burn a squad's AI allowance, and a way to learn
+ * which squads have the experiment switched on. `squads` is publicly readable
+ * under RLS precisely because invite previews need it, so RLS cannot be the
+ * control here; membership is.
+ *
+ * Falls back to the caller's own active squad when they name none, which is what
+ * the UI always sends in practice.
+ */
+export async function getAiGate(
+  squadId: string | null,
+  userId: string | null
+): Promise<GateContext> {
+  if (!userId) return DENIED_FOR_NON_MEMBER;
+
+  const supabase = getServiceClient();
+  if (!supabase) return DENIED_FOR_NON_MEMBER;
+
+  let targetSquad = squadId;
+  if (!targetSquad) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("active_squad_id")
+      .eq("id", userId)
+      .maybeSingle();
+    targetSquad = (profile as { active_squad_id: string | null } | null)?.active_squad_id ?? null;
   }
-  const supabase = createClient();
+  if (!targetSquad) return { squadId: null, aiEnabled: false, remainingBudget: 0, notAMember: false };
+
+  const { data: member } = await supabase
+    .from("squad_members")
+    .select("squad_id")
+    .eq("squad_id", targetSquad)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!member) {
+    logSecurityEvent("authz.denied", {
+      route: "/api/ai",
+      actor_id: userId,
+      detail: "named a squad the caller is not a member of",
+    });
+    return { ...DENIED_FOR_NON_MEMBER, squadId: targetSquad };
+  }
+
   const [{ data: squad }, { data: remaining }] = await Promise.all([
-    supabase.from("squads").select("ai_enabled").eq("id", squadId).maybeSingle(),
-    supabase.rpc("ai_calls_remaining", { p_squad: squadId }),
+    supabase.from("squads").select("ai_enabled").eq("id", targetSquad).maybeSingle(),
+    supabase.rpc("ai_calls_remaining", { p_squad: targetSquad }),
   ]);
   return {
-    squadId,
+    squadId: targetSquad,
     // Default OFF. A squad with no row, or with the column false, gets false.
     aiEnabled: Boolean((squad as { ai_enabled: boolean } | null)?.ai_enabled),
     remainingBudget: typeof remaining === "number" ? remaining : AI_CALLS_PER_HOUR,
+    notAMember: false,
   };
 }
 

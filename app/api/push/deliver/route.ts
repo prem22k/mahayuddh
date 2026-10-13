@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { getServiceClient, extractBearerToken, resolveUser } from "@/lib/supabase/service";
+import { getServiceClient, requireUser } from "@/lib/supabase/service";
 import { sendPushToUser } from "@/lib/push";
+import { readJsonBounded } from "@/lib/security/body";
+import { rateLimit, rateLimitKey, RATE_RULES } from "@/lib/security/rateLimit";
+import { logSecurityEvent } from "@/lib/security/log";
 
 export const dynamic = "force-dynamic";
 
@@ -24,10 +27,33 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const supabase = getServiceClient();
   if (!supabase) return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
-  const user = await resolveUser(extractBearerToken(request));
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireUser(request, "/api/push/deliver");
+  if (auth.response) return auth.response;
+  const user = auth.user;
 
-  const body = await request.json().catch(() => ({}));
+  // Each call is an outbound request to a push provider. The content is always
+  // the caller's own unread row, so this cannot be used as a relay — but it can
+  // be used to burn the app's push quota, so it is capped.
+  const limit = rateLimit({
+    ...RATE_RULES.push,
+    key: rateLimitKey("push", { userId: user.id }),
+  });
+  if (!limit.ok) {
+    logSecurityEvent("rate_limit.exceeded", {
+      route: "/api/push/deliver",
+      actor_id: user.id,
+    });
+    return NextResponse.json(
+      { error: "Too many push attempts." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSec) } }
+    );
+  }
+
+  const parsed = await readJsonBounded<Record<string, unknown>>(request);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: "Request body too large." }, { status: 413 });
+  }
+  const body = (parsed.value ?? {}) as Record<string, unknown>;
   const id = typeof body.id === "string" ? body.id : "";
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
 

@@ -5,6 +5,7 @@ import {
   resolveUser,
 } from "@/lib/supabase/service";
 import { normalizeSlugList } from "@/lib/slug";
+import { readJsonBounded } from "@/lib/security/body";
 
 // CORS: only allow 1-click sync from leetcode.com + own site, never "*".
 // "*" would let any site POST a victim's token-bearing request surface.
@@ -70,7 +71,17 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json().catch(() => ({}));
+    // Bounded read. This is the largest legitimate payload in the app (2000
+    // slugs x 80 chars) and it is also the only endpoint a third-party origin
+    // may reach, so the ceiling is explicit rather than inherited.
+    const parsed = await readJsonBounded<{ slugs?: unknown }>(request, MAX_SLUGS * 96);
+    if (!parsed.ok) {
+      return NextResponse.json(
+        { error: "Request body too large." },
+        { status: 413, headers: cors }
+      );
+    }
+    const body = (parsed.value ?? {}) as { slugs?: unknown };
     const slugs: unknown[] = Array.isArray(body.slugs) ? body.slugs : [];
 
     if (slugs.length === 0) {
