@@ -1,12 +1,28 @@
 import webpush from "web-push";
+import { isAllowedPushHost } from "@/lib/security/pushEndpoint";
 
-// Configure web-push with VAPID credentials
-if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT || "mailto:admin@mahayuddh.app",
-    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
-    process.env.VAPID_PRIVATE_KEY
-  );
+/** Hostname or "" when the endpoint will not parse. Never throws. */
+function safeHostname(endpoint: string): string {
+  try {
+    return new URL(endpoint).hostname;
+  } catch {
+    return "";
+  }
+}
+
+// Configure web-push with VAPID credentials. Never throws: a missing or
+// malformed key (e.g. a placeholder in .env.local) must degrade to
+// push-disabled, not crash module evaluation during `next build`.
+try {
+  if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    webpush.setVapidDetails(
+      process.env.VAPID_SUBJECT || "mailto:admin@mahayuddh.app",
+      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY
+    );
+  }
+} catch {
+  // Invalid VAPID keys: push stays disabled; senders no-op.
 }
 
 export interface PushNotificationPayload {
@@ -42,6 +58,20 @@ export async function sendPushNotification(
   payload: PushNotificationPayload
 ) {
   try {
+    /**
+     * Re-checked at send time, not only at subscribe time.
+     *
+     * The allowlist in lib/security/pushEndpoint.ts is enforced where rows are
+     * written, but rows predating that check are already in the table, and the
+     * service key can write there from anywhere. The sender is the place that
+     * actually makes the outbound request, so it is the place the host has to be
+     * verified: anything off the list is refused before a socket is opened,
+     * rather than trusted because it was validated once on a different code path.
+     */
+    if (!isAllowedPushHost(safeHostname(subscription.endpoint))) {
+      return { success: false, gone: false, error: new Error("push endpoint host not allowed") };
+    }
+
     const pushSubscription = normalizeSubscription(subscription);
 
     const response = await webpush.sendNotification(
