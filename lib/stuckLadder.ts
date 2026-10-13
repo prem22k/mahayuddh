@@ -50,10 +50,10 @@ export const LEVEL_EXAMPLE: Record<StuckLevel, string> = {
 };
 
 export const LEVEL_CLASS: Record<StuckLevel, string> = {
-  nudge: "bg-[#30d158]/15 border-[#30d158]/30 text-[#30d158]",
-  pattern: "bg-[#0a84ff]/15 border-[#0a84ff]/30 text-[#0a84ff]",
-  direction: "bg-[#ff9f0a]/15 border-[#ff9f0a]/30 text-[#ff9f0a]",
-  full: "bg-[#bf5af2]/15 border-[#bf5af2]/30 text-[#bf5af2]",
+  nudge: "bg-verified-tint border-verified/30 text-verified",
+  pattern: "bg-pattern-tint border-pattern/30 text-pattern",
+  direction: "bg-primary-tint border-primary/30 text-primary",
+  full: "bg-surface-overlay border-hairline-strong text-text-primary",
 };
 
 /** Levels a helper may pick when answering a request for `asked`. */

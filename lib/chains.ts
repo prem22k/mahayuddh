@@ -39,10 +39,10 @@ export const CHAIN_STATE_LABEL: Record<ChainState, string> = {
 };
 
 export const CHAIN_STATE_CLASS: Record<ChainState, string> = {
-  active: "bg-white/[0.06] border-white/[0.12] text-white/70",
-  completed: "bg-[#30d158]/15 border-[#30d158]/30 text-[#30d158]",
-  broken: "bg-white/[0.03] border-white/[0.06] text-white/30 line-through",
-  timed_out: "bg-[#ff9f0a]/15 border-[#ff9f0a]/30 text-[#ff9f0a]",
+  active: "bg-surface-overlay border-hairline-strong text-text-secondary",
+  completed: "bg-verified/15 border-verified/30 text-verified",
+  broken: "bg-surface border-hairline text-text-disabled line-through",
+  timed_out: "bg-primary/15 border-primary/30 text-primary",
 };
 
 /** A challenge with only itself as its parent. */
