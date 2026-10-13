@@ -11,7 +11,7 @@ export function PageLoader({ label, className }: PageLoaderProps) {
   return (
     <div
       className={cn(
-        "h-[60vh] flex flex-col items-center justify-center gap-3 text-white/55",
+        "h-[60vh] flex flex-col items-center justify-center gap-3 text-text-secondary",
         className
       )}
     >

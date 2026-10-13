@@ -15,16 +15,9 @@ interface SegmentedControlProps<T extends string> {
   value: T;
   onChange: (value: T) => void;
   size?: "sm" | "md";
-  /** Five segments don't fit one pill row on a 390px screen. */
   wrap?: boolean;
 }
 
-/**
- * Segmented switcher (Sign In / Join Squad, Squad / Global, leaderboard
- * segments). One component because all three were hand-rolled with the same
- * shape and the same two defects: no announced state, and 28-32px tall.
- * State is `aria-pressed` on a `role="group"`, never a silent visual.
- */
 export function SegmentedControl<T extends string>({
   label,
   options,
@@ -38,8 +31,8 @@ export function SegmentedControl<T extends string>({
       role="group"
       aria-label={label}
       className={cn(
-        "flex items-center gap-1 p-1 bg-white/[0.04] border border-white/[0.06]",
-        wrap ? "flex-wrap rounded-3xl" : "rounded-full"
+        "flex h-9 items-center gap-1 rounded-md bg-well p-1",
+        wrap && "h-auto flex-wrap rounded-xl"
       )}
     >
       {options.map((o) => {
@@ -52,9 +45,11 @@ export function SegmentedControl<T extends string>({
             title={o.title}
             onClick={() => onChange(o.value)}
             className={cn(
-              "flex-1 min-h-11 px-3.5 rounded-full font-semibold transition-colors cursor-pointer flex items-center justify-center",
+              "flex min-h-[44px] flex-1 cursor-pointer items-center justify-center rounded-sm px-3 font-medium transition-colors md:min-h-0",
               size === "sm" ? "py-1.5 text-[11px]" : "py-2 text-xs",
-              active ? "bg-white/[0.12] text-white shadow-sm" : "text-white/55 hover:text-white/80"
+              active
+                ? "bg-surface-overlay text-text-primary"
+                : "text-text-secondary hover:text-text-primary"
             )}
           >
             {o.label}
