@@ -14,6 +14,12 @@ interface ProblemStatusCellProps {
   showLabel?: boolean;
   /** Enables the lazy timeline preview on hover (plan Step 8). */
   slug?: string;
+  /**
+   * True when problem_events holds a LeetCode-sourced solve/revisit for the
+   * viewer. Solved + verified renders emerald; solved without it renders the
+   * neutral self-reported outline — never emerald (DESIGN v4 honest data).
+   */
+  verified?: boolean;
 }
 
 export function ProblemStatusCell({
@@ -22,6 +28,7 @@ export function ProblemStatusCell({
   size = "md",
   showLabel = false,
   slug,
+  verified = false,
 }: ProblemStatusCellProps) {
   const [animating, setAnimating] = useState(false);
   const [preview, setPreview] = useState<{ events: ProblemEvent[] } | null>(null);
@@ -62,7 +69,7 @@ export function ProblemStatusCell({
           x: e.clientX / window.innerWidth,
           y: e.clientY / window.innerHeight,
         },
-        colors: ["#30d158", "#ffffff", "#ffd60a"],
+        colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
       });
       setTimeout(() => setAnimating(false), 600);
     }
@@ -70,6 +77,10 @@ export function ProblemStatusCell({
 
   const isSolved = status === "solved";
   const isAttempted = status === "attempted";
+  // Emerald is proof only. A solved mark without a LeetCode-sourced event is
+  // self-reported and renders neutral.
+  const isVerified = isSolved && verified;
+  const isSelfReported = isSolved && !verified;
   const hasHistory = (preview?.events.length ?? 0) > 0;
 
   return (
@@ -85,8 +96,10 @@ export function ProblemStatusCell({
       type="button"
       onClick={handleClick}
       title={
-        isSolved
-          ? "Status: Solved (Click to mark Attempted)"
+        isVerified
+          ? "Status: Solved · Verified via LeetCode (Click to mark Attempted)"
+          : isSelfReported
+          ? "Status: Solved · Self-reported (Click to mark Attempted)"
           : isAttempted
           ? "Status: Attempting (Click to reset to Todo)"
           : "Status: Todo (Click to mark Solved)"
@@ -96,27 +109,33 @@ export function ProblemStatusCell({
         size === "sm" && "p-1.5 text-xs",
         size === "md" && "px-2.5 py-1 text-xs",
         size === "lg" && "px-3.5 py-2 text-sm",
-        isSolved &&
-          "bg-[#30d158]/15 text-[#30d158] border border-[#30d158]/35 hover:bg-[#30d158]/25 shadow-[0_0_12px_rgba(48,209,88,0.2)]",
+        isVerified &&
+          "bg-verified/15 text-verified border border-verified/35 hover:bg-verified/25 shadow-[0_0_12px_rgba(61,220,151,0.2)]",
+        isSelfReported &&
+          "bg-surface text-text-secondary border border-hairline-strong hover:bg-surface-overlay hover:text-text-primary",
         isAttempted &&
-          "bg-[#ff9f0a]/15 text-[#ff9f0a] border border-[#ff9f0a]/35 hover:bg-[#ff9f0a]/25 shadow-[0_0_12px_rgba(255,159,10,0.2)]",
+          "bg-primary/15 text-primary border border-primary/35 hover:bg-primary/25 shadow-[0_0_12px_rgba(245,184,61,0.2)]",
         !isSolved &&
           !isAttempted &&
-          "bg-white/[0.03] text-white/50 border border-white/[0.08] hover:border-white/20 hover:text-white/80 hover:bg-white/[0.06]",
+          "bg-surface text-text-tertiary border border-hairline hover:border-hairline-strong hover:text-text-secondary hover:bg-surface-overlay",
         animating && "scale-110"
       )}
     >
       <div className="flex items-center gap-1.5 font-semibold">
-        {isSolved ? (
-          <div className="w-3.5 h-3.5 rounded-full bg-[#30d158] text-black flex items-center justify-center shrink-0">
+        {isVerified ? (
+          <div className="w-3.5 h-3.5 rounded-full bg-verified text-on-primary flex items-center justify-center shrink-0">
             <Check className="w-2.5 h-2.5 stroke-[3]" />
           </div>
+        ) : isSelfReported ? (
+          <div className="w-3.5 h-3.5 rounded-full border border-hairline-strong text-text-secondary flex items-center justify-center shrink-0">
+            <Check className="w-2.5 h-2.5 stroke-[2.5]" />
+          </div>
         ) : isAttempted ? (
-          <div className="w-3.5 h-3.5 rounded-full bg-[#ff9f0a]/20 text-[#ff9f0a] flex items-center justify-center shrink-0">
+          <div className="w-3.5 h-3.5 rounded-full bg-primary/20 text-primary flex items-center justify-center shrink-0">
             <Clock className="w-2.5 h-2.5 stroke-[2.5]" />
           </div>
         ) : (
-          <div className="w-3.5 h-3.5 rounded-full border border-white/20 group-hover:border-white/50 flex items-center justify-center shrink-0">
+          <div className="w-3.5 h-3.5 rounded-full border border-hairline group-hover:border-hairline-strong flex items-center justify-center shrink-0">
             <Circle className="w-2 h-2 text-transparent" />
           </div>
         )}
@@ -131,25 +150,30 @@ export function ProblemStatusCell({
 
       {/* ── Lazy timeline preview (plan Step 8: matrix cell becomes a preview) ── */}
       {slug && previewOpen && preview && (
-        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-56 rounded-2xl bg-[#1c1c1e]/95 backdrop-blur-2xl border border-white/[0.1] shadow-[0_12px_40px_rgba(0,0,0,0.5)] p-3 text-left pointer-events-none">
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-56 popover-panel p-3 text-left pointer-events-none">
           {!hasHistory ? (
-            <span className="block text-[11px] text-white/50">
+            <span className="block text-[11px] text-text-secondary">
               No history yet. First solve starts the timeline.
             </span>
           ) : (
             <>
-              <span className="block text-[10px] font-bold text-white/55 uppercase tracking-wider mb-1.5">
+              <span className="block text-[11px] font-semibold text-text-secondary mb-1.5">
                 Your history
               </span>
               <span className="flex flex-col gap-1">
                 {preview.events.map((e) => (
-                  <span key={e.id} className="block text-[10px] text-white/60 leading-tight">
-                    <span className="text-white/50 font-mono">
+                  <span key={e.id} className="block text-[10px] text-text-secondary leading-tight">
+                    <span className="text-text-tertiary font-mono">
                       {new Date(e.created_at).toLocaleDateString()}
                     </span>{" "}
                     {EVENT_LABEL[e.kind] ?? e.kind}
+                    {(e.kind === "solved" || e.kind === "revisited") && (
+                      <span className="text-text-tertiary">
+                        {" "}· {eventSource(e) === "leetcode" ? "Verified" : "Self-reported"}
+                      </span>
+                    )}
                     {e.duration_sec != null && (
-                      <span className="text-white/50 font-mono">
+                      <span className="text-text-tertiary font-mono">
                         {" "}
                         · {formatSeconds(e.duration_sec)}
                       </span>
@@ -157,7 +181,7 @@ export function ProblemStatusCell({
                   </span>
                 ))}
               </span>
-              <span className="block text-[10px] text-[#0a84ff] mt-1.5">
+              <span className="block text-[10px] text-pattern mt-1.5">
                 Open problem for the full timeline →
               </span>
             </>
@@ -177,6 +201,11 @@ const EVENT_LABEL: Record<string, string> = {
   failed: "Failed",
   stuck: "Stuck",
 };
+
+function eventSource(e: ProblemEvent): string {
+  const meta = (e.metadata ?? {}) as Record<string, unknown>;
+  return typeof meta.source === "string" ? meta.source : "self";
+}
 
 function formatSeconds(total: number): string {
   const s = Math.trunc(total);

@@ -4,32 +4,46 @@ import { decodePathSegment } from "@/lib/pathSegment";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Play, ArrowLeft } from "lucide-react";
+import { BookOpen, Check, ChevronRight, Play } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useSolving } from "@/components/providers/SolvingProvider";
-import { PageLoader } from "@/components/ui/PageLoader";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { ErrorCard, EmptyState, Skeleton } from "@/components/ui/States";
+import { Button } from "@/components/ui/Button";
+import { DifficultyBadgeNew, PatternChip } from "@/components/ui/Badge";
+import { StatusGlyph } from "@/components/ui/ProblemRow";
+import type { ProblemStatus } from "@/components/ui/ProblemRow";
 import { getPrimersForPatterns } from "@/lib/data/primers";
 import { getCatalogByTopic } from "@/lib/data/problems";
 import { getApproachesForSlugs } from "@/lib/data/approaches";
 import { getSharedResources } from "@/lib/data/vault";
 import { getStuckRequestsForPattern } from "@/lib/data/stuck";
+import { getSquadProblemStatuses } from "@/lib/data/sheets";
+import { copyVaultToNotebook } from "@/lib/data/notebook";
 import { TeacherList } from "@/components/profile/TeacherList";
 import { dataErrorMessage } from "@/lib/data/errors";
-import { Primer, Problem, Approach, SharedResource, StuckRequest } from "@/types/database";
+import { Primer, Problem, Approach, SharedResource, StuckRequest, StuckLevel } from "@/types/database";
 
-// Pattern hub (Bible §17): primer + starters + community approaches +
-// mistakes + vault picks + teachers. All projections over existing tables.
+// Pattern hub (08): primer + ordered starters + stuck rail + teachers +
+// mistakes + vault + community approaches. All projections over existing tables.
 export default function PatternPage() {
   const params = useParams<{ topic: string }>();
   const topic = decodePathSegment(params.topic);
   const { startSolving } = useSolving();
+  const { user } = useAuth();
 
   const [primer, setPrimer] = useState<Primer | null>(null);
   const [starters, setStarters] = useState<Problem[]>([]);
   const [approaches, setApproaches] = useState<Approach[]>([]);
   const [asks, setAsks] = useState<StuckRequest[]>([]);
   const [vaultPicks, setVaultPicks] = useState<SharedResource[]>([]);
+  const [ownStatus, setOwnStatus] = useState<Record<string, "solved" | "attempted">>({});
+  const [squadSolves, setSquadSolves] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [copyingId, setCopyingId] = useState<string | null>(null);
+  const [showAllApproaches, setShowAllApproaches] = useState(false);
 
   useEffect(() => {
     if (!topic) return;
@@ -43,28 +57,25 @@ export default function PatternPage() {
         setPrimer(p);
         const starterSlugs = p?.starter_slugs?.length ? p.starter_slugs : catalog.slice(0, 3).map((c) => c.title_slug);
         const bySlug = new Map(catalog.map((c) => [c.title_slug, c]));
-        setStarters(
-          starterSlugs.slice(0, 6).map(
-            (s) =>
-              bySlug.get(s) ?? {
-                title_slug: s,
-                title: s.split("-").map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(" "),
-                difficulty: "Medium",
-                question_id: s,
-                paid_only: false,
-                topics: [topic],
-                updated_at: new Date().toISOString(),
-              }
-          )
+        const ordered = starterSlugs.slice(0, 6).map(
+          (s) =>
+            bySlug.get(s) ?? {
+              title_slug: s,
+              title: s.split("-").map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(" "),
+              difficulty: "Medium" as Problem["difficulty"],
+              question_id: s,
+              paid_only: false,
+              topics: [topic],
+              updated_at: new Date().toISOString(),
+            }
         );
+        setStarters(ordered);
         const pool = Array.from(new Set([...starterSlugs, ...catalog.slice(0, 30).map((c) => c.title_slug)]));
         setApproaches(await getApproachesForSlugs(pool, 10).catch(() => []));
         const t = topic.toLowerCase();
 
-        // §17's seventh hub section: open "I'm stuck" asks on this pattern's
-        // problems. Fetched with everything else and never allowed to fail the
-        // page — a missing section is not worth losing the five that work.
-        // `pool` is already a de-duplicated array of slugs.
+        // Open "I'm stuck" asks on this pattern's problems. Fetched with
+        // everything else and never allowed to fail the page.
         getStuckRequestsForPattern(pool.slice(0, 40))
           .then(setAsks)
           .catch(() => setAsks([]));
@@ -74,17 +85,45 @@ export default function PatternPage() {
             (r) => r.title.toLowerCase().includes(t) || r.content.toLowerCase().includes(t)
           ).slice(0, 3)
         );
+
+        // Honest progress over the starter list: your own marks plus the
+        // squad total, both from shared statuses. No join with verified
+        // solves exists, so solved renders self-reported.
+        getSquadProblemStatuses(ordered.map((s) => s.title_slug))
+          .then((rows) => {
+            const mine: Record<string, "solved" | "attempted"> = {};
+            const pairs = new Set<string>();
+            for (const r of rows) {
+              if (user && r.user_id === user.id && (r.status === "solved" || r.status === "attempted")) {
+                mine[r.problem_slug] = r.status;
+              }
+              if (r.status === "solved") pairs.add(`${r.user_id}:${r.problem_slug}`);
+            }
+            setOwnStatus(mine);
+            setSquadSolves(pairs.size);
+          })
+          .catch(() => {
+            setOwnStatus({});
+            setSquadSolves(null);
+          });
       })
       .catch((err) => setLoadError(dataErrorMessage(err, "Couldn't load this pattern hub.")))
       .finally(() => setLoading(false));
-  }, [topic]);
+  }, [topic]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (loading) return <PageLoader label="Loading pattern..." />;
+  if (loading) {
+    return (
+      <div className="space-y-6" aria-hidden>
+        <Skeleton className="h-10 w-1/2" />
+        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+    );
+  }
   if (loadError) {
     return (
-      <div role="alert" className="p-12 text-center space-y-3">
-        <p className="text-xs text-[#ff453a]">{loadError}</p>
-        <Link href="/practice" className="inline-block px-4 py-2 rounded-full btn-accent text-white text-xs font-bold">Practice</Link>
+      <div className="max-w-2xl">
+        <ErrorCard message={loadError} />
       </div>
     );
   }
@@ -92,92 +131,281 @@ export default function PatternPage() {
   const mistakes = Array.from(
     new Set(approaches.map((a) => a.mistakes).filter(Boolean) as string[])
   ).slice(0, 5);
-  const teachers = new Map<string, number>();
-  for (const a of approaches) {
-    const name = a.author?.username || "squad";
-    teachers.set(name, (teachers.get(name) ?? 0) + 1);
-  }
-  const topTeachers = Array.from(teachers.entries()).sort((x, y) => y[1] - x[1]).slice(0, 5);
 
+  const solvedStarters = starters.filter((s) => ownStatus[s.title_slug] === "solved").length;
+  const nextStarter = starters.find((s) => ownStatus[s.title_slug] !== "solved") ?? null;
+  const allDone = starters.length > 0 && solvedStarters === starters.length;
+
+  const startBattle = (s: Problem) => {
+    startSolving({
+      id: s.question_id || s.title_slug,
+      title: s.title,
+      slug: s.title_slug,
+      difficulty: s.difficulty,
+      category: topic,
+    });
+  };
+
+  const copyVault = async (id: string) => {
+    setCopyingId(id);
+    setNotice(null);
+    try {
+      await copyVaultToNotebook(id);
+      setNotice("Copied to your notebook.");
+    } catch {
+      setNotice("Couldn't copy that. Try again.");
+    } finally {
+      setCopyingId(null);
+    }
+  };
+
+  const shownApproaches = showAllApproaches ? approaches : approaches.slice(0, 3);
+  const recognize = primer?.recognize_when?.[0];
   return (
-    <div className="space-y-6 select-none max-w-2xl">
-      <Link href="/practice" className="flex items-center gap-1.5 text-xs text-white/55 hover:text-white transition-colors">
-        <ArrowLeft className="w-3.5 h-3.5" />
-        <span>Practice</span>
-      </Link>
+    <div className="space-y-8">
+      <nav
+        aria-label="Breadcrumb"
+        className="flex min-h-[44px] items-center gap-1.5 text-sm font-medium leading-5 text-text-tertiary md:min-h-0"
+      >
+        <Link href="/practice" className="transition-colors hover:text-text-primary">
+          Practice
+        </Link>
+        <span aria-hidden>/</span>
+        <Link href="/patterns" className="transition-colors hover:text-text-primary">
+          Patterns
+        </Link>
+        <span aria-hidden>/</span>
+        <span className="text-text-secondary">{topic}</span>
+      </nav>
 
       <div>
-        <div className="text-[11px] font-bold text-[#fa586a] uppercase tracking-widest">Pattern hub</div>
-        <h1 className="text-3xl font-extrabold text-white tracking-tight mt-1">{topic}</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="type-display-md text-text-primary">{topic}</h1>
+          <PatternChip label="Pattern" />
+        </div>
+        <p className="mt-1 max-w-xl text-[15px] leading-6 text-text-secondary">
+          {recognize ?? `Starter problems and approaches for ${topic}.`}
+        </p>
+        {starters.length > 0 && (user || squadSolves != null) && (
+          <p className="mt-1 font-mono text-xs text-text-tertiary tnum">
+            {user && (
+              <>You&apos;ve solved {solvedStarters} of {starters.length} starter problems</>
+            )}
+            {user && squadSolves != null && <> · </>}
+            {squadSolves != null && <>squad {squadSolves} total</>}
+          </p>
+        )}
       </div>
 
-      {primer && (
-        <Link href={`/primers/${primer.slug}`}
-          className="block p-5 rounded-3xl bg-[#0a84ff]/[0.06] hover:bg-[#0a84ff]/[0.1] border border-[#0a84ff]/25 transition-all">
-          <div className="text-[10px] font-bold text-[#0a84ff] uppercase tracking-widest">Primer · before solving</div>
-          <div className="text-sm font-bold text-white mt-1">{primer.title} →</div>
-        </Link>
+      {notice && (
+        <p role="status" className="rounded-xl border border-hairline bg-surface px-4 py-2.5 text-xs leading-4 text-text-secondary">
+          {notice}{" "}
+          <Link href="/notebook" className="font-medium text-text-primary underline decoration-hairline-strong underline-offset-[3px] hover:decoration-text-primary">
+            Open notebook
+          </Link>
+        </p>
       )}
 
-      <section className="space-y-2">
-        <h2 className="text-sm font-bold text-white">Starter problems</h2>
-        {starters.length === 0 ? (
-          <p className="text-xs text-white/50">No starters indexed for this pattern yet.</p>
-        ) : (
-          starters.map((s) => (
-            <div key={s.title_slug} className="flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
-              <Link href={`/practice/${s.title_slug}`} className="text-xs font-bold text-white hover:text-[#fa586a] transition-colors truncate">
-                {s.title} <span className="text-white/50 font-normal">· {s.difficulty}</span>
-              </Link>
-              <button
-                onClick={() => startSolving({ id: s.question_id || s.title_slug, title: s.title, slug: s.title_slug, difficulty: s.difficulty, category: topic })}
-                className="p-1.5 rounded-full bg-white text-black hover:bg-white/90 transition-all cursor-pointer shrink-0" title={`Battle ${s.title}`}>
-                <Play className="w-3 h-3 fill-current" />
-              </button>
+      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:gap-10">
+        {/* Focal: learning path */}
+        <section aria-label="Learning path" className="card min-w-0 space-y-0 p-0">
+          {primer ? (
+            <>
+              <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+                <div className="flex min-w-0 items-center gap-3">
+                  <BookOpen className="h-5 w-5 shrink-0 text-pattern" strokeWidth={1.5} />
+                  <div className="min-w-0">
+                    <Link
+                      href={`/primers/${primer.slug}`}
+                      className="block truncate text-[15px] font-medium leading-6 text-text-primary hover:underline"
+                    >
+                      {primer.title}
+                    </Link>
+                    <p className="mt-0.5 text-xs leading-4 text-text-tertiary">
+                      {primer.starter_slugs.length} starter problems
+                    </p>
+                  </div>
+                </div>
+                <Link
+                  href={`/primers/${primer.slug}`}
+                  className="inline-flex h-10 min-h-[44px] shrink-0 items-center justify-center rounded-md bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-[#272830] md:min-h-0"
+                >
+                  Read primer
+                </Link>
+              </div>
+              {starters.length > 0 && <div className="mx-4 border-t border-hairline sm:mx-6" />}
+            </>
+          ) : (
+            <p className="px-4 pt-4 text-xs leading-4 text-text-tertiary sm:px-6 sm:pt-6">
+              No primer yet for this pattern.
+            </p>
+          )}
+
+          {starters.length === 0 ? (
+            <p className="p-4 text-sm leading-6 text-text-secondary sm:p-6">
+              No starters indexed for this pattern yet.
+            </p>
+          ) : allDone ? (
+            <div className="p-4 sm:p-6">
+              <EmptyState
+                heading="You've done all 6"
+                body="Try one from the community list or take revenge on a failed one."
+                action={
+                  <Link
+                    href="/practice"
+                    className="inline-flex h-10 min-h-[44px] items-center justify-center rounded-md bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-[#272830] md:min-h-0"
+                  >
+                    See review queue
+                  </Link>
+                }
+              />
             </div>
-          ))
-        )}
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-sm font-bold text-white">
-          People who teach it <span className="text-white/50 font-normal text-[11px]">· §22</span>
-        </h2>
-        <TeacherList pattern={topic} />
-      </section>
-
-      {approaches.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-bold text-white">Community approaches <span className="text-white/50 font-normal text-[11px]">· after solving</span></h2>
-          {approaches.slice(0, 5).map((a) => (
-            <Link key={a.id} href={`/practice/${a.problem_slug}`}
-              className="block p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all">
-              <div className="text-[11px] text-white/55 font-mono">{a.problem_slug} · @{a.author?.username || "squad"}</div>
-              <p className="text-xs text-white/70 mt-1 line-clamp-2">{a.core_idea}</p>
-            </Link>
-          ))}
+          ) : (
+            <ol className="divide-y divide-hairline">
+              {starters.map((s, i) => {
+                const st = ownStatus[s.title_slug];
+                const glyph: ProblemStatus = st === "solved" ? "self-reported" : st === "attempted" ? "attempted" : "none";
+                const isNext = nextStarter?.title_slug === s.title_slug;
+                return (
+                  <li
+                    key={s.title_slug}
+                    className={cn(
+                      "flex min-h-[48px] items-center gap-3 px-4 py-2.5 sm:px-6",
+                      isNext && "bg-surface-raised/50"
+                    )}
+                  >
+                    <span className="w-6 shrink-0 font-mono text-sm text-text-tertiary tnum">
+                      {i + 1}
+                    </span>
+                    <StatusGlyph status={glyph} />
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/practice/${s.title_slug}`}
+                        className="block truncate text-sm font-medium leading-5 text-text-primary hover:underline"
+                      >
+                        {s.title}
+                      </Link>
+                      <div className="mt-0.5">
+                        <DifficultyBadgeNew difficulty={s.difficulty} />
+                      </div>
+                    </div>
+                    {isNext ? (
+                      <Button
+                        variant="primary"
+                        onClick={() => startBattle(s)}
+                        className="min-h-[44px] shrink-0 md:min-h-0"
+                      >
+                        <Play className="h-3.5 w-3.5 fill-current" strokeWidth={1.5} />
+                        Start battle
+                      </Button>
+                    ) : st === "solved" ? (
+                      <span className="flex shrink-0 items-center gap-1 text-xs leading-4 text-text-tertiary">
+                        <Check className="h-3.5 w-3.5" strokeWidth={1.5} />
+                        Solved
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => startBattle(s)}
+                        aria-label={`Start ${s.title}`}
+                        className="flex h-11 min-h-[44px] w-11 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                      >
+                        <Play className="h-4 w-4 fill-current" strokeWidth={1.5} />
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
         </section>
-      )}
+
+        {/* Rail */}
+        <div className="min-w-0 space-y-8">
+          {asks.length > 0 && (
+            <section aria-labelledby="stuck-rail-heading" className="space-y-3">
+              <h2 id="stuck-rail-heading" className="text-[18px] font-semibold leading-[26px] text-text-primary">
+                Where your squad is stuck
+              </h2>
+              <div className="space-y-2">
+                {asks.slice(0, 3).map((a) => (
+                  <div
+                    key={a.id}
+                    className="flex min-h-[48px] items-center gap-3 rounded-xl border border-hairline bg-surface px-4 py-2.5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium leading-5 text-text-primary">
+                        {a.author?.username ? `@${a.author.username}` : "Someone"} is stuck on{" "}
+                        {a.problem_slug.replace(/-/g, " ")}
+                      </p>
+                      <p className="mt-0.5 text-xs leading-4 text-text-tertiary">
+                        Wants {stuckLevelWant(a.level)}
+                      </p>
+                    </div>
+                    <Link
+                      href="/stuck"
+                      className="inline-flex h-10 min-h-[44px] shrink-0 items-center justify-center rounded-md bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-[#272830] md:min-h-0"
+                    >
+                      Help
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section aria-labelledby="teachers-heading" className="space-y-3">
+            <h2 id="teachers-heading" className="text-[18px] font-semibold leading-[26px] text-text-primary">
+              Who teaches this well
+            </h2>
+            <TeacherList pattern={topic} />
+          </section>
+        </div>
+      </div>
 
       {(mistakes.length > 0 || vaultPicks.length > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {mistakes.length > 0 && (
-            <section className="p-5 rounded-3xl bg-white/[0.02] border border-white/[0.06]">
-              <h2 className="text-xs font-bold text-white mb-1">Common mistakes</h2>
-              <ul className="space-y-1">
+            <section aria-labelledby="mistakes-heading" className="card space-y-2">
+              <h2 id="mistakes-heading" className="text-[18px] font-semibold leading-[26px] text-text-primary">
+                Common mistakes
+              </h2>
+              <ul className="space-y-1.5">
                 {mistakes.map((m, i) => (
-                  <li key={i} className="text-[11px] text-white/60">· {m}</li>
+                  <li key={i} className="text-sm leading-6 text-text-secondary">
+                    {m}
+                  </li>
                 ))}
               </ul>
             </section>
           )}
           {vaultPicks.length > 0 && (
-            <section className="p-5 rounded-3xl bg-white/[0.02] border border-white/[0.06]">
-              <h2 className="text-xs font-bold text-white mb-1">From the vault</h2>
-              <ul className="space-y-1">
+            <section aria-labelledby="vault-heading" className="card space-y-2">
+              <h2 id="vault-heading" className="text-[18px] font-semibold leading-[26px] text-text-primary">
+                From the vault
+              </h2>
+              <ul className="space-y-2">
                 {vaultPicks.map((r) => (
-                  <li key={r.id}>
-                    <Link href="/notebook" className="text-[11px] text-white/60 hover:text-white transition-colors">{r.title}</Link>
+                  <li
+                    key={r.id}
+                    className="flex min-h-[48px] items-center gap-3 rounded-lg border border-hairline bg-well px-3 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium leading-5 text-text-primary">
+                        {r.title}
+                      </p>
+                      <p className="mt-0.5 truncate font-mono text-xs text-text-tertiary">
+                        {r.category} · @{r.author_profile?.username ?? "vault"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => copyVault(r.id)}
+                      disabled={copyingId === r.id}
+                      className="inline-flex h-10 min-h-[44px] shrink-0 items-center justify-center rounded-md px-3 text-sm font-medium leading-5 text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary disabled:opacity-50 md:min-h-0"
+                    >
+                      {copyingId === r.id ? "Copying" : "Copy to my notebook"}
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -186,64 +414,62 @@ export default function PatternPage() {
         </div>
       )}
 
-      {topTeachers.length > 0 && (
-        <section className="p-5 rounded-3xl bg-white/[0.02] border border-white/[0.06]">
-          <h2 className="text-xs font-bold text-white mb-1">People who teach it <span className="text-white/50 font-normal">· by shared approaches, not followers</span></h2>
-          <div className="flex items-center gap-2 flex-wrap mt-2">
-            {topTeachers.map(([name, n]) => (
-              <span key={name} className="px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/[0.08] text-[11px] text-white/70 font-mono">
-                @{name} × {n}
-              </span>
+      {approaches.length > 0 && (
+        <section aria-labelledby="community-heading" className="space-y-3">
+          <h2 id="community-heading" className="text-[18px] font-semibold leading-[26px] text-text-primary">
+            Community approaches
+          </h2>
+          <div className="space-y-2">
+            {shownApproaches.map((a) => (
+              <Link
+                key={a.id}
+                href={`/practice/${a.problem_slug}`}
+                className="card-interactive block rounded-xl border border-hairline bg-surface px-4 py-3"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-xs text-text-tertiary">
+                    @{a.author?.username ?? "squad"}
+                  </span>
+                  <span className="text-xs leading-4 text-text-tertiary">·</span>
+                  <span className="truncate text-xs leading-4 text-text-secondary">
+                    {a.problem_slug.replace(/-/g, " ")}
+                  </span>
+                  {a.pattern && <PatternChip label={a.pattern} />}
+                </div>
+                <p className="mt-1 line-clamp-2 text-sm leading-6 text-text-secondary">
+                  {a.core_idea}
+                </p>
+              </Link>
             ))}
           </div>
+          {approaches.length > 3 && (
+            <button
+              type="button"
+              onClick={() => setShowAllApproaches((v) => !v)}
+              className="inline-flex h-10 min-h-[44px] items-center gap-1 rounded-md px-3 text-sm font-medium leading-5 text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0"
+            >
+              {showAllApproaches ? "Show less" : `See all ${approaches.length}`}
+              <ChevronRight
+                className={cn("h-4 w-4 transition-transform duration-200", showAllApproaches && "rotate-90")}
+                strokeWidth={1.5}
+              />
+            </button>
+          )}
         </section>
       )}
-
-      {/* ── Stuck asks on this pattern (§17) ──
-          The section that joins the hub to the ladder. A primer says how a pattern
-          works; this says where your squad is actually losing time on it, which is
-          a different reason to read it.
-
-          Shows the asker, the problem and the level they asked for — and NOT their
-          scratchpad. They chose a level; honouring that means the hub does not
-          publish what they wrote. */}
-      <section className="mt-8">
-        <h2 className="text-xs font-bold text-white mb-1">
-          Where your squad is stuck{" "}
-          <span className="text-white/50 font-normal text-[11px]">
-            · open asks, at the level they asked for
-          </span>
-        </h2>
-        {asks.length === 0 ? (
-          <p className="text-[11px] text-white/35">
-            Nobody is stuck on this pattern right now. That is not a reason to skip it.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {asks.map((a) => (
-              <li key={a.id}>
-                <Link
-                  href={`/stuck#${a.id}`}
-                  className="flex flex-wrap items-center gap-2 p-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] hover:border-[#fa586a]/30 transition-colors"
-                >
-                  <span className="font-mono text-[11px] text-white/50">
-                    @{a.author?.username ?? "someone"}
-                  </span>
-                  <span className="text-[11px] text-white/70">
-                    on {a.problem_slug.replace(/-/g, " ")}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full border border-white/[0.08] text-[10px] text-white/50 uppercase tracking-wide">
-                    wants {a.level}
-                  </span>
-                  <span className="text-[10px] text-white/25 ml-auto">
-                    help at that level, not above it
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
     </div>
   );
+}
+
+function stuckLevelWant(level: StuckLevel): string {
+  switch (level) {
+    case "nudge":
+      return "a nudge";
+    case "pattern":
+      return "a pattern hint";
+    case "direction":
+      return "direction";
+    case "full":
+      return "a full explanation";
+  }
 }
