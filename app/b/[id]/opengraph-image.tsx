@@ -112,13 +112,13 @@ export default async function BattleOpengraphImage({
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          background: "linear-gradient(135deg, #0a0a0a 0%, #141414 55%, #1c0f12 100%)",
+          background: "linear-gradient(135deg, #0a0a0a 0%, #141414 55%, #1a150d 100%)",
           padding: 72,
           fontFamily: "sans-serif",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 6, color: "#fa586a" }}>
+          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 6, color: "#F5B83D" }}>
             BATTLE
           </div>
           {difficulty ? (
@@ -145,7 +145,7 @@ export default async function BattleOpengraphImage({
             {title}
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 24 }}>
-            <div style={{ fontSize: 64, fontWeight: 800, color: "#30d158", fontFamily: "monospace" }}>
+            <div style={{ fontSize: 64, fontWeight: 800, color: "#3DDC97", fontFamily: "monospace" }}>
               {duration ?? "—"}
             </div>
             <div style={{ fontSize: 28, color: "rgba(255,255,255,0.55)" }}>
@@ -159,8 +159,8 @@ export default async function BattleOpengraphImage({
                 alignSelf: "flex-start",
                 fontSize: 24,
                 fontWeight: 700,
-                color: "#30d158",
-                border: "1px solid rgba(48,209,88,0.4)",
+                color: "#3DDC97",
+                border: "1px solid rgba(61,220,151,0.4)",
                 borderRadius: 999,
                 padding: "6px 18px",
               }}

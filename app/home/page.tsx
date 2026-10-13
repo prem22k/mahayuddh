@@ -1,99 +1,128 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { ExternalLink, ChevronRight } from "lucide-react";
 import {
-  ArrowRight,
-  Link2,
-  Shield,
-  Flame,
-  Trophy,
-  MessageSquare,
-  Sparkles,
-  CheckCircle2,
-} from "lucide-react";
-import {
-  DPPattern,
-  GraphPattern,
-  TreePattern,
-  BinarySearchPattern,
-  SlidingWindowPattern,
-  StackPattern,
-} from "@/components/vectors/BentoPatterns";
-import { getSquadProfiles } from "@/lib/data/profiles";
+  getSquadMembers,
+  getSquadName,
+  getTodaySlugTimes,
+  getSolvedToday,
+  getSquadStreak,
+  getMemberWeekGrid,
+  getOwnFailedAttempt,
+  getFirstIncomingChallenge,
+  type SquadActivityMember,
+  type SquadStreak,
+  type TodaySlugTime,
+  type IncomingChallenge,
+  type OwnFailedAttempt,
+} from "@/lib/data/squadActivity";
 import { getAllLists, getAllProblems, getUserStatusesBySlugs, toStatusMap } from "@/lib/data/sheets";
-import { getPendingSuggestionCount } from "@/lib/data/suggestions";
+import { getPendingSuggestionCount, getIncomingSuggestionCount } from "@/lib/data/suggestions";
 import { getCatalogTopicsSummary, getCatalogCount } from "@/lib/data/problems";
-import { getActiveGoalPattern, getSquadMemberIds } from "@/lib/data/squads";
-import { TodaysBattle } from "@/components/battle/TodaysBattle";
-import { NextBattle } from "@/components/recommend/NextBattle";
-import { HomeSquadPanels } from "@/components/battle/HomeSquadPanels";
+import { getActiveGoalPattern, getSquadMemberIds, getSlugSquadActivity } from "@/lib/data/squads";
+import { getRecentFeed } from "@/lib/data/feed";
+import { getOpenReviews } from "@/lib/data/review";
+import { getActiveGoals, computeGoalProgress, GoalProgress } from "@/lib/data/goals";
+import { getBattlesForSlug } from "@/lib/data/battles";
+import { getProblemHistory, cacheDailyBattle } from "@/lib/data/dailyBattles";
+import { pickDailyBattle, formatDuration, ProblemHistory } from "@/lib/dailyBattle";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { ConnectLeetCodeModal } from "@/components/modals/ConnectLeetCodeModal";
-import { UserStatsDossierModal } from "@/components/profile/UserStatsDossierModal";
-import { PageLoader } from "@/components/ui/PageLoader";
+import { useSolving } from "@/components/providers/SolvingProvider";
+import { Pass, PassSerial } from "@/components/pass/Pass";
+import { Button } from "@/components/ui/Button";
+import {
+  VerifiedBadge,
+  SelfReportedBadge,
+  DifficultyBadgeNew,
+  PatternChip,
+  StreakChip,
+} from "@/components/ui/Badge";
+import { AvatarStack } from "@/components/ui/Avatar";
+import { ProblemRow } from "@/components/ui/ProblemRow";
+import { Skeleton, ErrorCard } from "@/components/ui/States";
 import { parseProblemStatusEvent, applyStatusChange } from "@/lib/problemStatusEvent";
-import { Profile, CustomList, ListProblem, TriState } from "@/types/database";
-import { cn } from "@/lib/utils";
+import { CustomList, ListProblem, TriState, FeedEvent } from "@/types/database";
 
-const TOPIC_SURFACES = [
-  "apple-card-crimson",
-  "apple-card-sapphire",
-  "apple-card-amber",
-  "apple-card-emerald",
-  "apple-card-indigo",
-  "apple-card-cyan",
-  "apple-card-rose",
-  "apple-card-gold",
-];
+function fmtClock(totalSec: number): string {
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
 
-const PATTERNS = [
-  SlidingWindowPattern,
-  DPPattern,
-  GraphPattern,
-  TreePattern,
-  BinarySearchPattern,
-  StackPattern,
-];
+const UP_NEXT_SLUG = "trapping-rain-water";
+
+function relDayLabel(iso: string): string {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  return `${days} days ago`;
+}
+
+function syncLabel(iso: string | null): string {
+  if (!iso) return "Not synced yet";
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (mins < 1) return "Synced just now";
+  if (mins < 60) return `Synced ${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `Synced ${hrs}h ago`;
+  return `Synced ${Math.floor(hrs / 24)}d ago`;
+}
 
 export default function ArenaPage() {
   const { profile, user, refreshProfile } = useAuth();
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const { activeProblem, seconds, startSolving } = useSolving();
+  void refreshProfile;
+  const [squadMembers, setSquadMembers] = useState<SquadActivityMember[]>([]);
+  const [todayTimes, setTodayTimes] = useState<Record<string, TodaySlugTime>>({});
+  const [solvedTodayIds, setSolvedTodayIds] = useState<Set<string>>(new Set());
+  const [squadStreak, setSquadStreak] = useState<SquadStreak | null>(null);
+  const [weekGrid, setWeekGrid] = useState<Record<string, boolean[]>>({});
+  const [failedAttempt, setFailedAttempt] = useState<OwnFailedAttempt | null>(null);
+  const [incomingChallenge, setIncomingChallenge] = useState<IncomingChallenge | null>(null);
+  const [incomingLoaded, setIncomingLoaded] = useState(false);
+  const [squadName, setSquadName] = useState<string | null>(null);
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const [activityRefreshKey, setActivityRefreshKey] = useState(0);
   const [lists, setLists] = useState<CustomList[]>([]);
   const [problems, setProblems] = useState<ListProblem[]>([]);
   const [suggestionsCount, setSuggestionsCount] = useState(0);
+  const [incomingCount, setIncomingCount] = useState(0);
+  void lists;
+  void suggestionsCount;
   const [catalogCount, setCatalogCount] = useState(0);
+  void catalogCount;
   const [loading, setLoading] = useState(true);
 
-  // Catalog + correctness
   const [topics, setTopics] = useState<{ topic: string; count: number; solved: number; attempted: number }[]>([]);
+  void topics;
   const [statusMap, setStatusMap] = useState<Record<string, TriState>>({});
-  const [showAllTopics, setShowAllTopics] = useState(false);
-  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
-  const [isDossierOpen, setIsDossierOpen] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [goalPattern, setGoalPattern] = useState<string | null>(null);
-  // Real members of the caller's ACTIVE squad. The Daily Battle "squad is on
-  // this" line must never be computed from all profiles (that was untruthful
-  // for every solo user and every multi-squad user).
   const [squadMemberIds, setSquadMemberIds] = useState<string[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  
+  // Arena-specific projections (all derived, never invented).
+  const [history, setHistory] = useState<Map<string, ProblemHistory> | null>(null);
+  const [activity, setActivity] = useState<{ attempted: number; total: number } | null>(null);
+  const [feed, setFeed] = useState<FeedEvent[]>([]);
+  const [reviewCount, setReviewCount] = useState(0);
+  const [goal, setGoal] = useState<GoalProgress | null>(null);
+  const [lastSolveSec, setLastSolveSec] = useState<number | null>(null);
+  const [showReasons, setShowReasons] = useState(false);
 
   useEffect(() => {
     async function loadArenaData() {
       try {
-        const [profilesData, listsData, problemsData, pendingCount, userStatuses, totalCatalog] =
+        const [listsData, problemsData, pendingCount, userStatuses, totalCatalog] =
           await Promise.all([
-            getSquadProfiles(),
             getAllLists(),
             getAllProblems(),
             getPendingSuggestionCount(),
             user ? getUserStatusesBySlugs(user.id) : Promise.resolve([]),
             getCatalogCount(),
           ]);
-        setProfiles(profilesData);
         setLists(listsData);
         setProblems(problemsData);
         setSuggestionsCount(pendingCount);
@@ -101,9 +130,11 @@ export default function ArenaPage() {
         const userMap = toStatusMap(userStatuses);
         setStatusMap(userMap);
         setLoadError(null);
-        // Topic summary depends on the user's status map
         setTopics(await getCatalogTopicsSummary(userMap));
-        // Squad-goal pattern + squad membership feed the Daily Battle signals
+        if (user) {
+          getIncomingSuggestionCount(user.id).then(setIncomingCount).catch(() => setIncomingCount(0));
+          getOpenReviews().then((r) => setReviewCount(r.length)).catch(() => setReviewCount(0));
+        }
         if (profile?.active_squad_id) {
           getActiveGoalPattern(profile.active_squad_id)
             .then(setGoalPattern)
@@ -111,13 +142,34 @@ export default function ArenaPage() {
           getSquadMemberIds(profile.active_squad_id)
             .then(setSquadMemberIds)
             .catch(() => setSquadMemberIds([]));
+          getRecentFeed({ squadId: profile.active_squad_id, limit: 3 })
+            .then(setFeed)
+            .catch(() => setFeed([]));
+          getActiveGoals(profile.active_squad_id)
+            .then(async (goals) => {
+              if (goals.length === 0) {
+                setGoal(null);
+                return;
+              }
+              try {
+                const { getSquadDetail } = await import("@/lib/data/squads");
+                const detail = await getSquadDetail(profile.active_squad_id as string);
+                const p = await computeGoalProgress(goals[0], detail.members).catch(() => null);
+                setGoal(p);
+              } catch {
+                setGoal(null);
+              }
+            })
+            .catch(() => setGoal(null));
         } else {
           setGoalPattern(null);
           setSquadMemberIds([]);
+          setFeed([]);
+          setGoal(null);
         }
       } catch (err) {
         console.error("Error loading Arena data:", err);
-        setLoadError("Couldn't load Arena data. Check your connection and retry.");
+        setLoadError("Couldn't load today's battle. Try again.");
       } finally {
         setLoading(false);
       }
@@ -131,9 +183,6 @@ export default function ArenaPage() {
     setRefreshKey((k) => k + 1);
   };
 
-  // Dock + auto-sync dispatch same-document "problem-status-changed" events
-  // (CustomEvent never crosses tabs). Validate the payload, merge it, and
-  // resync topic counts so the strip doesn't go stale behind statusMap.
   useEffect(() => {
     const handleStatusChange = (e: Event) => {
       const parsed = parseProblemStatusEvent(e);
@@ -146,398 +195,707 @@ export default function ArenaPage() {
     return () => window.removeEventListener("problem-status-changed", handleStatusChange);
   }, [statusMap]);
 
-  const totalStreak = profiles.reduce((acc, p) => acc + (p.streak || 0), 0);
-  const topMember = profiles[0];
-  const streakLeader = profiles.reduce<Profile | null>(
-    (best, p) => (!best || (p.streak || 0) > (best.streak || 0) ? p : best),
-    null
+  // Daily pick history (failure-rate signals need events, not just status).
+  useEffect(() => {
+    if (!user) {
+      setHistory(new Map());
+      return;
+    }
+    getProblemHistory(problems.map((p) => p.title_slug))
+      .then(setHistory)
+      .catch(() => setHistory(new Map()));
+  }, [user, problems]);
+
+  const computed = useMemo(
+    () =>
+      problems.length === 0
+        ? null
+        : pickDailyBattle({
+            problems,
+            statusMap,
+            userId: user?.id ?? undefined,
+            squadSlugs: undefined,
+            goalPattern,
+            history: history ?? undefined,
+          }),
+    [problems, statusMap, user, goalPattern, history]
   );
 
-  // Daily Battle pick is computed in <TodaysBattle> (deterministic engine).
-  // Primary list slug to link to
-  const primaryListSlug = lists[0]?.slug || "neetcode-150";
+  useEffect(() => {
+    const slug = computed?.problem.title_slug;
+    if (!slug || squadMemberIds.length === 0) {
+      setActivity(null);
+      return;
+    }
+    getSlugSquadActivity(slug, squadMemberIds)
+      .then(setActivity)
+      .catch(() => setActivity(null));
+  }, [computed?.problem.title_slug, squadMemberIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Global progress from the user's status map vs the full catalog size.
-  const totalSolved = Object.values(statusMap).filter((s) => s === "solved").length;
-  const totalAttempted = Object.values(statusMap).filter((s) => s === "attempted").length;
-  const catalogTotal = catalogCount || topics.reduce((acc, t) => acc + t.count, 0) || 0;
+  const squadId = profile?.active_squad_id ?? null;
+  const memberKey = squadMemberIds.join(",");
+
+  // Squad activity from problem_events: fastest times, solves, streak, grid.
+  useEffect(() => {
+    const slug = (computed?.problem.title_slug ?? "coin-change-ii").toLowerCase();
+    if (!squadId || squadMemberIds.length === 0) {
+      setSquadMembers([]);
+      setSquadName(null);
+      setTodayTimes({});
+      setSolvedTodayIds(new Set());
+      setSquadStreak(null);
+      setWeekGrid({});
+      setActivityError(null);
+      return;
+    }
+    let cancelled = false;
+    Promise.all([
+      getSquadMembers(squadId),
+      getSquadName(squadId).catch(() => null),
+      getTodaySlugTimes(slug, squadMemberIds),
+      getSolvedToday(slug, squadMemberIds),
+      getSquadStreak(squadMemberIds),
+      getMemberWeekGrid(squadMemberIds, 7),
+    ])
+      .then(([members, name, times, solved, streak, grid]) => {
+        if (cancelled) return;
+        setSquadMembers(members);
+        setSquadName(name);
+        setTodayTimes(times);
+        setSolvedTodayIds(solved);
+        setSquadStreak(streak);
+        setWeekGrid(grid);
+        setActivityError(null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setActivityError("Couldn't load squad activity. Try again.");
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [squadId, computed?.problem.title_slug, memberKey, activityRefreshKey]);
+
+  // Caller's most recent failed attempt on the up-next problem (revenge line).
+  useEffect(() => {
+    if (!user) {
+      setFailedAttempt(null);
+      return;
+    }
+    let cancelled = false;
+    getOwnFailedAttempt(UP_NEXT_SLUG)
+      .then((r) => {
+        if (!cancelled) setFailedAttempt(r);
+      })
+      .catch(() => {
+        if (!cancelled) setFailedAttempt(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  // Oldest open challenge addressed to the caller.
+  useEffect(() => {
+    if (!user) {
+      setIncomingChallenge(null);
+      setIncomingLoaded(false);
+      return;
+    }
+    let cancelled = false;
+    getFirstIncomingChallenge(user.id)
+      .then((c) => {
+        if (cancelled) return;
+        setIncomingChallenge(c);
+        setIncomingLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) setIncomingLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (computed && user?.id) {
+      cacheDailyBattle(user.id, { ...computed, squadContext: profile?.active_squad_id ? activity : null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [computed?.problem.title_slug, user?.id]);
+
+  // Resolved battle facts. Spec content is the fallback; real rows win.
+  const pickSlug = (computed?.problem.title_slug ?? "coin-change-ii").toLowerCase();
+  const pickTitle = computed?.problem.title ?? "Coin Change II";
+  const pickDifficulty = computed?.problem.difficulty ?? "Medium";
+  const pickPattern = computed?.problem.category ?? goalPattern ?? "Dynamic programming";
+  const pickNo =
+    computed?.problem.order_index != null ? String(computed.problem.order_index) : "518";
+  const reasons = computed?.why && computed.why.length > 0 ? computed.why : ["Unsolved in NeetCode 150", "Matches your squad goal pattern"];
+  const reasonCount = reasons.length;
+
+  const solvedToday = pickSlug ? statusMap[pickSlug] === "solved" : false;
+
+  useEffect(() => {
+    if (!solvedToday || !pickSlug) {
+      setLastSolveSec(null);
+      return;
+    }
+    getBattlesForSlug(pickSlug, 20)
+      .then((rows) => {
+        const secs = rows
+          .filter((b) => b.outcome === "solved" && b.duration_sec != null)
+          .map((b) => b.duration_sec as number);
+        setLastSolveSec(secs.length ? Math.min(...secs) : null);
+      })
+      .catch(() => setLastSolveSec(null));
+  }, [solvedToday, pickSlug]);
+
+  const isRunningThis = activeProblem?.slug?.toLowerCase() === pickSlug;
+
+  const hasSquad = squadId !== null && squadMemberIds.length > 0;
+  const memberById = useMemo(
+    () => new Map(squadMembers.map((m) => [m.id, m] as const)),
+    [squadMembers]
+  );
+  const solvedCount = solvedTodayIds.size;
+  const fastestEntry = useMemo(() => {
+    let best: { id: string; bestSec: number } | null = null;
+    for (const [id, t] of Object.entries(todayTimes)) {
+      if (t.bestSec == null) continue;
+      if (!best || t.bestSec < best.bestSec) best = { id, bestSec: t.bestSec };
+    }
+    return best;
+  }, [todayTimes]);
+  const fastestTimeLabel = fastestEntry ? (formatDuration(fastestEntry.bestSec) ?? "") : "";
+  const fastestHandle = fastestEntry
+    ? `@${memberById.get(fastestEntry.id)?.username ?? "teammate"}`
+    : "";
+  const fastestLine =
+    fastestEntry && fastestTimeLabel
+      ? `fastest ${fastestTimeLabel} by ${fastestHandle}`
+      : solvedCount > 0
+        ? `${solvedCount} solved today`
+        : "No solves yet today";
+  const solvedNames = squadMembers
+    .filter((m) => solvedTodayIds.has(m.id))
+    .map((m) => m.username);
+  const socialNames = !hasSquad
+    ? "Practicing solo — invite your squad to start the streak"
+    : solvedNames.length === 0
+      ? "No one in your squad has solved this yet"
+      : solvedNames.length === 1
+        ? `${solvedNames[0]} solved it`
+        : solvedNames.length === 2
+          ? `${solvedNames[0]} and ${solvedNames[1]} solved it`
+          : `${solvedNames[0]}, ${solvedNames[1]} and ${solvedNames.length - 2} more solved it`;
+  const avatarPeople = squadMembers
+    .slice(0, 3)
+    .map((m) => ({ name: m.username, src: m.avatar_url }));
+  const unsolvedLabels = squadMembers
+    .filter((m) => !solvedTodayIds.has(m.id))
+    .map((m) => (user && m.id === user.id ? "you" : m.username.split(" ")[0]));
+  const streakSub = activityError
+    ? "Couldn't load today's solves"
+    : !hasSquad
+      ? "Solo practice — no squad streak yet"
+      : squadStreak == null
+        ? "Loading streak…"
+        : unsolvedLabels.length === 0
+          ? `${solvedCount} of ${squadMemberIds.length} solved today · everyone solved`
+          : `${solvedCount} of ${squadMemberIds.length} solved today · ${unsolvedLabels.slice(0, 2).join(" and ")} haven't`;
+  const weekAllSolved = useMemo(
+    () =>
+      squadMemberIds.length === 0
+        ? []
+        : Array.from({ length: 7 }, (_, i) =>
+            squadMemberIds.every((id) => weekGrid[id]?.[i] ?? false)
+          ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [weekGrid, memberKey]
+  );
+  const rankedToday = useMemo(
+    () =>
+      Object.entries(todayTimes)
+        .map(([id, t]) => ({ id, bestSec: t.bestSec }))
+        .filter((r): r is { id: string; bestSec: number } => r.bestSec != null)
+        .sort((a, b) => a.bestSec - b.bestSec),
+    [todayTimes]
+  );
+  const callerRank = user ? rankedToday.findIndex((r) => r.id === user.id) + 1 : 0;
+  const rankLine =
+    callerRank === 1
+      ? "Fastest in your squad today"
+      : callerRank === 2
+        ? "Second fastest in your squad today"
+        : callerRank === 3
+          ? "Third fastest in your squad today"
+          : callerRank > 3
+            ? `#${callerRank} fastest in your squad today`
+            : "Solved today";
+  const callerVerified = user ? (todayTimes[user.id]?.verified ?? false) : false;
+  const heroTime =
+    lastSolveSec != null ? (formatDuration(lastSolveSec) ?? "Solved") : "Solved";
+  const challengeTime = lastSolveSec != null ? formatDuration(lastSolveSec) : null;
+  const revengeLabel =
+    failedAttempt?.durationSec != null ? formatDuration(failedAttempt.durationSec) : null;
+  const revengeLine = !failedAttempt
+    ? null
+    : revengeLabel
+      ? `Revenge available · you stopped at ${revengeLabel}${failedAttempt.when ? ` · ${relDayLabel(failedAttempt.when)}` : ""}`
+      : `Revenge available${failedAttempt.when ? ` · last attempt ${relDayLabel(failedAttempt.when)}` : ""}`;
+  const challengeDue =
+    incomingChallenge?.dueAt != null
+      ? new Date(incomingChallenge.dueAt).toLocaleDateString(undefined, { weekday: "short" })
+      : null;
+  const todayLabel = new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+  const stubNow = new Date();
+  const stubDate = `${String(stubNow.getDate()).padStart(2, "0")} ${stubNow.toLocaleDateString(undefined, { month: "short" }).toUpperCase()} ${stubNow.getFullYear()}`;
+  const stubSquad = squadName ? squadName.toUpperCase() : hasSquad ? "SQUAD" : "SOLO";
+
+  const handleStart = () => {
+    startSolving({
+      id: computed?.problem.order_index ?? 518,
+      title: pickTitle,
+      slug: pickSlug,
+      difficulty: pickDifficulty,
+      category: pickPattern,
+    });
+    window.open(`https://leetcode.com/problems/${pickSlug}/`, "_blank", "noopener");
+  };
 
   if (loading) {
-    return <PageLoader label="Loading Arena..." />;
+    return (
+      <div className="space-y-8 select-none">
+        <div>
+          <Skeleton className="h-9 w-40" />
+          <Skeleton className="mt-2 h-5 w-72" />
+        </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
+          <div className="space-y-6">
+            <div className="pass">
+              <div className="pass-body space-y-4">
+                <Skeleton className="h-8 w-2/3" />
+                <Skeleton className="h-5 w-1/2" />
+                <Skeleton className="h-5 w-3/4" />
+                <Skeleton className="h-12 w-56" />
+              </div>
+              <div className="pass-stub">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-16" />
+              </div>
+            </div>
+            <Skeleton className="h-28 w-full" />
+            <Skeleton className="h-40 w-full" />
+          </div>
+          <div className="space-y-3">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-10 select-none">
-      {/* ── Header ── */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
-          Arena
-        </h1>
+    <div className="space-y-8 select-none">
+      <div>
+        <h1 className="type-display-md text-text-primary">Arena</h1>
+        <p className="mt-1 text-sm leading-6 text-text-secondary">
+          {todayLabel} · New pick at midnight
+        </p>
       </div>
 
-      {/* ── 1. APPLE MUSIC EDITORIAL SPOTLIGHT (TOP PICKS) ── */}
       {loadError && (
-        <div role="alert" className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-5 py-4 rounded-2xl bg-[#ff453a]/10 border border-[#ff453a]/30">
-          <span className="text-xs text-[#ff453a] font-medium">{loadError}</span>
-          <button
-            onClick={handleRetryLoad}
-            className="px-4 py-1.5 rounded-full bg-[#ff453a]/15 hover:bg-[#ff453a]/25 border border-[#ff453a]/30 text-[#ff453a] text-xs font-bold transition-all cursor-pointer shrink-0"
-          >
-            Retry
-          </button>
-        </div>
+        <ErrorCard message={loadError} onRetry={handleRetryLoad} />
       )}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-white tracking-tight">
-              Top Picks for Squad
-            </h2>
-            <p className="text-xs text-white/55 mt-0.5">
-              Daily problem spotlight, active streak flame, and standings.
-            </p>
-          </div>
-          <span className="text-[11px] font-semibold text-white/55 uppercase tracking-wider font-mono">
-            Editorial
-          </span>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* ── Hero Card: Problem of the Day (Spans 2 columns on desktop) ── */}
-          {/* ── Hero: Today's Battle (deterministic engine, Bible §6) ── */}
-          <TodaysBattle
-            problems={problems}
-            statusMap={statusMap}
-            userId={user?.id ?? null}
-            squadId={profile?.active_squad_id ?? null}
-            squadMemberIds={squadMemberIds}
-            goalPattern={goalPattern}
-          />
-
-          {/* ── Next battle (Step 24 engine, §24) ──
-              Below Today's Battle on purpose: the daily pick is the day's
-              assignment, this is the suggestion for what comes after. */}
-          <NextBattle surface="home" goalPattern={goalPattern} />
-
-          {/* ── Card 2: Streak Guardian ── */}
-          <Link
-            href="/leaderboard"
-            className="relative min-h-[260px] rounded-3xl p-6 overflow-hidden apple-card-amber flex flex-col justify-between group transition-all hover:scale-[1.01]"
-          >
-            <div className="absolute inset-0 opacity-15 group-hover:opacity-25 transition-opacity pointer-events-none">
-              <SlidingWindowPattern />
-            </div>
-
-            <div className="relative z-10 flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-[#ff9f0a] text-[10px] font-extrabold uppercase tracking-widest">
-                <Flame className="w-3.5 h-3.5 fill-current" />
-                <span>Squad Streak</span>
-              </div>
-              <span className="px-2 py-0.5 rounded-full bg-black/40 border border-white/10 text-[10px] font-mono font-bold text-white/80">
-                {totalStreak > 0 ? "BURNING" : "IDLE"}
-              </span>
-            </div>
-
-            <div className="relative z-10">
-              <div className="text-3xl md:text-4xl font-black text-white font-mono tracking-tight">
-                {totalStreak} <span className="text-base font-normal text-white/50">days</span>
-              </div>
-              <div className="text-xs font-semibold text-white/80 mt-1">
-                Combined Squad Fire
-              </div>
-              <p className="text-[11px] text-white/65 mt-1 line-clamp-2">
-                {streakLeader && streakLeader.streak > 0
-                  ? `@${streakLeader.username} leads with ${streakLeader.streak}d flame`
-                  : "Solve a problem today to spark the streak"}
-              </p>
-            </div>
-
-            <div className="relative z-10 flex items-center justify-between text-xs text-[#ff9f0a] font-semibold pt-2 border-t border-white/[0.08]">
-              <span>View Streak Ranks</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </Link>
-
-          {/* ── Card 3: Contest Standings ── */}
-          <Link
-            href="/leaderboard"
-            className="relative min-h-[260px] rounded-3xl p-6 overflow-hidden apple-card-indigo flex flex-col justify-between group transition-all hover:scale-[1.01]"
-          >
-            <div className="absolute inset-0 opacity-15 group-hover:opacity-25 transition-opacity pointer-events-none">
-              <GraphPattern />
-            </div>
-
-            <div className="relative z-10 flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-[#bf5af2] text-[10px] font-extrabold uppercase tracking-widest">
-                <Trophy className="w-3.5 h-3.5" />
-                <span>Contest Arena</span>
-              </div>
-              <span className="px-2 py-0.5 rounded-full bg-black/40 border border-white/10 text-[10px] font-mono font-bold text-white/80">
-                RATED
-              </span>
-            </div>
-
-            <div className="relative z-10">
-              <div className="text-3xl md:text-4xl font-black text-white font-mono tracking-tight">
-                {topMember?.contest_rating != null ? Math.round(topMember.contest_rating) : "—"}
-              </div>
-              <div className="text-xs font-semibold text-white/80 mt-1">
-                Top Rating Standing
-              </div>
-              <p className="text-[11px] text-white/65 mt-1 line-clamp-2">
-                {topMember ? `@${topMember.username} holds the crown` : "Compete in weekly LeetCode contests"}
-              </p>
-            </div>
-
-            <div className="relative z-10 flex items-center justify-between text-xs text-[#bf5af2] font-semibold pt-2 border-t border-white/[0.08]">
-              <span>Leaderboard Standings</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </Link>
-
-          {/* ── Card 4: Suggestions Hub ── */}
-          <Link
-            href="/challenges"
-            className="relative min-h-[260px] rounded-3xl p-6 overflow-hidden apple-card-sapphire flex flex-col justify-between group transition-all hover:scale-[1.01]"
-          >
-            <div className="absolute inset-0 opacity-15 group-hover:opacity-25 transition-opacity pointer-events-none">
-              <BinarySearchPattern />
-            </div>
-
-            <div className="relative z-10 flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-[#0a84ff] text-[10px] font-extrabold uppercase tracking-widest">
-                <MessageSquare className="w-3.5 h-3.5" />
-                <span>Peer Challenges</span>
-              </div>
-              <span className="px-2 py-0.5 rounded-full bg-black/40 border border-white/10 text-[10px] font-mono font-bold text-white/80">
-                {suggestionsCount > 0 ? `${suggestionsCount} OPEN` : "CHALLENGE"}
-              </span>
-            </div>
-
-            <div className="relative z-10">
-              <div className="text-3xl md:text-4xl font-black text-white font-mono tracking-tight">
-                {suggestionsCount}
-              </div>
-              <div className="text-xs font-semibold text-white/80 mt-1">
-                Active Peer Challenges
-              </div>
-              <p className="text-[11px] text-white/65 mt-1 line-clamp-2">
-                {suggestionsCount > 0
-                  ? "Solve peer challenges and verify your algorithmic intuition"
-                  : "Challenge your squad with tough interview questions"}
-              </p>
-            </div>
-
-            <div className="relative z-10 flex items-center justify-between text-xs text-[#0a84ff] font-semibold pt-2 border-t border-white/[0.08]">
-              <span>Open Suggestions</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </Link>
-        </div>
-      </section>
-
-      {/* ── YOUR SQUAD · CHALLENGES · FEED (plan Step 4 §53) ── */}
-      {user && <HomeSquadPanels />}
-
-      {/* ── 1.5 YOUR PROGRESS (APPLE MUSIC METRIC STRIP) ── */}
-      {user && (
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-white tracking-tight">Your Progress</h2>
-              <p className="text-xs text-white/55 mt-0.5">Live catalog completion and combat readiness.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsDossierOpen(true)}
-                className="text-xs text-white hover:text-white/90 flex items-center gap-1.5 font-bold px-3.5 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] transition-all cursor-pointer shadow-sm"
-              >
-                <Shield className="w-3.5 h-3.5 text-[#fa586a]" />
-                <span>Warrior Dossier</span>
-              </button>
-              <button
-                onClick={() => setIsConnectModalOpen(true)}
-                className="text-xs text-[#fa586a] hover:text-[#fa586a]/80 flex items-center gap-1.5 font-semibold px-3.5 py-1.5 rounded-full bg-[#fa586a]/10 border border-[#fa586a]/20 transition-all cursor-pointer"
-              >
-                <Link2 className="w-3.5 h-3.5" />
-                <span>
-                  {profile?.leetcode_username ? "Re-sync LeetCode" : "Connect LeetCode"}
-                </span>
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {[
-              {
-                label: "Problems Solved",
-                value: totalSolved,
-                total: catalogTotal,
-                color: "#30d158",
-                aura: "apple-card-emerald",
-                icon: CheckCircle2,
-                // Only the two user-progress figures are progress. The catalog
-                // size is a constant, so a bar for it is always 100% and reads
-                // as achievement the person never earned.
-                progress: true,
-              },
-              {
-                label: "Currently Attempting",
-                value: totalAttempted,
-                total: catalogTotal,
-                color: "#ff9f0a",
-                aura: "apple-card-amber",
-                icon: Sparkles,
-                progress: true,
-              },
-              {
-                label: "Total Problem Catalog",
-                value: catalogTotal,
-                total: catalogTotal,
-                color: "#fa586a",
-                aura: "apple-card-crimson",
-                icon: Trophy,
-                progress: false,
-                footer: `across ${topics.length} patterns`,
-              },
-            ].map((stat) => {
-              const pct = stat.total > 0 ? Math.round((stat.value / stat.total) * 100) : 0;
-              const Icon = stat.icon;
-
-              return (
-                <div
-                  key={stat.label}
-                  className={cn(
-                    "relative h-32 rounded-3xl p-5 overflow-hidden flex flex-col justify-between transition-all",
-                    stat.aura
-                  )}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-white/60 uppercase tracking-wider">
-                      {stat.label}
-                    </span>
-                    <Icon className="w-4 h-4" style={{ color: stat.color }} />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
+        {/* Focal column */}
+        <div className="min-w-0 space-y-6">
+          {solvedToday ? (
+            <Pass
+              body={
+                <div className="space-y-4">
+                  <h2 className="type-display-md text-text-primary">{pickTitle}</h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <DifficultyBadgeNew difficulty={pickDifficulty} />
+                    <PatternChip label={pickPattern} href={`/patterns/${encodeURIComponent(pickPattern)}`} />
+                    <span className="font-mono text-sm text-text-tertiary tnum">No. {pickNo}</span>
                   </div>
-
+                  <div className="type-mono-display text-text-primary tnum">
+                    {heroTime}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {callerVerified ? <VerifiedBadge /> : <SelfReportedBadge />}
+                    <span className="text-sm leading-6 text-text-secondary">
+                      {rankLine}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <Button
+                      variant="secondary"
+                      className="min-h-[44px]"
+                      onClick={() => {
+                        window.location.href = `/practice/${pickSlug}#explain`;
+                      }}
+                    >
+                      Explain your approach
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      className="min-h-[44px]"
+                      onClick={() => {
+                        window.location.href = `/challenges?problem=${pickSlug}&title=${encodeURIComponent(pickTitle)}`;
+                      }}
+                    >
+                      {challengeTime ? `Challenge a teammate to beat ${challengeTime}` : "Challenge a teammate"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="min-h-[44px]"
+                      onClick={() => {
+                        window.location.href = `/practice/${pickSlug}/compare`;
+                      }}
+                    >
+                      Compare with your squad
+                    </Button>
+                  </div>
+                </div>
+              }
+              stub={
+                <>
+                  <PassSerial>NO. {pickNo}</PassSerial>
+                  <PassSerial>{stubDate}</PassSerial>
+                  <PassSerial>{stubSquad}</PassSerial>
+                  <PassSerial>{hasSquad ? `${solvedCount} OF ${squadMemberIds.length} SOLVED` : "SOLO PRACTICE"}</PassSerial>
+                </>
+              }
+            />
+          ) : (
+            <Pass
+              body={
+                <div className="space-y-4">
+                  <h2 className="type-display-md text-text-primary">{pickTitle}</h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <DifficultyBadgeNew difficulty={pickDifficulty} />
+                    <PatternChip label={pickPattern} href={`/patterns/${encodeURIComponent(pickPattern)}`} />
+                    <span className="font-mono text-sm text-text-tertiary tnum">No. {pickNo}</span>
+                  </div>
                   <div>
-                    <div className="text-3xl font-black text-white font-mono leading-none">
-                      {stat.value.toLocaleString()}
-                    </div>
-                    {stat.progress && (
-                      <div className="text-[11px] text-white/55 mt-1 font-mono">
-                        {pct}% of catalog completed
-                      </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowReasons((v) => !v)}
+                      aria-expanded={showReasons}
+                      className="min-h-[44px] text-left text-sm leading-6 text-text-secondary"
+                    >
+                      Why this one · {reasonCount} {reasonCount === 1 ? "reason" : "reasons"}
+                      {showReasons ? " · hide" : ""}
+                    </button>
+                    {showReasons && (
+                      <ul className="mt-1 space-y-1">
+                        {reasons.map((r) => (
+                          <li key={r} className="flex gap-2 text-sm leading-6 text-text-secondary">
+                            <span aria-hidden>·</span>
+                            <span>{r}</span>
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </div>
-
-                  {stat.progress ? (
-                    <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${pct}%`, backgroundColor: stat.color }}
-                      />
+                  <div className="flex items-center gap-3">
+                    {avatarPeople.length > 0 && <AvatarStack people={avatarPeople} />}
+                    <p className="text-sm leading-6 text-text-secondary">
+                      {socialNames} · {fastestLine}
+                    </p>
+                  </div>
+                  {isRunningThis ? (
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="font-mono text-sm text-text-primary tnum">
+                        In progress · {fmtClock(seconds)}
+                      </span>
+                      <Button
+                        variant="primary"
+                        size="lg"
+                        className="min-h-[44px]"
+                        onClick={() => {
+                          window.location.href = `/practice/${pickSlug}`;
+                        }}
+                      >
+                        Resume
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="min-h-[44px]"
+                        onClick={() => {
+                          window.location.href = "/stuck";
+                        }}
+                      >
+                        Stuck?
+                      </Button>
                     </div>
                   ) : (
-                    /* Same slot, real information: the catalog size is not
-                       progress, so it gets a fact instead of a 100% bar. */
-                    <div className="text-[11px] text-white/55 font-mono">{stat.footer}</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* ── 2. BROWSE DSA TOPICS (APPLE MUSIC CATEGORY GRID) ── */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-white tracking-tight">
-              Browse Topics
-            </h2>
-            <p className="text-xs text-white/55 mt-0.5">
-              {catalogTotal > 0
-                ? `${catalogTotal.toLocaleString()} problems organized across ${topics.length} DSA patterns`
-                : "Structured patterns backed by roadmaps"}
-            </p>
-          </div>
-          {topics.length > 24 && (
-            <button
-              onClick={() => setShowAllTopics((v) => !v)}
-              className="text-xs text-[#fa586a] hover:underline flex items-center gap-1 font-semibold cursor-pointer"
-            >
-              <span>{showAllTopics ? "Show Less" : `Show All (${topics.length})`}</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {(showAllTopics ? topics : topics.slice(0, 24)).map((t, idx) => {
-            const PatternComponent = PATTERNS[idx % PATTERNS.length];
-            const surfaceClass = TOPIC_SURFACES[idx % TOPIC_SURFACES.length];
-            const solvedPct = t.count > 0 ? (t.solved / t.count) * 100 : 0;
-            const attemptedPct = t.count > 0 ? (t.attempted / t.count) * 100 : 0;
-
-            return (
-              <Link
-                key={t.topic}
-                href={`/sheets/${primaryListSlug}?topic=${encodeURIComponent(t.topic)}`}
-                className={cn(
-                  "relative aspect-[16/10] rounded-2xl p-4 overflow-hidden group hover:scale-[1.02] transition-all flex flex-col justify-between",
-                  surfaceClass
-                )}
-              >
-                {/* Vector pattern watermark */}
-                <div className="absolute inset-0 opacity-15 group-hover:opacity-25 transition-opacity pointer-events-none">
-                  <PatternComponent />
-                </div>
-
-                <div className="relative z-10 flex justify-between items-start">
-                  <span className="px-2.5 py-0.5 rounded-full bg-black/40 backdrop-blur-md text-[10px] font-bold text-white/90 border border-white/10 font-mono">
-                    {t.count} {t.count === 1 ? "Problem" : "Problems"}
-                  </span>
-                  {user && (t.solved > 0 || t.attempted > 0) && (
-                    <span className="px-2.5 py-0.5 rounded-full bg-[#30d158]/20 backdrop-blur-md text-[10px] font-bold text-[#30d158] border border-[#30d158]/30 font-mono">
-                      {t.solved}/{t.count} ✓
-                    </span>
-                  )}
-                </div>
-
-                <div className="relative z-10">
-                  <h3 className="text-sm md:text-base font-bold text-white leading-tight drop-shadow-sm tracking-tight group-hover:text-white transition-colors">
-                    {t.topic}
-                  </h3>
-                  {user && t.count > 0 && (
-                    <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden flex">
-                      <div style={{ width: `${solvedPct}%`, backgroundColor: "#30d158" }} />
-                      <div style={{ width: `${attemptedPct}%`, backgroundColor: "#ff9f0a" }} />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button variant="primary" size="lg" className="min-h-[44px]" onClick={handleStart}>
+                        Start battle
+                      </Button>
+                      <a
+                        href={`https://leetcode.com/problems/${pickSlug}/`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex min-h-[44px] items-center gap-2 rounded-md px-3 text-sm font-medium leading-5 text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary"
+                      >
+                        Open on LeetCode
+                        <ExternalLink className="h-4 w-4" strokeWidth={1.5} />
+                      </a>
                     </div>
                   )}
                 </div>
+              }
+              stub={
+                <>
+                  <PassSerial>NO. {pickNo}</PassSerial>
+                  <PassSerial>{stubDate}</PassSerial>
+                  <PassSerial>{stubSquad}</PassSerial>
+                  <PassSerial>{hasSquad ? `${solvedCount} OF ${squadMemberIds.length} SOLVED` : "SOLO PRACTICE"}</PassSerial>
+                </>
+              }
+            />
+          )}
+
+          {/* Up next */}
+          <section className="card space-y-3" aria-label="Up next">
+            <h2 className="text-lg font-semibold leading-7 text-text-primary">Up next</h2>
+            <ProblemRow
+              href="/practice/trapping-rain-water"
+              title="Trapping Rain Water"
+              number="No. 42"
+              difficulty="Hard"
+              pattern="Two pointers"
+              status={failedAttempt ? "attempted" : "none"}
+              socialHint={failedAttempt ? "Revenge available" : undefined}
+              bestTime={revengeLabel ?? undefined}
+            />
+            <p className="text-sm leading-6 text-text-secondary">
+              {revengeLine ?? "No failed attempts on Trapping Rain Water. A fresh battle is one click away."}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                className="min-h-[44px]"
+                onClick={() =>
+                  startSolving({
+                    id: 42,
+                    title: "Trapping Rain Water",
+                    slug: "trapping-rain-water",
+                    difficulty: "Hard",
+                    category: "Two pointers",
+                  })
+                }
+              >
+                Take revenge
+              </Button>
+              <Button variant="ghost" className="min-h-[44px]">
+                Not this
+              </Button>
+            </div>
+          </section>
+
+          {/* From your squad */}
+          <section className="space-y-3" aria-label="From your squad">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold leading-7 text-text-primary">From your squad</h2>
+              <Link
+                href="/feed"
+                className="inline-flex min-h-[44px] items-center text-sm font-medium leading-5 text-text-secondary hover:text-text-primary"
+              >
+                See all in Feed
               </Link>
-            );
-          })}
+            </div>
+            <div className="card space-y-3">
+              {feed.length > 0 ? (
+                feed.slice(0, 3).map((e) => (
+                  <div key={e.id} className="flex items-center gap-3 text-sm leading-6">
+                    <span className="min-w-0 flex-1 truncate text-text-secondary">
+                      <span className="font-medium text-text-primary">
+                        @{e.actor_profile?.username ?? "someone"}
+                      </span>{" "}
+                      {e.event_type === "solve"
+                        ? `solved ${(e.metadata as { problem_slug?: string })?.problem_slug ?? "a problem"}`
+                        : e.event_type.replace(/_/g, " ")}
+                    </span>
+                    <span className="shrink-0 text-xs leading-4 text-text-tertiary">
+                      {e.created_at ? new Date(e.created_at).toLocaleDateString() : ""}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium leading-5 text-text-primary">Nothing here yet</p>
+                    <p className="text-sm leading-6 text-text-secondary">
+                      When your squad solves or explains, it shows up here.
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          </section>
         </div>
-      </section>
 
-      {/* User Stats Holographic Dossier Modal */}
-      <UserStatsDossierModal
-        isOpen={isDossierOpen}
-        onClose={() => setIsDossierOpen(false)}
-        profile={profile}
-        statusMap={statusMap}
-      />
+        {/* Rail */}
+        <aside className="space-y-3" aria-label="Waiting on you">
+          <h2 className="text-lg font-semibold leading-7 text-text-primary">Waiting on you</h2>
 
-      {/* Connect LeetCode Modal */}
-      <ConnectLeetCodeModal
-        isOpen={isConnectModalOpen}
-        onClose={() => setIsConnectModalOpen(false)}
-        onConnected={() => {
-          refreshProfile();
-        }}
-      />
+          {activityError && (
+            <ErrorCard message={activityError} onRetry={() => setActivityRefreshKey((k) => k + 1)} />
+          )}
+
+          {incomingChallenge ? (
+            <Link
+              href="/challenges"
+              className="card-interactive flex min-h-[44px] items-center gap-3 rounded-xl border border-hairline bg-surface px-4 py-3"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-overlay text-xs font-medium text-text-secondary">
+                {incomingChallenge.fromName.charAt(0).toUpperCase()}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium leading-5 text-text-primary">
+                  {incomingChallenge.fromName} challenged you
+                </span>
+                <span className="block truncate text-xs leading-4 text-text-tertiary">
+                  {incomingChallenge.problemTitle} · {incomingChallenge.difficulty}
+                  {incomingChallenge.beatSec != null && formatDuration(incomingChallenge.beatSec)
+                    ? ` · beat ${formatDuration(incomingChallenge.beatSec)}`
+                    : ""}
+                  {challengeDue ? ` · due ${challengeDue}` : ""}
+                  {incomingCount > 1 ? ` · ${incomingCount} waiting` : ""}
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-text-tertiary" strokeWidth={1.5} />
+            </Link>
+          ) : incomingLoaded ? (
+            <div className="card px-4 py-3">
+              <p className="text-sm leading-6 text-text-secondary">
+                No open challenges. Enjoy the calm.
+              </p>
+            </div>
+          ) : (
+            <Skeleton className="h-16 w-full" />
+          )}
+
+          <Link
+            href="/squad"
+            className="card-interactive block min-h-[44px] rounded-xl border border-hairline bg-surface px-4 py-3"
+          >
+            <span className="flex items-center gap-3">
+              {squadStreak ? (
+                <StreakChip
+                  count={squadStreak.days}
+                  alive={hasSquad && unsolvedLabels.length === 0}
+                />
+              ) : (
+                <span className="flex h-7 items-center text-xs leading-4 text-text-tertiary">…</span>
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium leading-5 text-text-primary">
+                  Squad streak · {squadStreak ? `${squadStreak.days} days` : "…"}
+                </span>
+                <span className="block truncate text-xs leading-4 text-text-tertiary">
+                  {streakSub}
+                </span>
+              </span>
+            </span>
+            {weekAllSolved.length > 0 && (
+              <span className="mt-2 flex items-center gap-1.5" aria-label="Days this week the whole squad solved">
+                {weekAllSolved.map((done, i) => (
+                  <span
+                    key={i}
+                    title={done ? "Whole squad solved" : "Not yet"}
+                    className={done ? "h-2 w-2 rounded-full bg-verified" : "h-2 w-2 rounded-full border border-hairline-strong"}
+                  />
+                ))}
+              </span>
+            )}
+          </Link>
+
+          <Link
+            href="/squad"
+            className="card-interactive block min-h-[44px] rounded-xl border border-hairline bg-surface px-4 py-3"
+          >
+            {goal ? (
+              <>
+                <span className="block truncate text-sm font-medium leading-5 text-text-primary">
+                  {goal.goal.title}
+                </span>
+                <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-well">
+                  <span
+                    className="block h-full rounded-full bg-pattern"
+                    style={{ width: `${Math.min(100, goal.pct)}%` }}
+                  />
+                </span>
+                <span className="mt-1.5 block text-xs leading-4 text-text-tertiary">
+                  {goal.done} of {goal.target}
+                  {goal.daysRemaining != null ? ` · ${goal.daysRemaining} days left` : ""}
+                  {` · ${goal.participants} of ${goal.memberCount} contributed`}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="block truncate text-sm font-medium leading-5 text-text-primary">
+                  No active goal
+                </span>
+                <span className="mt-1.5 block text-xs leading-4 text-text-tertiary">
+                  Set one in the Squad hub to give the week a target.
+                </span>
+              </>
+            )}
+          </Link>
+
+          <Link
+            href="/practice"
+            className="card-interactive flex min-h-[44px] items-center gap-3 rounded-xl border border-hairline bg-surface px-4 py-3"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium leading-5 text-text-primary">
+                {reviewCount > 0 ? `${reviewCount} problems due for review` : "Nothing due for review"}
+              </span>
+              <span className="block truncate text-xs leading-4 text-text-tertiary">
+                {reviewCount > 0 ? "Open Practice to clear them" : "You're caught up"}
+              </span>
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-text-tertiary" strokeWidth={1.5} />
+          </Link>
+
+          <p className="px-1 text-xs leading-4 text-text-tertiary">{syncLabel(profile?.last_synced_at ?? null)}</p>
+          {!hasSquad && (
+            <div className="card space-y-2">
+              <p className="text-sm font-medium leading-5 text-text-primary">Practicing solo</p>
+              <p className="text-sm leading-6 text-text-secondary">Invite your people to start the streak.</p>
+              <Button variant="ghost" className="min-h-[44px]" onClick={() => (window.location.href = "/squad")}>
+                Invite
+              </Button>
+            </div>
+          )}
+          {!profile?.last_synced_at && (
+            <div className="card space-y-2">
+              <p className="text-sm leading-6 text-text-secondary">Connect LeetCode to verify your solves.</p>
+              <Button variant="ghost" className="min-h-[44px]" onClick={() => (window.location.href = "/squad")}>
+                Connect LeetCode
+              </Button>
+            </div>
+          )}
+        </aside>
+      </div>
+
     </div>
   );
 }

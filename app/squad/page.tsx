@@ -1,14 +1,19 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { Plus, Copy, Check, Target, ArrowRight, LogOut } from "lucide-react";
+import { Plus, Copy, Check, ChevronDown, Flame, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InviteLink } from "@/components/squad/InviteLink";
 import { copyText } from "@/lib/clipboard";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { ModalShell } from "@/components/ui/ModalShell";
+import { Pass, PassSerial } from "@/components/pass/Pass";
+import { Button } from "@/components/ui/Button";
+import { PatternChip, StreakChip } from "@/components/ui/Badge";
+import { Avatar } from "@/components/ui/Avatar";
+import { ErrorCard } from "@/components/ui/States";
 import {
   getMySquads,
   getSquadDetail,
@@ -21,7 +26,12 @@ import {
   completeSquadGoal,
 } from "@/lib/data/squads";
 import { getSquadChallengeRows } from "@/lib/data/challenges";
-import { longestActiveChain, CHAIN_STATE_CLASS, CHAIN_STATE_LABEL } from "@/lib/chains";
+import {
+  getSquadStreak,
+  getMemberWeekGrid,
+  type SquadStreak,
+} from "@/lib/data/squadActivity";
+import { longestActiveChain } from "@/lib/chains";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
 import { logFeedEvent } from "@/lib/data/feed";
@@ -36,6 +46,11 @@ import {
 import { RITUALS } from "@/lib/rituals";
 import { Squad, SquadMember, SquadSeason } from "@/types/database";
 
+function formatSince(isoDate: string): string {
+  const d = new Date(`${isoDate}T12:00:00`);
+  return `${d.getDate()} ${d.toLocaleDateString(undefined, { month: "short" }).toUpperCase()}`;
+}
+
 export default function SquadPage() {
   const { user, profile, refreshProfile } = useAuth();
   const [squads, setSquads] = useState<Squad[]>([]);
@@ -46,14 +61,17 @@ export default function SquadPage() {
   const [seasonMetrics, setSeasonMetrics] = useState<SeasonMetrics | null>(null);
   const [solveCounts, setSolveCounts] = useState<Record<string, number>>({});
   const [activeSquad, setActiveSquad] = useState<Squad | null>(null);
-  // Step 17: the squad's longest live chain is a reason to come back.
   const [hotChain, setHotChain] = useState<ReturnType<typeof longestActiveChain>>(null);
+  const [streak, setStreak] = useState<SquadStreak | null>(null);
+  const [weekGrid, setWeekGrid] = useState<Record<string, boolean[]>>({});
+  const [activityError, setActivityError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
   const [showGoal, setShowGoal] = useState(false);
+  const [showSwitcher, setShowSwitcher] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [code, setCode] = useState("");
@@ -86,14 +104,27 @@ export default function SquadPage() {
         setMembers(detail.members);
         setSolveCounts(await getSquadSolveCounts(detail.members.map((m) => m.user_id)));
 
-        // Multiple goals, each with windowed progress.
+        try {
+          const memberIds = detail.members.map((m) => m.user_id);
+          const [st, grid] = await Promise.all([
+            getSquadStreak(memberIds),
+            getMemberWeekGrid(memberIds, 7),
+          ]);
+          setStreak(st);
+          setWeekGrid(grid);
+          setActivityError(null);
+        } catch {
+          setStreak(null);
+          setWeekGrid({});
+          setActivityError("Couldn't load squad activity. Try again.");
+        }
+
         const activeGoals = await getActiveGoals(resolvedActive);
         const progress = await Promise.all(
           activeGoals.map((g) => computeGoalProgress(g, detail.members).catch(() => null))
         );
         setGoalProgress(progress.filter((p): p is GoalProgress => p !== null));
 
-        // Season + plain metrics, no score.
         const seasons = await getSeasons(resolvedActive).catch(() => []);
         const live = seasons.find((x) => x.status === "active") ?? null;
         setSeason(live);
@@ -102,7 +133,6 @@ export default function SquadPage() {
             ? await computeSeasonMetrics(live, detail.members.map((m) => m.user_id)).catch(() => null)
             : null
         );
-        // Step 17: longest live chain in this squad.
         const chainRows = await getSquadChallengeRows(resolvedActive).catch(() => []);
         setHotChain(longestActiveChain(chainRows));
       } else {
@@ -113,6 +143,9 @@ export default function SquadPage() {
         setSeasonMetrics(null);
         setSolveCounts({});
         setHotChain(null);
+        setStreak(null);
+        setWeekGrid({});
+        setActivityError(null);
       }
     } catch (err) {
       console.error("Error loading squad:", err);
@@ -163,8 +196,6 @@ export default function SquadPage() {
     setBusy(true);
     setFormError(null);
     try {
-      // Typing a bare code has no referrer, which is the honest case: the
-      // referral token only exists when somebody sent a personal link.
       const { squad } = await joinSquad(code, null);
       track("invite_opened", { squad_id: squad.id });
       setCode("");
@@ -184,6 +215,7 @@ export default function SquadPage() {
       await switchActiveSquad(id);
       await refreshProfile();
       await load();
+      setShowSwitcher(false);
     } catch (err) {
       setLoadError(dataErrorMessage(err, "Couldn't switch squad. Try again."));
     }
@@ -232,368 +264,555 @@ export default function SquadPage() {
     }
   };
 
+  // Real last-7-day labels, oldest -> newest, aligned with the week grid.
+  // useMemo stays above every early return (rules of hooks).
+  const weekDays = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() - (6 - i));
+      return {
+        key: `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`,
+        label: d.toLocaleDateString(undefined, { weekday: "short" }),
+      };
+    });
+  }, []);
+
   if (loading) return <PageLoader label="Loading squad..." />;
 
+  const firstGoal = goalProgress[0] ?? null;
+  const todayIdx = weekDays.length - 1;
+  const solvedTodayCount = members.filter(
+    (m) => weekGrid[m.user_id]?.[todayIdx] ?? false
+  ).length;
+  const unsolvedShort = members
+    .filter((m) => !(weekGrid[m.user_id]?.[todayIdx] ?? false))
+    .map((m) =>
+      user && m.user_id === user.id ? "you" : (m.profile?.username || "Member").split(" ")[0]
+    );
+  const streakLine = activityError
+    ? "Couldn't load today's solves"
+    : streak == null
+      ? "Loading streak…"
+      : members.length === 0
+        ? "No members yet"
+        : unsolvedShort.length === 0
+          ? `${solvedTodayCount} of ${members.length} solved today · everyone solved`
+          : `${solvedTodayCount} of ${members.length} solved today · ${unsolvedShort.slice(0, 2).join(" and ")} to go`;
+  const squadSince = activeSquad
+    ? new Date(activeSquad.created_at).toLocaleDateString(undefined, {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : null;
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="space-y-8 select-none">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">Squad</h1>
-          <p className="text-xs text-white/55 mt-1">Small groups, shared goals, friendly accountability.</p>
-        </div>
-        <div className="flex items-center gap-2 self-start md:self-auto">
-          <button onClick={() => { setFormError(null); setShowJoin(true); }} className="px-4 py-2 min-h-11 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-white text-xs font-bold transition-colors cursor-pointer flex items-center whitespace-nowrap">
-            Join with code
+          <button
+            type="button"
+            onClick={() => setShowSwitcher((v) => !v)}
+            aria-expanded={showSwitcher}
+            className="inline-flex min-h-[44px] items-center gap-2 text-left"
+          >
+            <h1 className="type-display-md text-text-primary">{activeSquad?.name ?? "Squad"}</h1>
+            {squads.length > 1 && <ChevronDown className="h-4 w-4 text-text-tertiary" strokeWidth={1.5} />}
           </button>
-          <button onClick={() => { setFormError(null); setShowCreate(true); }} className="px-4 py-2 min-h-11 rounded-full btn-accent text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap">
-            <Plus className="w-3.5 h-3.5" />
-            <span>New squad</span>
-          </button>
-        </div>
-      </div>
-
-      {loadError && (
-        <div role="alert" className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-5 py-4 rounded-2xl bg-[#ff453a]/10 border border-[#ff453a]/30">
-          <span className="text-xs text-[#ff453a] font-medium">{loadError}</span>
-          <button onClick={load} className="px-4 py-1.5 min-h-11 rounded-full bg-[#ff453a]/15 hover:bg-[#ff453a]/25 border border-[#ff453a]/30 text-[#ff453a] text-xs font-bold transition-colors cursor-pointer shrink-0 flex items-center">
-            Retry
-          </button>
-        </div>
-      )}
-
-      {squads.length === 0 ? (
-        <div className="p-12 text-center space-y-3 bg-[#1c1c1e]/60 rounded-3xl border border-white/[0.06]">
-          <p className="text-sm font-bold text-white">Your squad is waiting.</p>
-          <p className="text-xs text-white/55 max-w-sm mx-auto">Create one and invite 2–7 friends — or join with a code. Solo practice keeps working either way.</p>
-          <div className="flex items-center justify-center gap-2 pt-1">
-            <button onClick={() => setShowCreate(true)} className="px-4 py-2 min-h-11 rounded-full btn-accent text-white text-xs font-bold cursor-pointer flex items-center whitespace-nowrap">Create squad</button>
-            <button onClick={() => setShowJoin(true)} className="px-4 py-2 min-h-11 rounded-full bg-white/[0.06] border border-white/[0.1] text-white text-xs font-bold cursor-pointer flex items-center whitespace-nowrap">Join with code</button>
-          </div>
-        </div>
-      ) : (
-        <>
-          {squads.length > 1 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] text-white/55 uppercase tracking-wider font-semibold">Active:</span>
+          <p className="mt-1 text-sm leading-6 text-text-secondary">
+            {members.length} members{squadSince ? ` · since ${squadSince}` : ""}
+          </p>
+          {showSwitcher && squads.length > 1 && (
+            <div className="popover-panel mt-2 w-64 p-2">
               {squads.map((s) => (
                 <button
                   key={s.id}
                   onClick={() => handleSwitch(s.id)}
                   className={cn(
-                    "min-h-11 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-colors cursor-pointer flex items-center whitespace-nowrap",
-                    s.id === activeId
-                      ? "btn-accent border-[#fa586a]/40 text-white"
-                      : "bg-white/[0.03] border-white/[0.08] text-white/50 hover:text-white"
+                    "flex min-h-[44px] w-full items-center justify-between rounded-md px-3 text-sm font-medium leading-5",
+                    s.id === activeId ? "bg-surface-overlay text-text-primary" : "text-text-secondary hover:text-text-primary"
                   )}
                 >
-                  {s.name}
+                  <span>{s.name}</span>
+                  <span className="font-mono text-xs text-text-tertiary tnum">{s.member_count ?? ""}</span>
                 </button>
               ))}
+              <button
+                onClick={handleLeave}
+                className="flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-sm font-medium leading-5 text-error"
+              >
+                <LogOut className="h-4 w-4" strokeWidth={1.5} />
+                Leave squad
+              </button>
             </div>
           )}
+        </div>
+        <div className="flex items-center gap-2 self-start md:self-auto">
+          <Button variant="ghost" className="min-h-[44px]" onClick={() => { setFormError(null); setShowJoin(true); }}>
+            Join with code
+          </Button>
+          <Button variant="secondary" className="min-h-[44px]" onClick={() => { setFormError(null); setShowCreate(true); }}>
+            <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
+            New squad
+          </Button>
+        </div>
+      </div>
 
-          {activeSquad && (
-            <div className="p-6 rounded-3xl bg-white/[0.03] border border-white/[0.08] space-y-5">
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                  <h2 className="text-xl font-extrabold text-white">{activeSquad.name}</h2>
-                  {activeSquad.description && <p className="text-xs text-white/55 mt-1">{activeSquad.description}</p>}
-                  <p className="text-[11px] text-white/50 mt-1 font-mono">{members.length} member{members.length === 1 ? "" : "s"}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {/* Loop D: the bare code still works, and stays available for
-                      pasting into a channel where a link would be awkward. */}
-                  <button onClick={handleCopyInvite} className="px-3.5 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-white text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5" title="Copy invite code">
-                    {copied ? <Check className="w-3.5 h-3.5 text-[#30d158]" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span className="font-mono">{copied ? "Copied!" : activeSquad.invite_code}</span>
-                  </button>
-                  <button onClick={handleLeave} className="p-2 rounded-full text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer" title="Leave squad" aria-label="Leave squad">
-                    <LogOut className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
+      {loadError && <ErrorCard message={loadError} onRetry={load} />}
+      {activityError && <ErrorCard message={activityError} onRetry={load} />}
 
-              {/* Your own link, and what came through it (Loop D, §56/§57). */}
-              <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-2">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-white/50">
-                  Invite people
-                </div>
-                <p className="text-[11px] text-white/55">
-                  Your link remembers who you are, so you can tell whether it worked.
-                </p>
-                <InviteLink squadId={activeSquad.id} squadName={activeSquad.name} />
-              </div>
-
-              {/* Goals (Step 19: multiple, and progress measured inside the
-                  goal's window rather than all-time). */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider flex items-center gap-1.5">
-                    <Target className="w-3.5 h-3.5" />
-                    <span>Squad goals</span>
-                  </span>
-                  <button onClick={() => { setFormError(null); setShowGoal(true); }} className="min-h-11 px-3 -mx-3 text-xs text-[#fa586a] font-semibold hover:underline cursor-pointer flex items-center whitespace-nowrap">
-                    Set a goal
-                  </button>
-                </div>
-
-                {goalProgress.length === 0 ? (
-                  <p className="text-[11px] text-white/50">
-                    No active goal. Set one — e.g. “Complete 50 Graph problems by Oct 30.”
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {goalProgress.map((gp) => (
-                      <div key={gp.goal.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <span className="text-sm font-bold text-white">{gp.goal.title}</span>
-                          <button
-                            onClick={async () => {
-                              // Shared goal, whole squad affected: confirm first, and a
-                              // failure must say so instead of failing silent.
-                              if (!window.confirm(`Mark "${gp.goal.title}" complete for the whole squad?`)) return;
-                              try {
-                                await completeSquadGoal(gp.goal.id, gp.goal.squad_id);
-                                await load();
-                              } catch {
-                                setLoadError("Couldn't mark the goal complete. Try again.");
-                              }
-                            }}
-                            className="min-h-11 px-3 -mx-3 text-[11px] text-white/55 hover:text-[#30d158] font-semibold cursor-pointer flex items-center whitespace-nowrap"
-                          >
-                            Mark complete
-                          </button>
-                        </div>
-                        <div className="text-[11px] text-white/55 mt-1 font-mono">
-                          {gp.done} / {gp.target} solves
-                          {gp.goal.pattern ? ` · ${gp.goal.pattern}` : ""}
-                          {gp.goal.starts_at ? ` · since ${gp.goal.starts_at}` : ""}
-                          {gp.daysRemaining != null ? ` · ${gp.daysRemaining}d left` : ""}
-                        </div>
-                        <div className="text-[10px] text-white/50 mt-0.5">
-                          {gp.participants} of {gp.memberCount}{" "}
-                          {gp.memberCount === 1 ? "member has" : "members have"} contributed
-                        </div>
-                        <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                          <div className="h-full rounded-full bg-[#fa586a] transition-all" style={{ width: `${gp.pct}%` }} />
-                        </div>
-                        {/* The nudge only appears when it is close enough to act on. */}
-                        {gp.nudge && (
-                          <p className="text-[11px] text-[#ff9f0a] mt-1.5">{gp.nudge}</p>
-                        )}
-                        {gp.remaining === 0 && (
-                          <p className="text-[11px] text-[#30d158] mt-1.5">Goal reached.</p>
-                        )}
-                      </div>
-                    ))}
+      {squads.length === 0 ? (
+        <div className="card space-y-3 p-12 text-center">
+          <p className="text-sm font-medium leading-5 text-text-primary">Your squad is waiting.</p>
+          <p className="mx-auto max-w-sm text-sm leading-6 text-text-secondary">
+            Create one and invite 2–7 friends — or join with a code. Solo practice keeps working either way.
+          </p>
+          <div className="flex items-center justify-center gap-2 pt-1">
+            <Button variant="primary" className="min-h-[44px]" onClick={() => setShowCreate(true)}>
+              Create squad
+            </Button>
+            <Button variant="secondary" className="min-h-[44px]" onClick={() => setShowJoin(true)}>
+              Join with code
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
+          {/* Focal column */}
+          <div className="min-w-0 space-y-6">
+            <Pass
+              body={
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Flame className="h-6 w-6 text-primary" strokeWidth={1.5} />
+                    <span className="type-numeral-xl text-text-primary tnum">
+                      {streak ? `${streak.days} days` : activityError ? "—" : "…"}
+                    </span>
                   </div>
+                  <p className="text-sm leading-6 text-text-secondary">
+                    {streakLine}
+                  </p>
+                  <div className="space-y-1.5">
+                    <div className="grid grid-cols-[72px_repeat(7,1fr)] items-center gap-1 text-xs leading-4 text-text-tertiary">
+                      <span />
+                      {weekDays.map((d) => (
+                        <span key={d.key} className="text-center">{d.label}</span>
+                      ))}
+                    </div>
+                    {members.length > 0 ? (
+                      members
+                        .map((m) => ({
+                          id: m.user_id,
+                          name: (m.profile?.username || "Member").split(" ")[0],
+                          full: m.profile?.username || "Member",
+                        }))
+                        .map((row) => (
+                          <div key={row.id} className="grid grid-cols-[72px_repeat(7,1fr)] items-center gap-1">
+                            <span className="truncate text-xs leading-4 text-text-secondary">{row.name}</span>
+                            {weekDays.map((d, di) => {
+                              const filled = weekGrid[row.id]?.[di] ?? false;
+                              return (
+                                <span
+                                  key={d.key}
+                                  title={`${row.full} · ${d.label} · ${filled ? "solved" : "not yet"}`}
+                                  className={cn(
+                                    "mx-auto h-2 w-2 rounded-full",
+                                    filled ? "bg-verified" : "border border-hairline-strong"
+                                  )}
+                                />
+                              );
+                            })}
+                          </div>
+                        ))
+                    ) : (
+                      <p className="text-sm leading-6 text-text-secondary">No members yet.</p>
+                    )}
+                  </div>
+                  <Button variant="primary" size="lg" className="min-h-[44px]" onClick={() => (window.location.href = "/home")}>
+                    Solve today&apos;s battle
+                  </Button>
+                </div>
+              }
+              stub={
+                <>
+                  <PassSerial>{(activeSquad?.name ?? "Squad").toUpperCase()}</PassSerial>
+                  {streak ? <PassSerial>SINCE {formatSince(streak.since)}</PassSerial> : null}
+                  <PassSerial>{members.length} MEMBERS</PassSerial>
+                </>
+              }
+            />
+
+            {/* Goal card */}
+            <section className="card space-y-3" aria-label="Squad goal">
+              {firstGoal ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-lg font-semibold leading-7 text-text-primary">{firstGoal.goal.title}</h2>
+                    {firstGoal.goal.pattern && <PatternChip label={firstGoal.goal.pattern} />}
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-well">
+                    <div className="h-full rounded-full bg-pattern transition-all" style={{ width: `${Math.min(100, firstGoal.pct)}%` }} />
+                  </div>
+                  <p className="text-sm leading-6 text-text-secondary">
+                    {firstGoal.done} of {firstGoal.target}
+                    {firstGoal.daysRemaining != null ? ` · ${firstGoal.daysRemaining} days left` : " · 5 days left"}
+                  </p>
+                  <p className="text-xs leading-4 text-text-tertiary">
+                    {firstGoal.participants} of {firstGoal.memberCount} members have contributed
+                  </p>
+                  {firstGoal.nudge && <p className="text-sm leading-6 text-text-secondary">{firstGoal.nudge}</p>}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="ghost" className="min-h-[44px]" onClick={() => { setFormError(null); setShowGoal(true); }}>
+                      Edit goal
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="min-h-[44px]"
+                      onClick={async () => {
+                        if (!window.confirm(`Mark "${firstGoal.goal.title}" complete for the whole squad?`)) return;
+                        try {
+                          await completeSquadGoal(firstGoal.goal.id, firstGoal.goal.squad_id);
+                          await load();
+                        } catch {
+                          setLoadError("Couldn't mark the goal complete. Try again.");
+                        }
+                      }}
+                    >
+                      Mark complete
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-lg font-semibold leading-7 text-text-primary">No active goal yet</h2>
+                  <p className="text-sm leading-6 text-text-secondary">
+                    Set one to give the squad a shared target.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="ghost" className="min-h-[44px]" onClick={() => { setFormError(null); setShowGoal(true); }}>
+                      Set a goal
+                    </Button>
+                  </div>
+                </>
+              )}
+            </section>
+
+            {/* Members */}
+            <section className="space-y-2" aria-label="Squad members">
+              <h2 className="text-lg font-semibold leading-7 text-text-primary">Members</h2>
+              <div className="card divide-y divide-hairline">
+                {members.length === 0 ? (
+                  <p className="py-2.5 text-sm leading-6 text-text-secondary">No members yet.</p>
+                ) : (
+                  members
+                    .map((m) => ({
+                      id: m.user_id,
+                      name: m.profile?.username || "Member",
+                      admin: m.role === "admin",
+                      solves: solveCounts[m.user_id] ?? 0,
+                      streak: m.profile?.streak ?? 0,
+                      mine: m.user_id === user?.id,
+                    }))
+                    .map((m) => (
+                  <div key={m.id} className="flex min-h-[44px] items-center justify-between gap-2 py-2.5">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <Avatar name={m.name} size="md" />
+                      <div className="truncate">
+                        <span className="text-sm font-medium leading-5 text-text-primary">
+                          {m.name}
+                          {m.mine ? " (you)" : ""}
+                          {m.admin ? " · Admin" : ""}
+                        </span>
+                        <span className="block font-mono text-xs text-text-tertiary tnum">
+                          {m.solves} solves this week · {m.streak}-day streak
+                        </span>
+                      </div>
+                    </div>
+                    {!m.mine ? (
+                      <Link
+                        href={`/challenges?to=${m.id}`}
+                        className="inline-flex min-h-[44px] shrink-0 items-center rounded-md px-3 text-sm font-medium leading-5 text-text-secondary hover:bg-surface-raised hover:text-text-primary"
+                      >
+                        Challenge
+                      </Link>
+                    ) : (
+                      <span className="text-xs italic leading-4 text-text-tertiary">you</span>
+                    )}
+                  </div>
+                    ))
                 )}
               </div>
+            </section>
+          </div>
 
-              <div className="space-y-2">
-                <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider">Members</span>
-                <div className="divide-y divide-white/[0.04]">
-                  {members.map((m) => (
-                    <div key={`${m.squad_id}-${m.user_id}`} className="flex items-center justify-between py-2.5 gap-2">
-                      <div className="flex items-center gap-2.5 overflow-hidden">
-                        <div className="w-7 h-7 rounded-full bg-white/[0.06] border border-white/[0.08] flex items-center justify-center font-bold text-[10px] text-white shrink-0 overflow-hidden">
-                          {m.profile?.avatar_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={m.profile.avatar_url} alt={m.profile.username} className="w-full h-full object-cover" />
-                          ) : (
-                            (m.profile?.username || "?").charAt(0).toUpperCase()
-                          )}
-                        </div>
-                        <div className="truncate">
-                          <span className="text-xs font-semibold text-white">{m.profile?.username || "Member"}</span>
-                          {m.role === "admin" && <span className="ml-1.5 text-[10px] font-bold text-[#fa586a] uppercase">admin</span>}
-                          <span className="block text-[10px] text-white/50 font-mono">
-                            {solveCounts[m.user_id] ?? 0} solves · {m.profile?.streak ?? 0}d streak
-                          </span>
-                        </div>
-                      </div>
-                      {m.user_id !== user?.id ? (
-                        <Link href={`/challenges?to=${m.user_id}`} className="px-3 py-1.5 min-h-11 rounded-full bg-white/[0.04] hover:bg-[var(--accent-strong)] hover:text-white border border-white/[0.08] text-white/60 text-[11px] font-semibold transition-colors shrink-0 flex items-center whitespace-nowrap">
-                          Challenge
-                        </Link>
-                      ) : (
-                        <span className="text-[10px] text-white/55 italic">you</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
+          {/* Rail */}
+          <aside className="space-y-6">
+            {activeSquad && (
+              <section className="card space-y-2" aria-label="Invite your people">
+                <h2 className="text-lg font-semibold leading-7 text-text-primary">Invite your people</h2>
+                <button
+                  onClick={handleCopyInvite}
+                  className="flex min-h-[44px] w-full items-center justify-between rounded-md border border-hairline bg-well px-3 font-mono text-sm text-text-primary tnum"
+                  title="Copy invite code"
+                >
+                  <span>{activeSquad.invite_code}</span>
+                  {copied ? (
+                    <Check className="h-4 w-4 text-verified" strokeWidth={1.5} />
+                  ) : (
+                    <Copy className="h-4 w-4 text-text-tertiary" strokeWidth={1.5} />
+                  )}
+                </button>
+                <InviteLink squadId={activeSquad.id} squadName={activeSquad.name} />
+                <p className="text-xs leading-4 text-text-tertiary">Share the code or the link below.</p>
+              </section>
+            )}
+
+            <section className="card space-y-2" aria-label="Season">
+              <h2 className="text-lg font-semibold leading-7 text-text-primary">
+                {season ? season.name : "No active season"}
+              </h2>
+              <p className="text-sm leading-6 text-text-secondary">
+                {season
+                  ? season.objective_target != null
+                    ? `${seasonMetrics?.solves ?? 0} of ${season.objective_target}${season.objective_pattern ? ` ${season.objective_pattern}` : ""} solves`
+                    : season.objective
+                      ? season.objective
+                      : seasonMetrics
+                        ? `${seasonMetrics.solves} solves this season`
+                        : "Season progress loads with your solves."
+                  : "Start a season to track a squad objective."}
+              </p>
+              {seasonMetrics && (
+                <p className="font-mono text-xs text-text-tertiary tnum">
+                  {seasonMetrics.solves} solves · {seasonMetrics.challengesSent} sent · {seasonMetrics.approachesWritten} approaches
+                </p>
+              )}
+              <Link
+                href={activeId ? `/squad/${activeId}/seasons` : "/squad"}
+                className="inline-flex min-h-[44px] items-center text-sm font-medium leading-5 text-text-secondary hover:text-text-primary"
+              >
+                See season summary
+              </Link>
+            </section>
+
+            {activeId && (
+              <nav className="card space-y-1" aria-label="Squad links">
+                <Link
+                  href={`/squad/${activeId}/wall`}
+                  className="flex min-h-[44px] items-center justify-between text-sm font-medium leading-5 text-text-secondary hover:text-text-primary"
+                >
+                  Squad wall
+                  <span aria-hidden>›</span>
+                </Link>
+                <Link
+                  href={`/squad/${activeId}/recaps`}
+                  className="flex min-h-[44px] items-center justify-between text-sm font-medium leading-5 text-text-secondary hover:text-text-primary"
+                >
+                  Weekly recaps
+                  <span aria-hidden>›</span>
+                </Link>
+              </nav>
+            )}
+
+            <section className="space-y-2" aria-label="Weekly rhythm">
+              <h2 className="text-sm font-medium leading-5 text-text-secondary">Weekly rhythm</h2>
+              <p className="text-xs leading-4 text-text-tertiary">Mon: new goal · Wed: challenge day · Sun: recap</p>
+              <div className="grid grid-cols-2 gap-2">
+                {RITUALS.map((r) => (
+                  <Link
+                    key={r.day}
+                    href={r.href}
+                    className="card-interactive block min-h-[44px] rounded-xl border border-hairline bg-surface px-3 py-2"
+                  >
+                    <span className="font-mono text-xs text-text-tertiary tnum">{r.day}</span>
+                    <span className="block text-xs font-medium leading-4 text-text-primary">{r.label}</span>
+                  </Link>
+                ))}
               </div>
+            </section>
+
+            {hotChain && (
+              <Link
+                href={`/c/${hotChain.leafId}`}
+                className="card-interactive block rounded-xl border border-hairline bg-surface px-4 py-3"
+              >
+                <span className="block text-sm font-medium leading-5 text-text-primary">
+                  Challenge chain — {hotChain.problemTitle}
+                </span>
+                <span className="mt-1 block text-xs leading-4 text-text-tertiary">
+                  {hotChain.hops} {hotChain.hops === 1 ? "hop" : "hops"} · still open
+                </span>
+              </Link>
+            )}
+
+            <div className="flex items-center gap-1.5">
+              {streak ? (
+                <>
+                  <StreakChip
+                    count={streak.days}
+                    alive={members.length > 0 && unsolvedShort.length === 0}
+                  />
+                  <span className="text-xs leading-4 text-text-tertiary">squad streak</span>
+                </>
+              ) : (
+                <span className="text-xs leading-4 text-text-tertiary">
+                  {activityError ? "Couldn't load streak" : "Loading streak…"}
+                </span>
+              )}
             </div>
-          )}
-        </>
+          </aside>
+        </div>
       )}
 
-      {showCreate && (<ModalShell label="Create squad" onClose={() => setShowCreate(false)}>
-        <form onSubmit={handleCreate} className="space-y-4 p-1">
-          <h3 className="text-base font-bold text-white">Create a squad</h3>
-          <p className="text-[11px] text-white/55">2–7 friends works best. You&apos;ll get an invite code to share.</p>
-          {formError && <div className="text-xs text-[#ff453a]">{formError}</div>}
-          <input aria-label="Squad name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Graph Warriors" maxLength={60} required
-            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/55 focus:border-[#fa586a]/60" />
-          <input aria-label="What the squad is preparing for, optional" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What are you preparing for? (optional)" maxLength={500}
-            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/55 focus:border-[#fa586a]/60" />
-          <button type="submit" disabled={busy} className="w-full py-2.5 min-h-11 rounded-full btn-accent text-white text-xs font-bold disabled:opacity-50 cursor-pointer flex items-center justify-center">
-            {busy ? "Creating…" : "Create squad"}
-          </button>
-        </form>
-      </ModalShell>)}
+      {showCreate && (
+        <ModalShell label="Create squad" onClose={() => setShowCreate(false)}>
+          <form onSubmit={handleCreate} className="space-y-4 p-1">
+            <h3 className="font-display text-xl font-semibold text-text-primary">Create a squad</h3>
+            <p className="text-sm leading-6 text-text-secondary">2–7 friends works best. You&apos;ll get an invite code to share.</p>
+            {formError && <div className="text-sm leading-6 text-error">{formError}</div>}
+            <input
+              aria-label="Squad name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Graph Warriors"
+              maxLength={60}
+              required
+              className="w-full rounded-md border border-hairline bg-well px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong"
+            />
+            <input
+              aria-label="What the squad is preparing for, optional"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What are you preparing for? (optional)"
+              maxLength={500}
+              className="w-full rounded-md border border-hairline bg-well px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong"
+            />
+            <Button variant="secondary" size="full" loading={busy} className="min-h-[44px]">
+              Create squad
+            </Button>
+          </form>
+        </ModalShell>
+      )}
 
-      {showJoin && (<ModalShell label="Join squad" onClose={() => setShowJoin(false)}>
-        <form onSubmit={handleJoin} className="space-y-4 p-1">
-          <h3 className="text-base font-bold text-white">Join with invite code</h3>
-          {formError && <div className="text-xs text-[#ff453a]">{formError}</div>}
-          <input aria-label="Invite code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g. KQ7X2P9M" maxLength={8} required
-            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/55 focus:border-[#fa586a]/60 font-mono uppercase" />
-          <button type="submit" disabled={busy} className="w-full py-2.5 min-h-11 rounded-full btn-accent text-white text-xs font-bold disabled:opacity-50 cursor-pointer flex items-center justify-center">
-            {busy ? "Joining…" : "Join squad"}
-          </button>
-        </form>
-      </ModalShell>)}
+      {showJoin && (
+        <ModalShell label="Join squad" onClose={() => setShowJoin(false)}>
+          <form onSubmit={handleJoin} className="space-y-4 p-1">
+            <h3 className="font-display text-xl font-semibold text-text-primary">Join with invite code</h3>
+            {formError && <div className="text-sm leading-6 text-error">{formError}</div>}
+            <input
+              aria-label="Invite code"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              placeholder="e.g. KQ7X2P9M"
+              maxLength={8}
+              required
+              className="w-full rounded-md border border-hairline bg-well px-3.5 py-2.5 font-mono text-sm uppercase text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong"
+            />
+            <Button variant="secondary" size="full" loading={busy} className="min-h-[44px]">
+              Join squad
+            </Button>
+          </form>
+        </ModalShell>
+      )}
 
-      {showGoal && (<ModalShell label="Set squad goal" onClose={() => setShowGoal(false)}>
-        <form onSubmit={handleGoal} className="space-y-4 p-1">
-          <h3 className="text-base font-bold text-white">Set a squad goal</h3>
-          {/* Step 19 upgraded goals from the Step 5 v0 ("one active goal at a
-              time") to several, and getActiveGoals has always returned a list.
-              This line was the last thing still describing v0, so it told members
-              something false about what the squad could hold — a small line with
-              a real cost: someone who wanted a second goal would read this and
-              believe they could not. */}
-          <p className="text-[11px] text-white/55">
-            Several goals can run at once. Each one counts solves inside its own window, from its start date.
-          </p>
-          {formError && <div className="text-xs text-[#ff453a]">{formError}</div>}
-          <input aria-label="Goal title" value={goalTitle} onChange={(e) => setGoalTitle(e.target.value)} placeholder="e.g. Complete 50 Graph problems" maxLength={120} required
-            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/55 focus:border-[#fa586a]/60" />
-          <div className="grid grid-cols-2 gap-3">
-            <input aria-label="Target number of solves" value={goalTarget} onChange={(e) => setGoalTarget(e.target.value)} type="number" min={1} max={10000} placeholder="Target"
-              className="bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-[#fa586a]/60 font-mono" />
-            <input aria-label="Pattern, optional" value={goalPattern} onChange={(e) => setGoalPattern(e.target.value)} placeholder="Pattern (optional)"
-              className="bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/55 focus:border-[#fa586a]/60" />
-          </div>
-          <input aria-label="Deadline" value={goalDeadline} onChange={(e) => setGoalDeadline(e.target.value)} type="date"
-            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-[#fa586a]/60" />
-          <button type="submit" disabled={busy} className="w-full py-2.5 min-h-11 rounded-full btn-accent text-white text-xs font-bold disabled:opacity-50 cursor-pointer flex items-center justify-center">
-            {busy ? "Saving…" : "Set goal"}
-          </button>
-        </form>
-      </ModalShell>)}
-
-      {/* ── Season (Step 19). Plain counts, no unlocks, no shop. ── */}
-      {season && (
-        <section className="space-y-2">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider">
-              Season — {season.name}
-            </span>
-            <span className="text-[10px] text-white/50 font-mono">
-              {season.starts_at}
-              {season.ends_at ? ` → ${season.ends_at}` : " → open"}
-            </span>
-          </div>
-          {season.objective && (
-            <p className="text-xs text-white/50">{season.objective}</p>
-          )}
-          {seasonMetrics && (
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-              {[
-                { label: "Solves", value: seasonMetrics.solves },
-                { label: "Challenges sent", value: seasonMetrics.challengesSent },
-                { label: "Completed", value: seasonMetrics.challengesCompleted },
-                { label: "Approaches", value: seasonMetrics.approachesWritten },
-                { label: "Active members", value: seasonMetrics.activeMembers },
-              ].map((m) => (
-                <div key={m.label} className="p-3 rounded-2xl bg-white/[0.02] border border-white/[0.06] text-center">
-                  <div className="text-xl font-black text-white font-mono">{m.value}</div>
-                  <div className="text-[10px] text-white/50 mt-0.5">{m.label}</div>
-                </div>
-              ))}
+      {showGoal && (
+        <ModalShell label="Set squad goal" onClose={() => setShowGoal(false)}>
+          <form onSubmit={handleGoal} className="space-y-4 p-1">
+            <h3 className="font-display text-xl font-semibold text-text-primary">Set a squad goal</h3>
+            <p className="text-sm leading-6 text-text-secondary">
+              Several goals can run at once. Each one counts solves inside its own window, from its start date.
+            </p>
+            {formError && <div className="text-sm leading-6 text-error">{formError}</div>}
+            <input
+              aria-label="Goal title"
+              value={goalTitle}
+              onChange={(e) => setGoalTitle(e.target.value)}
+              placeholder="e.g. Complete 50 Graph problems"
+              maxLength={120}
+              required
+              className="w-full rounded-md border border-hairline bg-well px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong"
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                aria-label="Target number of solves"
+                value={goalTarget}
+                onChange={(e) => setGoalTarget(e.target.value)}
+                type="number"
+                min={1}
+                max={10000}
+                placeholder="Target"
+                className="rounded-md border border-hairline bg-well px-3.5 py-2.5 font-mono text-sm text-text-primary focus:border-hairline-strong"
+              />
+              <input
+                aria-label="Pattern, optional"
+                value={goalPattern}
+                onChange={(e) => setGoalPattern(e.target.value)}
+                placeholder="Pattern (optional)"
+                className="rounded-md border border-hairline bg-well px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong"
+              />
             </div>
-          )}
-          <p className="text-[10px] text-white/55">
-            Counts, not a score. There is nothing to unlock.
-          </p>
+            <input
+              aria-label="Deadline"
+              value={goalDeadline}
+              onChange={(e) => setGoalDeadline(e.target.value)}
+              type="date"
+              className="w-full rounded-md border border-hairline bg-well px-3.5 py-2.5 text-sm text-text-primary focus:border-hairline-strong"
+            />
+            <Button variant="secondary" size="full" loading={busy} className="min-h-[44px]">
+              Set goal
+            </Button>
+          </form>
+        </ModalShell>
+      )}
+
+      {season && seasonMetrics && (
+        <section className="space-y-2">
+          <span className="text-sm font-medium leading-5 text-text-secondary">Season — {season.name}</span>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {[
+              { label: "Solves", value: seasonMetrics.solves },
+              { label: "Challenges sent", value: seasonMetrics.challengesSent },
+              { label: "Completed", value: seasonMetrics.challengesCompleted },
+              { label: "Approaches", value: seasonMetrics.approachesWritten },
+              { label: "Active members", value: seasonMetrics.activeMembers },
+            ].map((m) => (
+              <div key={m.label} className="card p-3 text-center">
+                <div className="font-display text-2xl font-semibold text-text-primary tnum">{m.value}</div>
+                <div className="mt-0.5 text-xs leading-4 text-text-tertiary">{m.label}</div>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs leading-4 text-text-tertiary">Counts, not a score. There is nothing to unlock.</p>
         </section>
       )}
 
-      {/* ── Rituals (Step 19). Config only — nothing is scheduled. ── */}
-      <section className="space-y-2">
-        <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider">
-          Weekly rituals
-        </span>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {RITUALS.map((r) => (
-            <Link
-              key={r.day}
-              href={r.href}
-              className="p-3 rounded-2xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/[0.06] transition-all"
-            >
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold text-[#fa586a] font-mono">{r.day}</span>
-                <span className="text-[11px] font-bold text-white/80">{r.label}</span>
-              </div>
-              <div className="text-[10px] text-white/50 mt-1 leading-snug">{r.intent}</div>
-            </Link>
-          ))}
-        </div>
-        <p className="text-[10px] text-white/55">
-          A suggestion, not a schedule. Nobody is going to remind you.
-        </p>
-      </section>
-
-      {/* ── Longest live chain (Step 17) ── */}
-      {hotChain && (
-        <Link
-          href={`/c/${hotChain.leafId}`}
-          className="block p-5 rounded-3xl bg-[#bf5af2]/[0.07] border border-[#bf5af2]/25 hover:border-[#bf5af2]/45 transition-all"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-[11px] font-bold text-[#bf5af2] uppercase tracking-wider">
-              Challenge chain — {hotChain.problemTitle}
-            </div>
-            <span className={cn(
-              "px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider",
-              CHAIN_STATE_CLASS.active
-            )}>
-              {hotChain.hops} {hotChain.hops === 1 ? "hop" : "hops"} · {CHAIN_STATE_LABEL.active}
-            </span>
-          </div>
-          <p className="text-xs text-white/50 mt-1.5">
-            This problem has travelled through {hotChain.hops} {hotChain.hops === 1 ? "person" : "people"} in your squad and is still open.
-          </p>
-        </Link>
-      )}
-
-      {/* Step 20 surfaces. Both are read-only projections over rows that
-          already exist — nothing here creates a second source of truth. */}
       {activeId && (
-        <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex flex-wrap items-center gap-4">
           <Link
             href={`/squad/${activeId}/recaps`}
-            className="flex items-center gap-1.5 min-h-11 md:min-h-0 text-xs text-[#bf5af2] font-semibold hover:underline"
+            className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium leading-5 text-text-secondary hover:text-text-primary"
           >
-            <span>Weekly recaps</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            Weekly recaps
+            <span aria-hidden>→</span>
           </Link>
           <Link
             href={`/squad/${activeId}/wall`}
-            className="flex items-center gap-1.5 min-h-11 md:min-h-0 text-xs text-[#30d158] font-semibold hover:underline"
+            className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium leading-5 text-text-secondary hover:text-text-primary"
           >
-            <span>Squad wall</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            Squad wall
+            <span aria-hidden>→</span>
           </Link>
         </div>
       )}
 
-      <Link href="/challenges" className="flex items-center gap-1.5 min-h-11 md:min-h-0 text-xs text-[#fa586a] font-semibold hover:underline">
-        <span>Open challenges</span>
-        <ArrowRight className="w-3.5 h-3.5" />
+      <Link
+        href="/challenges"
+        className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium leading-5 text-text-secondary hover:text-text-primary"
+      >
+        Open challenges
+        <span aria-hidden>→</span>
       </Link>
     </div>
   );

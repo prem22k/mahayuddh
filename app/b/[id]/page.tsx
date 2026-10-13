@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { Check, ExternalLink } from "lucide-react";
 import { getServiceClient } from "@/lib/supabase/service";
 import { buildPublicCard, BattleCardInput, formatDuration } from "@/lib/battleCard";
 import { ShareRow } from "@/components/ui/ShareRow";
@@ -106,7 +107,6 @@ export async function generateMetadata({
     }${card.isPersonalRecord ? " — personal best" : ""}. ${card.stats.attempts} attempts${
       card.stats.challengesSent ? `, challenged ${card.stats.challengesSent} people` : ""
     }.`,
-    // A shared solve is worth indexing: it is the Loop B growth surface.
     openGraph: {
       title: `${who} solved ${card.title}`,
       description: solved ? `Solved in ${solved}` : "Solved",
@@ -126,106 +126,133 @@ export default async function BattleSharePage({
 
   const solved = card.solvedSec != null ? formatDuration(card.solvedSec) : null;
   const prev = card.previousBestSec != null ? formatDuration(card.previousBestSec) : null;
+  const verified = card.evidence === "leetcode";
   const who = card.ownerUsername ? `@${card.ownerUsername}` : "A Mahayuddh developer";
+  const dateLine = new Date(card.startedAt ?? new Date().toISOString())
+    .toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+    .toUpperCase();
+  const noLine = card.problemSlug ? `NO. ${card.problemSlug}` : "NO. 3";
 
   return (
-    <div className="min-h-screen bg-[#000] text-white">
-      <div className="max-w-2xl mx-auto px-5 py-14 space-y-8">
-        <header className="space-y-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/55">
-              Battle
-            </span>
-            {card.difficulty && (
-              <span className="px-2 py-0.5 rounded-full border border-white/[0.12] text-[10px] font-bold uppercase tracking-wider text-white/60">
-                {card.difficulty}
-              </span>
-            )}
-            {card.pattern && (
-              <span className="px-2 py-0.5 rounded-full bg-white/[0.06] text-[10px] font-bold text-white/50">
-                {card.pattern}
-              </span>
-            )}
-          </div>
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">{card.title}</h1>
-          <p className="text-sm text-white/50">
-            {who} · {new Date(card.startedAt ?? new Date().toISOString()).toLocaleDateString()}
-          </p>
-        </header>
+    <div className="min-h-screen bg-canvas text-text-primary">
+      <header className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4">
+        <span className="font-display text-lg font-semibold tracking-tight">Mahayuddh</span>
+        <Link
+          href="/login"
+          className="inline-flex min-h-[44px] items-center rounded-md px-3 text-sm font-medium leading-5 text-text-secondary hover:bg-surface-raised hover:text-text-primary"
+        >
+          Sign in
+        </Link>
+      </header>
 
-        <div className="rounded-3xl border border-white/[0.06] bg-gradient-to-br from-white/[0.04] to-transparent p-6">
-          <div className="text-4xl font-black font-mono">{solved ?? "—"}</div>
-          <div className="text-xs text-white/55 mt-1">
-            {prev ? (
-              <>
-                Previous best <span className="font-mono text-white/60">{prev}</span>
-              </>
+      <main className="mx-auto max-w-3xl space-y-4 px-4 pb-16 pt-6">
+        <div className="pass">
+          <div className="pass-body space-y-4">
+            <h1 className="font-display text-4xl font-semibold leading-none tracking-tight md:text-[44px]">
+              {card.title}
+            </h1>
+            <div className="flex flex-wrap items-center gap-2">
+              {card.difficulty && (
+                <span className="inline-flex h-6 items-center gap-1.5 rounded-sm px-2 text-xs font-medium leading-4 text-text-secondary">
+                  {card.difficulty}
+                </span>
+              )}
+              {card.pattern && (
+                <span className="inline-flex h-6 items-center rounded-full bg-pattern-tint px-2.5 text-xs font-medium leading-4 text-pattern">
+                  {card.pattern}
+                </span>
+              )}
+            </div>
+            <div className="type-mono-display tnum">{solved ?? "—"}</div>
+            <p className="text-sm leading-6 text-text-secondary">
+              {prev ? (
+                <>
+                  <span className="line-through">{prev}</span>
+                  {" → "}
+                  <span className="font-mono tnum">{solved}</span>
+                  {" · faster"}
+                </>
+              ) : (
+                "First timed solve"
+              )}
+              {card.isPersonalRecord && (
+                <span className="ml-2 inline-flex h-6 items-center rounded-sm bg-primary-tint px-2 text-xs font-medium leading-4 text-primary">
+                  Personal best
+                </span>
+              )}
+            </p>
+            <div className="flex items-center gap-2.5">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-surface-overlay text-xs font-medium text-text-secondary">
+                {(card.ownerUsername ?? "M").slice(0, 2).toUpperCase()}
+              </span>
+              <span className="text-sm leading-6 text-text-secondary">{who}</span>
+            </div>
+          </div>
+          <div className="pass-stub">
+            <div className="pass-serial">{who.toUpperCase().slice(0, 12)}</div>
+            <div className="pass-serial">{dateLine}</div>
+            <div className="pass-serial">{noLine.toUpperCase()}</div>
+            {verified ? (
+              <div className="seal-bloom mt-2 flex h-12 w-12 animate-stamp items-center justify-center rounded-full border border-verified/30">
+                <span className="flex flex-col items-center text-verified">
+                  <Check className="h-4 w-4" strokeWidth={1.5} />
+                  <span className="font-mono text-[10px] font-medium tracking-widest">VERIFIED</span>
+                </span>
+              </div>
             ) : (
-              "First timed solve"
+              <div className="pass-serial mt-2">SELF-REPORTED</div>
             )}
           </div>
-          {card.isPersonalRecord && (
-            <div className="mt-3 inline-block px-2 py-0.5 rounded-full bg-[#30d158]/15 border border-[#30d158]/30 text-[10px] font-bold text-[#30d158]">
-              Personal best
-            </div>
-          )}
         </div>
 
-        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-          {[
-            { label: "Attempts", value: card.stats.attempts },
-            { label: "Revisits", value: card.stats.revisits },
-            { label: "Challenged out", value: card.stats.challengesSent },
-            { label: "Friends solved it", value: card.stats.friendsCompleted },
-          ].map((s) => (
-            <div key={s.label} className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
-              <div className="text-2xl font-black font-mono">{s.value}</div>
-              <div className="text-[10px] uppercase tracking-wider text-white/50 mt-1">
-                {s.label}
-              </div>
-            </div>
-          ))}
-        </dl>
-
-        {/* Provenance is stated, not implied. Solved is not the same as understood. */}
-        <p className="text-xs text-white/50">
-          {card.evidence === "leetcode"
-            ? "Solved with LeetCode evidence."
-            : "Self-reported solve — logged by the developer, not independently verified."}
+        <p className="text-center text-xs leading-4 text-text-tertiary">
+          {card.stats.attempts} attempts · {card.stats.revisits} revisits · challenged {card.stats.challengesSent} ·{" "}
+          {card.stats.friendsCompleted} friends solved it
+        </p>
+        <p className="text-center text-sm leading-6 text-text-secondary">
+          {verified
+            ? "Verified against an accepted LeetCode submission."
+            : "Logged without a LeetCode match."}
         </p>
 
-        {/* Reads ?via= so a signup from this card can be credited to it (§56). */}
         <Suspense fallback={null}>
           <TrackVisit artifact={`battle:${id}`} />
         </Suspense>
 
-        <div className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-6 space-y-4">
-          <h2 className="text-lg font-bold">Solve the same problem</h2>
-          <p className="text-xs text-white/60">
-            Practice DSA with people you know. Solve it, then challenge them with it.
-          </p>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Link
-              href="/login"
-              className="px-5 py-2.5 rounded-full btn-accent text-white text-xs font-bold transition-all"
-            >
-              Start solving
-            </Link>
-            <Link
-              href={`/practice/${card.problemSlug}`}
-              className="px-5 py-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-white text-xs font-bold transition-all"
-            >
-              See the problem
-            </Link>
-            <ShareRow
-              path={`/b/${id}`}
-              artifact={{ kind: "battle", id }}
-              text={`I solved ${card.title} on Mahayuddh${solved ? ` in ${solved}` : ""}.`}
-              label="Share card"
-            />
-          </div>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Link
+            href="/login"
+            className="inline-flex h-12 min-h-[44px] items-center rounded-md bg-primary px-6 text-sm font-medium leading-5 text-on-primary hover:bg-primary-hover"
+          >
+            Try this problem
+          </Link>
+          <a
+            href={`https://leetcode.com/problems/${card.problemSlug}/`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-md bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary"
+          >
+            See it on LeetCode
+            <ExternalLink className="h-4 w-4" strokeWidth={1.5} />
+          </a>
+          <ShareRow
+            path={`/b/${id}`}
+            artifact={{ kind: "battle", id }}
+            text={`I solved ${card.title} on Mahayuddh${solved ? ` in ${solved}` : ""}.`}
+            label="Share"
+          />
         </div>
-      </div>
+
+        <footer className="flex flex-wrap items-center justify-center gap-2 pt-6 text-xs leading-4 text-text-tertiary">
+          <span>Mahayuddh · Practice DSA with your people</span>
+          <Link
+            href="/login"
+            className="inline-flex min-h-[44px] items-center font-medium text-text-primary underline decoration-hairline-strong underline-offset-[3px]"
+          >
+            Start your squad
+          </Link>
+        </footer>
+      </main>
     </div>
   );
 }

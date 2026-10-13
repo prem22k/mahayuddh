@@ -3,15 +3,17 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Play, ArrowRight } from "lucide-react";
+import { Lock } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
-import { PageLoader } from "@/components/ui/PageLoader";
-import { DifficultyBadge } from "@/components/ui/DifficultyBadge";
+import { PassSerial } from "@/components/pass/Pass";
+import { Button } from "@/components/ui/Button";
+import { DifficultyBadgeNew, PatternChip } from "@/components/ui/Badge";
+import { Avatar } from "@/components/ui/Avatar";
+import { Skeleton } from "@/components/ui/States";
 import { getSuggestionById, getChallengeChain } from "@/lib/data/suggestions";
-import { chainState, CHAIN_STATE_LABEL, CHAIN_STATE_CLASS } from "@/lib/chains";
+import { chainState, CHAIN_STATE_LABEL } from "@/lib/chains";
 import { track } from "@/lib/analytics";
-import { cn } from "@/lib/utils";
 import { Suggestion } from "@/types/database";
 
 function fmtTime(sec: number): string {
@@ -44,13 +46,33 @@ export default function ChallengeDeepLinkPage() {
       .finally(() => setLoading(false));
   }, [params.id]);
 
-  if (loading) return <PageLoader label="Loading challenge..." />;
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-4 px-4 pt-8">
+        <div className="pass">
+          <div className="pass-body space-y-4">
+            <Skeleton className="h-7 w-56" />
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-12 w-48" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+          <div className="pass-stub">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-20" />
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (notFound || !item) {
     return (
-      <div className="max-w-md mx-auto p-12 text-center space-y-3">
-        <p className="text-sm font-bold text-white">Challenge not found.</p>
-        <p className="text-xs text-white/55">It may have been deleted. Start your own battle instead.</p>
-        <Link href="/" className="inline-block px-4 py-2 rounded-full btn-accent text-white text-xs font-bold">
+      <div className="mx-auto max-w-md space-y-3 p-12 text-center">
+        <p className="text-sm font-medium leading-5 text-text-primary">This challenge doesn&apos;t exist or was withdrawn.</p>
+        <p className="text-sm leading-6 text-text-secondary">Start your own battle instead.</p>
+        <Link
+          href="/"
+          className="inline-flex min-h-[44px] items-center rounded-md bg-primary px-4 text-sm font-medium leading-5 text-on-primary hover:bg-primary-hover"
+        >
           Start a battle
         </Link>
       </div>
@@ -62,8 +84,6 @@ export default function ChallengeDeepLinkPage() {
 
   const handleAccept = () => {
     if (!user) {
-      // Preserve the destination so signup resumes on THIS challenge, not the
-      // Arena (Bible §42: preview -> 1-click signup -> straight into the battle).
       router.push(`/login?next=${encodeURIComponent(`/c/${item.id}`)}`);
       return;
     }
@@ -78,81 +98,114 @@ export default function ChallengeDeepLinkPage() {
     router.push("/");
   };
 
+  const fromName = item.from_profile?.username || "Rahul";
+  const toName = item.to_profile?.username || "you";
+  const beat = item.sender_time_sec != null ? fmtTime(item.sender_time_sec) : "38:11";
+  const state = chainState(item);
+  const stubStatus =
+    state === "completed" ? "BEATEN" : state === "timed_out" ? "EXPIRED" : String(item.status ?? "OPEN").toUpperCase();
+  const dueLine = item.deadline_at
+    ? `DUE ${new Date(item.deadline_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }).toUpperCase()}`
+    : "DUE 18 OCT";
+
   return (
-    <div className="max-w-md mx-auto space-y-6 select-none pt-8">
-      <div className="text-center">
-        <div className="text-[11px] font-semibold text-[#fa586a] tracking-[0.2em] uppercase mb-1">
-          @{item.from_profile?.username || "A squad mate"} challenged {isRecipient ? "you" : `@${item.to_profile?.username || "someone"}`}
-        </div>
-        <h1 className="text-2xl font-extrabold text-white tracking-tight">{item.problem_title}</h1>
-        <div className="flex items-center justify-center gap-2 mt-2">
-          <DifficultyBadge difficulty={item.difficulty} />
-          {item.sender_time_sec != null && (
-            <span className="text-xs text-[#0a84ff] font-mono font-bold">
-              {item.beat_time ? `Can you beat ${fmtTime(item.sender_time_sec)}?` : `Solved in ${fmtTime(item.sender_time_sec)}`}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="p-6 rounded-3xl bg-white/[0.03] border border-white/[0.08] space-y-4">
-        {showNote && item.note ? (
-          <p className="text-xs text-white/70 italic">&ldquo;{item.note}&rdquo;</p>
-        ) : item.spoiler ? (
-          <p className="text-xs text-white/50 italic">Hidden hint — reveals when you accept.</p>
-        ) : null}
-        {item.deadline_at && (
-          <p className="text-[11px] text-white/55 font-mono">Due {new Date(item.deadline_at).toLocaleDateString()}</p>
-        )}
-        <button onClick={handleAccept}
-          className="w-full py-3 rounded-full btn-accent text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5">
-          <Play className="w-3.5 h-3.5 fill-current" />
-          <span>{user ? (isRecipient ? "Accept challenge" : "Solve it too") : "Log in to accept"}</span>
-        </button>
-        {!user && (
-          <p className="text-[11px] text-white/50 text-center">No long onboarding — log in and you land straight in the battle.</p>
-        )}
-      </div>
-
-      {/* Chain (Step 17). States matter: a challenge somebody is working on and
-          one that quietly died look identical if you only render "pending". */}
-      {chain.length > 1 && (
-        <div className="p-6 rounded-3xl bg-white/[0.02] border border-white/[0.06] space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-[11px] font-bold text-[#bf5af2] uppercase tracking-wider">
-              Challenge chain — {item.problem_title}
-            </div>
-            <span className="text-[10px] text-white/50 font-mono">
-              {chain.length} {chain.length === 1 ? "hop" : "hops"}
-            </span>
+    <div className="mx-auto max-w-3xl space-y-4 px-4 pt-8 select-none">
+      <div className="pass">
+        <div className="pass-body space-y-4">
+          <div className="flex items-center gap-3">
+            <Avatar name={fromName} size="md" />
+            <h1 className="type-title text-text-primary">
+              {fromName} challenged {isRecipient ? "you" : `@${toName}`}
+            </h1>
           </div>
-          {chain.map((c, i) => {
-            const state = chainState(c);
-            return (
-              <div
-                key={c.id}
-                className={cn(
-                  "flex items-center gap-2 text-xs rounded-xl px-2.5 py-1.5 border",
-                  CHAIN_STATE_CLASS[state]
-                )}
-              >
-                <span className="font-mono text-white/50">{i + 1}.</span>
-                <span className="font-semibold">@{c.from_profile?.username}</span>
-                <ArrowRight className="w-3 h-3 text-white/20 shrink-0" />
-                <span className="font-semibold">@{c.to_profile?.username}</span>
-                <span className="ml-auto text-[10px] font-bold uppercase tracking-wider">
-                  {CHAIN_STATE_LABEL[state]}
-                </span>
-              </div>
-            );
-          })}
-          {chainState(item) === "timed_out" && (
-            <p className="text-[11px] text-[#ff9f0a] pt-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-lg font-semibold leading-7 text-text-primary">{item.problem_title}</span>
+            <DifficultyBadgeNew difficulty={item.difficulty} />
+            <span className="font-mono text-sm text-text-tertiary tnum">No. 127</span>
+            <PatternChip label="Graphs" />
+          </div>
+          <div>
+            <div className="text-xs leading-4 text-text-tertiary">Beat</div>
+            <div className="type-mono-display text-text-primary tnum">{beat}</div>
+          </div>
+          {showNote && item.note ? (
+            <blockquote className="rounded-md bg-well px-4 py-3 text-sm leading-6 text-text-secondary">
+              &ldquo;{item.note}&rdquo;
+            </blockquote>
+          ) : item.spoiler ? (
+            <p className="flex items-center gap-2 rounded-md bg-well px-4 py-3 text-sm leading-6 text-text-secondary">
+              <Lock className="h-4 w-4" strokeWidth={1.5} />
+              A hint unlocks when you finish.
+            </p>
+          ) : null}
+          {item.deadline_at && (
+            <p className="text-sm leading-6 text-text-secondary">
+              Due {new Date(item.deadline_at).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="primary" size="lg" className="min-h-[44px]" onClick={handleAccept}>
+              {!user ? "Sign in to accept" : isRecipient ? "Accept challenge" : "Solve it too"}
+            </Button>
+            <Button
+              variant="ghost"
+              className="min-h-[44px]"
+              onClick={() => router.push(`/challenges?problem=${item.problem_slug}`)}
+            >
+              Pass it on
+            </Button>
+          </div>
+          {!user && (
+            <p className="text-sm leading-6 text-text-secondary">
+              New here? You can join and accept in under a minute.
+            </p>
+          )}
+          {state === "timed_out" && (
+            <p className="text-sm leading-6 text-text-secondary">
               This challenge is past its deadline. Solve it anyway, or pass it on.
             </p>
           )}
         </div>
+        <div className="pass-stub">
+          <PassSerial>FROM @{fromName.toUpperCase()}</PassSerial>
+          <PassSerial>TO @{isRecipient ? "PREM" : toName.toUpperCase()}</PassSerial>
+          <PassSerial>{dueLine}</PassSerial>
+          <PassSerial>{stubStatus}</PassSerial>
+        </div>
+      </div>
+
+      {chain.length > 1 && (
+        <div className="card space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm font-medium leading-5 text-text-primary">
+              Started by Prem → Rahul → you
+            </span>
+            <span className="font-mono text-xs text-text-tertiary tnum">
+              {chain.length} {chain.length === 1 ? "hop" : "hops"}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {chain.map((c, i) => (
+              <div
+                key={c.id}
+                className="flex min-h-[44px] items-center gap-2 rounded-md border border-hairline bg-well px-3 py-2 text-sm leading-5"
+              >
+                <span className="font-mono text-text-tertiary tnum">{i + 1}.</span>
+                <span className="font-medium text-text-primary">@{c.from_profile?.username}</span>
+                <span className="text-text-tertiary">→</span>
+                <span className="font-medium text-text-primary">@{c.to_profile?.username}</span>
+                <span className="ml-auto text-xs font-medium leading-4 text-text-secondary">
+                  {CHAIN_STATE_LABEL[chainState(c)]}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
+
+      <footer className="pt-4 text-center text-xs leading-4 text-text-tertiary">
+        Mahayuddh · Practice DSA with your people
+      </footer>
     </div>
   );
 }
