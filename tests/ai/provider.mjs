@@ -144,6 +144,15 @@ async function main() {
       }, { provider: "anthropic" });
   });
 
+  await check("gemini rides the OpenAI-compatible wire, not Anthropic's", async () => {
+    await withMock(OK_REPLY, async (cfg, seen) => {
+      await askLadder({ config: cfg, requestedLevel: "nudge" });
+      assert.equal(seen[0].url, "/v1/chat/completions");
+      assert.equal(seen[0].headers["authorization"], "Bearer test-key");
+      assert.equal(seen[0].body.messages[0].role, "system");
+    }, { provider: "gemini" });
+  });
+
   console.log("\nthe failures a provider actually has\n");
 
   await check("a 401 becomes a credentials message, not the provider's body", async () => {

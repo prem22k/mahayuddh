@@ -284,5 +284,7 @@ export function practiceNextFromRecommendation(reasonCount: number): {
  * why no AI feature has ever returned an invented answer.
  */
 export function isProviderConfigured(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY);
+  return Boolean(
+    process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY
+  );
 }
