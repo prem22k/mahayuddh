@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { SharedResource, ResourceCategory, ResourceVisibility } from "@/types/database";
 import { DataError } from "@/lib/data/errors";
+import { validateExternalUrl } from "@/lib/security/urls";
 
 export async function getSharedResources(category?: ResourceCategory): Promise<SharedResource[]> {
   const supabase = createClient();
@@ -39,6 +40,13 @@ export async function createSharedResource(params: {
 }): Promise<SharedResource> {
   const supabase = createClient();
   const visibility = params.visibility ?? "public";
+  // https-only: javascript:/data:/file:/http: links must never be stored, and
+  // an unparseable value is rejected rather than silently nulled so the caller
+  // knows the link was dropped.
+  const externalVerdict = validateExternalUrl(params.externalUrl ?? null);
+  if (!externalVerdict.ok) {
+    throw new DataError("vault", "That link looks invalid. Use a full https:// URL and try again.");
+  }
   const { data, error } = await supabase
     .from("shared_resources")
     .insert({
@@ -46,7 +54,7 @@ export async function createSharedResource(params: {
       category: params.category,
       content: params.content,
       author_id: params.authorId || null,
-      external_url: params.externalUrl || null,
+      external_url: externalVerdict.url,
       visibility,
       squad_id: visibility === "squad" ? (params.squadId ?? null) : null,
     })

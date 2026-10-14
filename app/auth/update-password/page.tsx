@@ -30,8 +30,21 @@ function UpdatePasswordForm() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (!data.session) {
+    supabase.auth.getUser().then(({ data }) => {
+      const user = data.user as unknown as {
+        amr?: Array<{ method?: string } | string>;
+      } | null;
+      const amr = user?.amr ?? [];
+      // A normal signed-in session must NOT reach this form: only a recovery
+      // session (amr contains "recovery") may set the password here. Without
+      // this gate, any logged-in user could change their password without
+      // proving ownership of the emailed link.
+      const isRecovery = amr.some((entry) =>
+        typeof entry === "string"
+          ? entry === "recovery"
+          : entry?.method === "recovery"
+      );
+      if (!data.user || !isRecovery) {
         router.replace("/login?error=auth_callback_failed");
         return;
       }
@@ -64,15 +77,30 @@ function UpdatePasswordForm() {
         return;
       }
       // Revoke everything else (control 3). Uses the current access token —
-      // the caller's own — to sign the account out globally.
+      // the caller's own — to sign the account out globally. Awaited and
+      // checked: a failed revoke must block the redirect and surface a retry
+      // rather than promising a global logout that never happened.
       const {
         data: { session },
       } = await supabase.auth.getSession();
       if (session?.access_token) {
-        await fetch("/api/auth/revoke-sessions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        }).catch(() => {});
+        let revoked = false;
+        try {
+          const res = await fetch("/api/auth/revoke-sessions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          });
+          revoked = res.ok;
+        } catch {
+          revoked = false;
+        }
+        if (!revoked) {
+          setErrorMsg(
+            "Password updated, but other devices may still be signed in. Please retry — sign in with the new password, then use \"log out everywhere\" again."
+          );
+          setLoading(false);
+          return;
+        }
       }
       await supabase.auth.signOut();
       router.replace("/login?notice=password_updated");

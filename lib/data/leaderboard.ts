@@ -62,7 +62,7 @@ export async function getGlobalLeaderboard(opts: {
   const { data, error } = await supabase.rpc("global_leaderboard", {
     p_segment: segment,
     p_pattern: opts.pattern ?? null,
-    p_limit: opts.limit ?? 25,
+    p_limit: Math.min(opts.limit ?? 25, 100),
     p_offset: opts.offset ?? 0,
   });
   if (error) throw new DataError("leaderboard", "Couldn't load the leaderboard. Retry.", { cause: error });

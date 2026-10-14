@@ -5,6 +5,7 @@ import {
   resolveUser,
 } from "@/lib/supabase/service";
 import { readJsonBounded } from "@/lib/security/body";
+import { validateAvatarUrl } from "@/lib/security/urls";
 import type { Profile } from "@/types/database";
 
 const PUBLIC_PROFILE_SELECT =
@@ -76,7 +77,12 @@ export async function POST(request: Request) {
     baseUsername = baseUsername.trim().slice(0, 30);
     if (!baseUsername) baseUsername = "Squad_Member";
 
-    const avatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
+    const avatarUrlRaw = user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
+    // https-only + host allowlist (same hosts as next.config images.remotePatterns).
+    // An untrusted provider value that fails validation is dropped to null rather
+    // than stored: profile creation must still succeed, just without the picture.
+    const avatarVerdict = validateAvatarUrl(avatarUrlRaw);
+    const avatarUrl = avatarVerdict.ok ? avatarVerdict.url : null;
 
     // Try insert; if collision on username, append random digits
     let createdProfile: Profile | null = null;

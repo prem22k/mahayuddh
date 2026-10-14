@@ -70,7 +70,7 @@ export async function getRankedFeed(
     p_scope: scope,
     p_squad_id: opts.squadId ?? null,
     p_viewer: user?.id ?? null,
-    p_limit: opts.limit ?? 30,
+    p_limit: Math.min(opts.limit ?? 30, 100),
   });
   if (error) throw new DataError("feed", "Couldn't load feed. Retry.", { cause: error });
 
@@ -325,13 +325,17 @@ async function fetchFeed(filter: { squadId?: string; limit?: number }): Promise<
   const supabase = createClient();
   let query = supabase
     .from("feed_events")
-    .select("*, actor:user_id (id, username, avatar_url)")
+    .select(
+      "id,user_id,event_type,problem_title,problem_slug,difficulty,squad_id,object_type,object_id,metadata,created_at,actor:user_id (id, username, avatar_url)"
+    )
     .order("created_at", { ascending: false })
     .limit(filter.limit ?? 30);
   if (filter.squadId) query = query.eq("squad_id", filter.squadId);
   const { data, error } = await query;
   if (error) throw new DataError("feed", "Couldn't load feed. Retry.", { cause: error });
-  return (data ?? []) as FeedEvent[];
+  // Embedded `actor:user_id (...)` widens to an array under the generated
+  // PostgREST types; the runtime shape is a single object (see FeedEvent).
+  return (data ?? []) as unknown as FeedEvent[];
 }
 
 export function getSquadFeed(squadId: string, limit = 30): Promise<FeedEvent[]> {
