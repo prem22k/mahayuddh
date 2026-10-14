@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 function initials(name: string) {
@@ -19,6 +20,9 @@ const sizes = {
   xl: "h-20 w-20 text-lg",
 } as const;
 
+/** intrinsic px per size (h-6=24, h-8=32, h-12=48, h-20=80) for next/image. */
+const sizePx = { sm: 24, md: 32, lg: 48, xl: 80 } as const;
+
 export function Avatar({
   name,
   src,
@@ -34,14 +38,23 @@ export function Avatar({
     <span
       title={name}
       className={cn(
-        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-overlay font-medium text-text-secondary",
+        "relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-overlay font-medium text-text-secondary",
         sizes[size],
         className
       )}
     >
       {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt="" className="h-full w-full rounded-full object-cover" />
+        <Image
+          src={src}
+          alt=""
+          fill
+          sizes={`${sizePx[size]}px`}
+          className="rounded-full object-cover"
+          // avatar_url is user-supplied and can point at any host: the
+          // optimizer would 400 on hosts outside remotePatterns, so serve
+          // the file as-is. Sizing/caching behavior is unchanged.
+          unoptimized
+        />
       ) : (
         initials(name)
       )}

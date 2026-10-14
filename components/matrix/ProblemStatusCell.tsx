@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import { Check, Clock, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TriState, ProblemEvent } from "@/types/database";
-import confetti from "canvas-confetti";
 
 interface ProblemStatusCellProps {
   status: TriState;
@@ -62,15 +61,20 @@ export function ProblemStatusCell({
     const persisted = await onToggle(next);
     if (next === "solved" && persisted !== false) {
       setAnimating(true);
-      confetti({
-        particleCount: 25,
-        spread: 45,
-        origin: {
-          x: e.clientX / window.innerWidth,
-          y: e.clientY / window.innerHeight,
-        },
-        colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
-      });
+      try {
+        const confetti = (await import("canvas-confetti")).default;
+        confetti({
+          particleCount: 25,
+          spread: 45,
+          origin: {
+            x: e.clientX / window.innerWidth,
+            y: e.clientY / window.innerHeight,
+          },
+          colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
+        });
+      } catch {
+        // ignore
+      }
       setTimeout(() => setAnimating(false), 600);
     }
   };

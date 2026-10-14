@@ -20,6 +20,17 @@ function breadcrumbFor(pathname: string | null): string {
   return head.charAt(0).toUpperCase() + head.slice(1);
 }
 
+/** Honest relative sync label from the profile row (never hardcoded). */
+function syncLabel(iso: string | null): string {
+  if (!iso) return "Not synced yet";
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (mins < 1) return "Synced just now";
+  if (mins < 60) return `Synced ${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `Synced ${hrs}h ago`;
+  return `Synced ${Math.floor(hrs / 24)}d ago`;
+}
+
 export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
   const pathname = usePathname();
   const { profile, user, refreshProfile } = useAuth();
@@ -71,7 +82,7 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
         >
           <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} strokeWidth={1.5} />
           <span className="hidden sm:inline">
-            {isSyncing ? "Syncing…" : "Synced 4m ago"}
+            {isSyncing ? "Syncing…" : syncLabel(profile?.last_synced_at ?? null)}
           </span>
         </button>
         <NotificationBell />

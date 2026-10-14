@@ -15,7 +15,6 @@ import {
   Lock,
   X,
 } from "lucide-react";
-import confetti from "canvas-confetti";
 import { slugifyTitle } from "@/lib/slug";
 import { copyText } from "@/lib/clipboard";
 import {
@@ -220,12 +219,17 @@ export default function SuggestionsPage() {
         setPassParent(null);
         setCreateError(null);
 
-        confetti({
-          particleCount: 60,
-          spread: 60,
-          origin: { y: 0.8 },
-          colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
-        });
+        try {
+          const confetti = (await import("canvas-confetti")).default;
+          confetti({
+            particleCount: 60,
+            spread: 60,
+            origin: { y: 0.8 },
+            colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
+          });
+        } catch {
+          // ignore
+        }
       } else if (res.reason === "duplicate") {
         setCreateError("This squad mate already has a pending challenge for that problem.");
       } else if (res.reason === "invalid") {
@@ -331,12 +335,17 @@ export default function SuggestionsPage() {
       setSuggestions((prev) =>
         prev.map((s) => (s.id === item.id ? { ...s, status: "completed", completed_at: new Date().toISOString() } : s))
       );
-      confetti({
-        particleCount: 50,
-        spread: 60,
-        origin: { y: 0.8 },
-        colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
-      });
+      try {
+        const confetti = (await import("canvas-confetti")).default;
+        confetti({
+          particleCount: 50,
+          spread: 60,
+          origin: { y: 0.8 },
+          colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
+        });
+      } catch {
+        // ignore
+      }
     } else if (res.reason === "not_solved") {
       setCompleteError("Mark the problem solved first (battle dock or roadmap), then mark complete. LeetCode sync only adds an evidence badge.");
     } else {

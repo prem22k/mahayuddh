@@ -21,6 +21,7 @@ import { getChallengesForSlug } from "@/lib/data/suggestions";
 import { toggleBookmark, isBookmarked, getReviewForSlug } from "@/lib/data/review";
 import { getApproachesForProblem, createApproach, setApproachVisibility, deleteApproach } from "@/lib/data/approaches";
 import { BoundedAssistant } from "@/components/ai/BoundedAssistant";
+import { FirstSolvePushPrompt } from "@/components/ui/FirstSolvePushPrompt";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
 import { Button } from "@/components/ui/Button";
@@ -94,10 +95,13 @@ export default function ProblemPage() {
     setLoading(true);
     setLoadError(null);
     try {
+      // True dependency first: primers derive from the catalog's topics.
       const [catalog] = await getCatalogBySlugs([slug]);
       setProblem(catalog ?? null);
-      setPrimers(await getPrimersForPatterns(catalog?.topics ?? []).catch(() => []));
-      if (user) {
+      const topics = catalog?.topics ?? [];
+      // Everything else is independent — fetch concurrently, not serially.
+      const statusPromise = (async (): Promise<TriState> => {
+        if (!user) return "unsolved";
         const supabase = createClient();
         const { data: st } = await supabase
           .from("user_problem_status")
@@ -105,20 +109,44 @@ export default function ProblemPage() {
           .eq("user_id", user.id)
           .eq("problem_slug", slug)
           .maybeSingle();
-        setStatus(((st as { status: TriState } | null)?.status ?? "unsolved") as TriState);
-        setTimeline(await getProblemTimeline(slug, user.id));
+        return (((st as { status: TriState } | null)?.status ?? "unsolved") as TriState);
+      })();
+      const [
+        primers,
+        nextStatus,
+        timeline,
+        recent,
+        approaches,
+        bookmarked,
+        battles,
+        challenges,
+        review,
+      ] = await Promise.all([
+        getPrimersForPatterns(topics).catch(() => []),
+        statusPromise,
+        user ? getProblemTimeline(slug, user.id) : Promise.resolve([] as ProblemEvent[]),
+        getProblemTimeline(slug),
+        getApproachesForProblem(slug).catch(() => []),
+        user ? isBookmarked(slug).catch(() => false) : Promise.resolve(false),
+        user ? getBattlesForSlug(slug, 5).catch(() => []) : Promise.resolve([] as Battle[]),
+        user ? getChallengesForSlug(slug).catch(() => []) : Promise.resolve([] as Suggestion[]),
+        user ? getReviewForSlug(slug).catch(() => null) : Promise.resolve(null),
+      ]);
+      setPrimers(primers);
+      if (user) {
+        setStatus(nextStatus);
+        setTimeline(timeline);
       } else {
         setStatus("unsolved");
         setTimeline([]);
       }
-      const recent = await getProblemTimeline(slug);
       setSquadActivity(recent.slice(-10).reverse());
-      setApproaches(await getApproachesForProblem(slug).catch(() => []));
+      setApproaches(approaches);
       if (user) {
-        setBookmarked(await isBookmarked(slug).catch(() => false));
-        setBattles(await getBattlesForSlug(slug, 5).catch(() => []));
-        setChallenges(await getChallengesForSlug(slug).catch(() => []));
-        setReview(await getReviewForSlug(slug).catch(() => null));
+        setBookmarked(bookmarked);
+        setBattles(battles);
+        setChallenges(challenges);
+        setReview(review);
       }
     } catch (err) {
       setLoadError(dataErrorMessage(err, "Couldn't load this problem. Retry."));
@@ -433,6 +461,9 @@ export default function ProblemPage() {
               </Button>
             </section>
           )}
+
+          {/* Contextual push prompt: once, after a solve, wired to the bell flow. */}
+          {user && status === "solved" && <FirstSolvePushPrompt />}
 
           {/* Tabs */}
           <div className="overflow-x-auto">

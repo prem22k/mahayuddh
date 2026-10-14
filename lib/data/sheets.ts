@@ -5,11 +5,17 @@ import { CustomList, ListProblem, UserProblemStatus, TriState, Problem } from "@
 import { CURATED_SHEETS } from "@/lib/data/curatedSheetsData";
 import { DataError } from "@/lib/data/errors";
 
+/** Explicit projections (no `*`): every column of each table, per schema. */
+const CUSTOM_LIST_COLUMNS = "id,slug,title,emoji,description,is_curated,created_by,created_at";
+// list_problems has no created_at column in the schema.
+const LIST_PROBLEM_COLUMNS = "id,list_id,title,title_slug,difficulty,category,order_index";
+const STATUS_COLUMNS = "id,user_id,problem_slug,status,notes,solved_at";
+
 export async function getAllLists(): Promise<CustomList[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("custom_lists")
-    .select("*")
+    .select(CUSTOM_LIST_COLUMNS)
     .order("is_curated", { ascending: false });
 
   if (!error && data && data.length > 0) {
@@ -43,7 +49,7 @@ export async function getAllProblems(): Promise<ListProblem[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("list_problems")
-    .select("*")
+    .select(LIST_PROBLEM_COLUMNS)
     .order("order_index", { ascending: true });
 
   if (!error && data && data.length > 0) {
@@ -74,7 +80,7 @@ export async function getListWithProblems(slug: string): Promise<{
 
   const { data: listData } = await supabase
     .from("custom_lists")
-    .select("*")
+    .select(CUSTOM_LIST_COLUMNS)
     .eq("slug", slug)
     .maybeSingle();
 
@@ -100,7 +106,7 @@ export async function getListWithProblems(slug: string): Promise<{
   if (listData?.id) {
     const { data: problemsData } = await supabase
       .from("list_problems")
-      .select("*")
+      .select(LIST_PROBLEM_COLUMNS)
       .eq("list_id", listData.id)
       .order("order_index", { ascending: true });
 
@@ -236,7 +242,7 @@ export async function getSquadProblemStatuses(
     const slice = problemSlugs.slice(i, i + CHUNK);
     let query = supabase
       .from("user_problem_status")
-      .select("*")
+      .select(STATUS_COLUMNS)
       .in("problem_slug", slice);
     if (userId) query = query.eq("user_id", userId);
     const { data, error } = await query;

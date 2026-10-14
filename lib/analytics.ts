@@ -58,6 +58,9 @@ function ensureFlushTimer(): void {
   if (timerStarted || typeof window === "undefined") return;
   timerStarted = true;
   window.setInterval(() => {
+    // Skip the flush while the tab is hidden: the queue persists in
+    // localStorage and the pagehide listener below still lands it on unload.
+    if (document.visibilityState !== "visible") return;
     void flushAnalytics();
   }, FLUSH_INTERVAL_MS);
   // sendBeacon survives page unload; fetch may be cancelled mid-navigation.

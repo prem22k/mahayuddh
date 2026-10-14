@@ -21,7 +21,6 @@ import { cn } from "@/lib/utils";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { Spinner } from "@/components/ui/Spinner";
 import { FormAlert } from "@/components/ui/FormAlert";
-import confetti from "canvas-confetti";
 
 interface ConnectLeetCodeModalProps {
   isOpen: boolean;
@@ -95,12 +94,17 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
 
       await refreshProfile();
       setSuccess(`Connected @${username.trim()}! Solved stats, rating, and last 100 ACs synced.`);
-      confetti({
-        particleCount: 60,
-        spread: 60,
-        origin: { y: 0.8 },
-        colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
-      });
+      try {
+        const confetti = (await import("canvas-confetti")).default;
+        confetti({
+          particleCount: 60,
+          spread: 60,
+          origin: { y: 0.8 },
+          colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
+        });
+      } catch {
+        // ignore
+      }
       setTimeout(() => {
         onConnected?.();
         onClose();
@@ -144,12 +148,17 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
       setSuccess(`Imported ${json.imported ?? 0} solved problems. Your full history is now synced!`);
       setPassword("");
       setSessionCookie("");
-      confetti({
-        particleCount: 70,
-        spread: 70,
-        origin: { y: 0.8 },
-        colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
-      });
+      try {
+        const confetti = (await import("canvas-confetti")).default;
+        confetti({
+          particleCount: 70,
+          spread: 70,
+          origin: { y: 0.8 },
+          colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
+        });
+      } catch {
+        // ignore
+      }
       await refreshProfile();
       setTimeout(() => {
         onConnected?.();

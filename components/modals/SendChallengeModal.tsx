@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import { X } from "lucide-react";
-import confetti from "canvas-confetti";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
@@ -134,12 +133,17 @@ export function SendChallengeModal({
         }).catch(() => {});
         onSent(res.suggestion);
         onClose();
-        confetti({
-          particleCount: 60,
-          spread: 60,
-          origin: { y: 0.8 },
-          colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
-        });
+        try {
+          const confetti = (await import("canvas-confetti")).default;
+          confetti({
+            particleCount: 60,
+            spread: 60,
+            origin: { y: 0.8 },
+            colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
+          });
+        } catch {
+          // ignore
+        }
       } else if (res.reason === "duplicate") {
         setCreateError("This squad mate already has a pending challenge for that problem.");
       } else if (res.reason === "invalid") {

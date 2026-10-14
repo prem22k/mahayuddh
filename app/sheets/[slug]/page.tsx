@@ -31,7 +31,6 @@ import { getVerifiedSolvers } from "@/lib/data/squadActivity";
 import { getActiveSquadId, getSquadMemberIds } from "@/lib/data/squads";
 import { track } from "@/lib/analytics";
 import { CustomList, ListProblem, Problem, TriState } from "@/types/database";
-import confetti from "canvas-confetti";
 
 const STATUS_FILTERS = ["All", "Solved", "Attempted", "To do"] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
@@ -248,14 +247,19 @@ function SheetContent() {
       track("battle_solved", { via: "roadmap_batch", count: slugs.length });
     }
 
-    // Celebrate only persisted solves.
+    // Celebrate only persisted solves (confetti lazy-loaded at celebration time).
     if (next === "solved") {
-      confetti({
-        particleCount: 50,
-        spread: 60,
-        origin: { y: 0.7 },
-        colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
-      });
+      try {
+        const confetti = (await import("canvas-confetti")).default;
+        confetti({
+          particleCount: 50,
+          spread: 60,
+          origin: { y: 0.7 },
+          colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
+        });
+      } catch {
+        // ignore
+      }
     }
   };
 

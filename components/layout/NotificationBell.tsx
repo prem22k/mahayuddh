@@ -9,6 +9,7 @@ import {
   markAllRead,
   markRead,
 } from "@/lib/data/notifications";
+import { requestPushPermission } from "@/lib/pushPermission";
 import { track } from "@/lib/analytics";
 import type { Notification } from "@/types/database";
 
@@ -79,7 +80,12 @@ export function NotificationBell() {
 
   useEffect(() => {
     void refresh();
-    const t = setInterval(() => void refresh(), 60_000);
+    // Skip the poll while the tab is hidden: no one is looking, and the
+    // unread count refreshes on return via mount/focus anyway.
+    const t = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void refresh();
+    }, 60_000);
     return () => clearInterval(t);
   }, [refresh]);
 
@@ -106,9 +112,8 @@ export function NotificationBell() {
       window.open("https://support.google.com/chrome/answer/3223642", "_blank", "noopener");
       return;
     }
-    const permission = await Notification.requestPermission();
-    setPushGranted(permission === "granted");
-    track("notification_push_toggled", { granted: permission === "granted" });
+    const granted = await requestPushPermission();
+    setPushGranted(granted);
   };
 
   return (

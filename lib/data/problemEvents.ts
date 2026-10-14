@@ -2,6 +2,9 @@ import { createClient } from "@/lib/supabase/client";
 import { ProblemEvent, ProblemEventKind } from "@/types/database";
 import { DataError } from "@/lib/data/errors";
 
+/** Explicit projection: every problem_events column, per schema. */
+const EVENT_COLUMNS = "id,user_id,problem_slug,kind,battle_id,duration_sec,metadata,created_at";
+
 /** Append a history event (timelines are append-only; never update/delete). */
 export async function logProblemEvent(params: {
   problemSlug: string;
@@ -38,7 +41,7 @@ export async function getProblemTimeline(
   const supabase = createClient();
   let query = supabase
     .from("problem_events")
-    .select("*")
+    .select(EVENT_COLUMNS)
     .eq("problem_slug", problemSlug.toLowerCase())
     .order("created_at", { ascending: true })
     .limit(limit);
@@ -61,7 +64,7 @@ export async function getOwnProblemTimeline(
   if (!user) return [];
   const { data, error } = await supabase
     .from("problem_events")
-    .select("*")
+    .select(EVENT_COLUMNS)
     .eq("problem_slug", problemSlug.toLowerCase())
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
