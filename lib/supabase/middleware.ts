@@ -104,13 +104,23 @@ export async function updateSession(request: NextRequest) {
   const isPublicSeasonPath = /^\/squad\/[^/]+\/seasons\/[^/]+$/.test(
     request.nextUrl.pathname
   );
+  // Crawler + resilience surfaces. /sitemap.xml and /robots.txt must answer
+  // for search engines (bouncing them to /login silently de-indexes the
+  // public pages). /offline is the PWA + failover hub: the service worker
+  // falls back to it with no network, and logged-out visitors must reach it
+  // for the backup-server path to exist at all.
+  const p = request.nextUrl.pathname;
+  const isCrawlerOrResiliencePath =
+    p === "/offline" || p === "/sitemap.xml" || p === "/robots.txt";
+
   const isPublicSharePath =
     isInvitePath ||
     isPublicRecapPath ||
     isPublicPrimerPath ||
     isPublicSeasonPath ||
     isWelcomePath ||
-    isSocialCard;
+    isSocialCard ||
+    isCrawlerOrResiliencePath;
 
   // Fast-path: Check if any Supabase auth cookies exist in request
   const allCookies = request.cookies.getAll();
