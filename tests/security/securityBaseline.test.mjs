@@ -618,6 +618,63 @@ describe("static invariants", () => {
     walk("app/api");
     assert.deepEqual(offenders, [], `unbounded body parse in: ${offenders.join(", ")}`);
   });
+
+  it("every app RPC is in the EXECUTE keep-list (no silent exposure, no silent breakage)", async () => {
+    const { readFileSync, readdirSync } = await import("node:fs");
+    // The hardening migration revokes EXECUTE on every public function, then
+    // re-grants exactly the RPCs the app calls. A new .rpc("name") that is not
+    // added to the keep-list breaks at runtime; a function dropped from the
+    // keep-list while still called does too. This test greps the call sites
+    // (app/ + lib/) and asserts each name appears in the keep-list file.
+    const sql = readFileSync(
+      "supabase/migrations/20261004000003_security_hardening.sql",
+      "utf8"
+    );
+    // Granted to anon/authenticated: `grant execute on function public.<name>(`.
+    const granted = new Set(
+      [...sql.matchAll(/grant execute on function public\.([a-z_][a-z0-9_]*)\s*\(/gi)].map(
+        (m) => m[1].toLowerCase()
+      )
+    );
+    // Service-role callers documented in the same file's header
+    // ("Deliberately NOT re-granted (service-role callers only)"). They are
+    // still part of the keep-list (the app calls them via the service client),
+    // just not exposed to anon/authenticated. Parsed from the header so the
+    // test fails if the header stops documenting one. Header lists bare names
+    // (attribute_join, ...) plus suffixed overloads (my_referral_links(uuid)),
+    // so any token containing an underscore in that block counts.
+    const headerStart = sql.indexOf("Deliberately NOT re-granted");
+    const headerEnd = sql.indexOf("FUTURE FUNCTIONS");
+    const headerBlock =
+      headerStart >= 0 && headerEnd > headerStart
+        ? sql.slice(headerStart, headerEnd)
+        : "";
+    const serviceOnly = new Set(
+      [...headerBlock.matchAll(/([a-z]+_[a-z0-9_]*)/gi)].map((m) =>
+        m[1].toLowerCase()
+      )
+    );
+    const keepList = new Set([...granted, ...serviceOnly]);
+
+    const called = new Set();
+    const walk = (dir) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = `${dir}/${e.name}`;
+        if (e.isDirectory()) {
+          if (!["node_modules", ".next", ".git"].includes(e.name)) walk(p);
+        } else if (/\.(ts|tsx)$/.test(e.name)) {
+          const src = readFileSync(p, "utf8");
+          for (const m of src.matchAll(/\.rpc\(\s*["']([A-Za-z_][A-Za-z0-9_]*)["']/g)) {
+            called.add(m[1].toLowerCase());
+          }
+        }
+      }
+    };
+    walk("app");
+    walk("lib");
+    const offenders = [...called].filter((name) => !keepList.has(name));
+    assert.deepEqual(offenders, [], `RPCs missing from the keep-list: ${offenders.join(", ")}`);
+  });
 });
 // ── 9. Password recovery + session revocation (controls 3, 4, 5, 12, 17) ────
 // Recovery tokens are provider-owned (Supabase: single-use, expiring). What
@@ -727,5 +784,244 @@ describe("login abuse friction", () => {
       /poweredByHeader:\s*false/.test(src),
       "X-Powered-By must be disabled"
     );
+  });
+});
+
+// ── 10. Wave A correctness invariants (static) ───────────────────────────────
+// These assert the bug fixes stay fixed. Static style like section 8: read the
+// shipped source and refuse the old shapes.
+
+describe("wave A: squad-local days (IST)", () => {
+  it("squadActivity has no viewer-local day bucketing", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = stripComments(readFileSync("lib/data/squadActivity.ts", "utf8"));
+    assert.ok(!/setHours/.test(src), "setHours-based bucketing must not come back");
+    assert.ok(!/startOfTodayLocal/.test(src), "viewer-local start-of-day must not come back");
+    assert.ok(!/toLocalDayKey/.test(src), "viewer-local day keys must not come back");
+    assert.ok(
+      /squadDays/.test(src) && /squadStartOfTodayUtcISO|squadTodayDayNum/.test(src),
+      "day bucketing must come from the squad-local (IST) helper"
+    );
+  });
+
+  it("the squad page week labels use the same IST buckets", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = stripComments(readFileSync("app/squad/page.tsx", "utf8"));
+    assert.ok(
+      /squadWeekDayNums|squadDayKeyFromDayNum/.test(src),
+      "week labels must reuse the squad-local buckets"
+    );
+  });
+
+  it("goal deadlines stay positive in the future", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("lib/data/goals.ts", "utf8");
+    assert.ok(
+      /daysBetween\(now,\s*(new Date\()?goal\.deadline/.test(src),
+      "deadline must be the second arg to daysBetween"
+    );
+    assert.ok(
+      !/daysBetween\(goal\.deadline,\s*now\)/.test(src),
+      "inverted daysBetween args must not come back"
+    );
+  });
+});
+
+describe("wave A: timer truth", () => {
+  it("the provider accumulates with performance.now() and freezes on hide", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("components/providers/SolvingProvider.tsx", "utf8");
+    assert.ok(/performance\.now\(\)/.test(src), "elapsed must accumulate from performance.now() deltas");
+    assert.ok(/visibilitychange/.test(src), "hidden tabs must auto-pause");
+    assert.ok(/pausedAccum|lastPerfRef|accumRef/.test(src), "pause must freeze accumulation state");
+  });
+
+  it("only the leader tab heartbeats and stale sessions stop honestly", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = stripComments(readFileSync("components/layout/NowSolvingBar.tsx", "utf8"));
+    assert.ok(/BroadcastChannel/.test(src), "multi-tab heartbeats need leader election");
+    assert.ok(/expired/.test(src), "stale heartbeats must surface expiry");
+    assert.ok(
+      /session expired, restart the battle/i.test(src),
+      "an expired session must say so instead of counting silently"
+    );
+  });
+
+  it("heartbeat never regresses duration and end requires a live row", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("app/api/battles/route.ts", "utf8");
+    assert.ok(
+      /wantDuration|GREATEST/.test(src) && /stored/.test(src),
+      "heartbeat must guard against regressing duration (GREATEST-style)"
+    );
+    const heartbeatIdx = src.indexOf('action === "heartbeat"');
+    const endIdx = src.indexOf('action === "end"');
+    assert.ok(heartbeatIdx >= 0 && endIdx > heartbeatIdx, "both actions must exist");
+    assert.ok(
+      /\.eq\("outcome", "in_progress"\)/.test(src),
+      "heartbeat and end must scope writes to in_progress rows"
+    );
+    assert.ok(/410/.test(src) && /expired/.test(src), "stale writes must answer 410/expired");
+  });
+
+  it("a start race returns the live row instead of 500", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("app/api/battles/route.ts", "utf8");
+    assert.ok(/23505/.test(src), "the one-live-per-user race must be caught");
+    assert.ok(/resumed/.test(src), "a raced start must return the existing live row");
+  });
+});
+
+describe("wave A: streaks and weekly counts", () => {
+  it("leetcode streaks are never maxed and never zero-filled on failure", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = stripComments(readFileSync("app/api/sync/leetcode/route.ts", "utf8"));
+    assert.ok(!/Math\.max\(prev\?\.streak/.test(src), "immortal max() streaks must not come back");
+    assert.ok(/streak_updated_at/.test(src), "successful streak writes must stamp streak_updated_at");
+    assert.ok(
+      /streak\?: number \| null|streak\?: number/.test(src),
+      "a missing streak (fetch failure) must be representable, not coerced to 0"
+    );
+  });
+
+  it("member solves are a real 7-day window, not all-time", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = stripComments(readFileSync("lib/data/squads.ts", "utf8"));
+    assert.ok(/problem_events/.test(src), "weekly counts must read the event timeline");
+    assert.ok(
+      /7 \* 86_400_000|7 \* 86400|sinceISO/.test(src),
+      "weekly counts must bound to the last 7 days"
+    );
+  });
+
+  it("the two streaks are labeled distinctly", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = stripComments(readFileSync("app/squad/page.tsx", "utf8"));
+    assert.ok(/LeetCode streak/.test(src), "member streaks must say LeetCode streak");
+    assert.ok(/squad streak/.test(src), "the shared streak must say squad streak");
+  });
+});
+
+describe("wave A: quiet hours (IST)", () => {
+  it("both TS call sites share one IST helper", async () => {
+    const { readFileSync } = await import("node:fs");
+    for (const p of ["app/api/notify/route.ts", "lib/data/notifications.ts"]) {
+      const src = stripComments(readFileSync(p, "utf8"));
+      assert.ok(
+        /inQuietHoursIST|quietHours/.test(src),
+        `${p} must use the shared quiet-hours helper`
+      );
+      assert.ok(
+        !/\.getHours\(\)/.test(src),
+        `${p} must not compute quiet hours from viewer-local getHours()`
+      );
+    }
+    const helper = readFileSync("lib/quietHours.ts", "utf8");
+    assert.ok(/Asia\/Kolkata/.test(helper), "quiet hours default to Asia/Kolkata");
+    assert.ok(/22/.test(helper) && /8/.test(helper), "quiet hours stay 22:00-08:00");
+  });
+});
+
+describe("wave A: challenge and reminder races", () => {
+  it("suggestion writes are guarded to pending rows", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("lib/data/suggestions.ts", "utf8");
+    const guards = (src.match(/\.eq\("status", "pending"\)/g) || []).length;
+    assert.ok(guards >= 3, `accept/remind/complete/dismiss need pending guards (found ${guards})`);
+    assert.ok(
+      /reminded_at\.is\.null,reminded_at\.lt\./.test(src),
+      "reminders must enforce the 24h window in WHERE"
+    );
+  });
+
+  it("dismiss never writes completed_at", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = stripComments(readFileSync("lib/data/suggestions.ts", "utf8"));
+    const dismissIdx = src.indexOf("dismissSuggestion");
+    assert.ok(dismissIdx >= 0, "dismissSuggestion must exist");
+    const window = src.slice(dismissIdx, dismissIdx + 1200);
+    assert.ok(!/completed_at/.test(window), "dismiss must leave completed_at alone (no dismissed_at column exists)");
+  });
+
+  it("stuck reminders are throttled in WHERE on open rows", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("lib/data/stuck.ts", "utf8");
+    assert.ok(/\.eq\("status", "open"\)/.test(src), "stuck writes must guard to open rows");
+    assert.ok(
+      /last_reminded_at\.is\.null,last_reminded_at\.lt\./.test(src),
+      "stuck reminders must enforce the 24h window in WHERE"
+    );
+  });
+
+  it("bookmark races resolve to bookmarked instead of throwing", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("lib/data/review.ts", "utf8");
+    assert.ok(/23505/.test(src), "toggleBookmark must handle the duplicate race");
+  });
+});
+
+// ── 11. Wave D deep-continue CTAs (static) ───────────────────────────────────
+// Every public artifact CTA must carry ?next=<artifact> so a logged-out
+// visitor lands back on the artifact after auth (Bible §42). Static style like
+// section 8: read the shipped pages and refuse a bare /login CTA.
+
+describe("wave D: deep-continue CTAs", () => {
+  it("every public artifact page carries ?next= on its CTAs", async () => {
+    const { readFileSync } = await import("node:fs");
+    const pages = [
+      "app/b/[id]/page.tsx",
+      "app/u/[username]/page.tsx",
+      "app/squad/[id]/recaps/[recapId]/page.tsx",
+      "app/squad/[id]/seasons/[seasonId]/page.tsx",
+      "app/squad/join/[code]/page.tsx",
+    ];
+    for (const p of pages) {
+      const src = readFileSync(p, "utf8");
+      assert.ok(
+        src.includes("?next=") || src.includes("&next=") || src.includes("next=${"),
+        `${p} must carry ?next= on its public CTAs`
+      );
+    }
+  });
+
+  it("artifact CTAs route through the shared safeNext() helper", async () => {
+    const { readFileSync } = await import("node:fs");
+    for (const p of [
+      "app/b/[id]/page.tsx",
+      "app/u/[username]/page.tsx",
+      "app/squad/join/[code]/page.tsx",
+    ]) {
+      const src = readFileSync(p, "utf8");
+      assert.ok(
+        src.includes("safeNext"),
+        `${p} must build ?next= through lib/safeNext.ts, not string concat alone`
+      );
+    }
+  });
+
+  it("the join sign-in preserves ?ref= inside ?next=", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("app/squad/join/[code]/page.tsx", "utf8");
+    assert.ok(
+      /ref=.*next=|next=.*ref=/.test(src),
+      "the join header sign-in must keep the referral inside the continuation"
+    );
+  });
+
+  it("no public artifact CTA points at a bare /login", async () => {
+    const { readFileSync } = await import("node:fs");
+    // A bare href="/login" (exact string, no query) drops the visitor on the
+    // generic page after auth. Template URLs with ?next= do not match.
+    for (const p of [
+      "app/b/[id]/page.tsx",
+      "app/u/[username]/page.tsx",
+      "app/squad/[id]/recaps/[recapId]/page.tsx",
+    ]) {
+      const src = readFileSync(p, "utf8");
+      assert.ok(
+        !/href="\/login"/.test(src),
+        `${p} must not link at a bare /login`
+      );
+    }
   });
 });
