@@ -41,7 +41,8 @@ export type SecurityEventName =
   | "input.rejected"
   | "ssrf.rejected"
   | "cron.denied"
-  | "oversize_request";
+  | "oversize_request"
+  | "csrf.bearer_bypass";
 
 /** Keys that are safe to pass through even though they match the pattern. */
 const SAFE_KEYS = new Set(["detail", "reason", "actor_id", "detail_kind"]);

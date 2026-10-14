@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import {
+  BEARER_BYPASS_PREFIX,
   checkCrossOriginRequest,
   isDeclaredCrossSite,
   parseAllowedOrigins,
@@ -58,6 +59,8 @@ export async function middleware(request: NextRequest) {
   // sent Sec-Fetch-Site but no usable Origin, which is the shape of an actual
   // CSRF attempt and never the shape of the one configured cross-origin caller.
   const secFetchSite = request.headers.get("sec-fetch-site");
+  const authHeader = request.headers.get("authorization") ?? "";
+  const hasBearer = /^bearer\s+\S+/i.test(authHeader);
   const originVerdict = checkCrossOriginRequest({
     method: request.method,
     pathname: request.nextUrl.pathname,
@@ -65,9 +68,22 @@ export async function middleware(request: NextRequest) {
     secFetchSite,
     requestOrigin: request.nextUrl.origin,
     allowedOrigins: allowedOrigins(),
+    hasBearer,
   });
+  // The backstop catches anonymised requests that passed only for lack of an
+  // origin — but a bearer-present pass is a verdict, not an absence: the
+  // caller authenticated out-of-band, so there is nothing to backstop.
+  const bearerPass =
+    originVerdict.ok && (originVerdict.reason ?? "").startsWith(BEARER_BYPASS_PREFIX);
+  if (bearerPass) {
+    logSecurityEvent("csrf.bearer_bypass", {
+      method: request.method,
+      path: request.nextUrl.pathname,
+      reason: originVerdict.reason,
+    });
+  }
   const crossSiteDeclared =
-    originVerdict.ok && isDeclaredCrossSite(secFetchSite)
+    originVerdict.ok && !bearerPass && isDeclaredCrossSite(secFetchSite)
       ? { ok: false, reason: "sec-fetch-site: cross-site with no allowlisted origin" }
       : originVerdict;
 

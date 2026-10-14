@@ -163,6 +163,50 @@ describe("checkCrossOriginRequest", () => {
       assert.equal(v.ok, false, `${method} must be protected`);
     }
   });
+
+  it("allows an anonymised origin when a Bearer token is presented", () => {
+    // Privacy browsers, in-app webviews, and sandboxed previews anonymise
+    // Origin. A Bearer token is never ambient — a cross-site attacker cannot
+    // attach the victim's — so the origin check adds nothing and the route's
+    // own 401 remains the enforcement point.
+    for (const input of [
+      { method: "POST", origin: "null", secFetchSite: null },
+      { method: "POST", origin: null, secFetchSite: "cross-site" },
+      { method: "POST", origin: "https://evil.example", secFetchSite: "cross-site" },
+    ]) {
+      const v = checkCrossOriginRequest({ ...base, ...input, hasBearer: true });
+      assert.equal(v.ok, true, `${JSON.stringify(input)} with Bearer must pass`);
+    }
+  });
+
+  it("still rejects anonymised origins WITHOUT a Bearer token", () => {
+    for (const input of [
+      { method: "POST", origin: "null", secFetchSite: null },
+      { method: "POST", origin: "https://evil.example", secFetchSite: "cross-site" },
+    ]) {
+      const v = checkCrossOriginRequest({ ...base, ...input });
+      assert.equal(v.ok, false, `${JSON.stringify(input)} without Bearer must fail`);
+    }
+    // Absent-Origin + cross-site declaration passes at THIS layer by design
+    // (absent header = non-browser client); middleware's isDeclaredCrossSite
+    // backstop closes it there. That division is covered by the middleware
+    // code path, not this unit.
+    const declared = checkCrossOriginRequest({
+      ...base,
+      method: "POST",
+      origin: null,
+      secFetchSite: "cross-site",
+    });
+    assert.equal(declared.ok, true, "absent Origin alone is a non-browser client at this layer");
+  });
+
+  it("an empty or malformed Bearer does not count as presenting one", () => {
+    // The `hasBearer` flag is derived in middleware by /^bearer\s+\S+/i.
+    // "Bearer" alone or "Bearer " is not a token and must not pass.
+    assert.doesNotMatch("bearer", /^bearer\s+\S+/i);
+    assert.doesNotMatch("Bearer ", /^bearer\s+\S+/i);
+    assert.match("Bearer abc123", /^bearer\s+\S+/i);
+  });
 });
 
 describe("normalizeOrigin", () => {
