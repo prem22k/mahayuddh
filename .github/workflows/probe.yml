@@ -1,0 +1,133 @@
+name: Prod probe (Render wake)
+
+# Every 5 minutes, curl /api/health on prod. On 2 consecutive failures:
+# resume the dormant Render free service + open an incident issue.
+# On 2 consecutive successes while an incident is open: suspend again +
+# close the issue. Consecutive-failure state lives in the workflow cache;
+# consecutive-recovery state lives in the incident issue's comments, so no
+# external state store is needed. Missing secrets/vars → warning + exit 0,
+# never red (fail closed).
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  probe:
+    name: Probe primary and wake backup when down
+    runs-on: ubuntu-latest
+    env:
+      APP_URL: ${{ vars.APP_URL }}
+      RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - name: Restore probe counter cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: probe-state
+          key: probe-state-v1
+          restore-keys: probe-state-
+
+      - name: Probe /api/health
+        id: probe
+        run: |
+          mkdir -p probe-state
+          if [ ! -f probe-state/fails ]; then echo 0 > probe-state/fails; fi
+          if [ -z "$APP_URL" ]; then
+            echo "::warning::APP_URL repo variable is not set — skipping probe (not red)."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          HOST=$(echo "$APP_URL" | sed -e 's#^https\?://##' -e 's#/$##')
+          CODE=$(curl -s -o /tmp/health.json -w "%{http_code}" --max-time 20 "https://${HOST}/api/health" || echo "000")
+          echo "HTTP $CODE:"
+          cat /tmp/health.json 2>/dev/null || echo "(no body)"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          cp /tmp/health.json probe-state/last-health.json 2>/dev/null || echo '{}' > probe-state/last-health.json
+          DB=$(jq -r '.db // "down"' /tmp/health.json 2>/dev/null || echo "down")
+          echo "db=$DB" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" = "200" ] && [ "$DB" = "up" ]; then
+            echo "healthy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "healthy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Handle failure streak
+        if: steps.probe.outputs.skip != 'true' && steps.probe.outputs.healthy == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FAILS=$(cat probe-state/fails 2>/dev/null || echo 0)
+          FAILS=$((FAILS + 1))
+          echo "$FAILS" > probe-state/fails
+          echo "Consecutive failures: $FAILS"
+          if [ "$FAILS" -lt 2 ]; then
+            echo "First failure — waiting for a second consecutive failure before acting."
+            exit 0
+          fi
+          # Two consecutive failures: check for an already-open incident.
+          OPEN=$(gh issue list --state open --search "[probe] in:title" --json number --jq '.[0].number // empty' || true)
+          if [ -n "$OPEN" ]; then
+            echo "Incident #$OPEN already open — not duplicating."
+            exit 0
+          fi
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "::warning::Render resume skipped: RENDER_API_KEY secret or RENDER_SERVICE_ID variable not set (not red)."
+          else
+            curl -sS -X POST "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/resume" \
+              -H "Authorization: Bearer ${RENDER_API_KEY}" \
+              -H "Accept: application/json" || echo "::warning::Render resume call failed (not red)."
+          fi
+          STAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          CODE="${{ steps.probe.outputs.code }}"
+          LOG=$(cat probe-state/last-health.json 2>/dev/null || echo "(no body)")
+          gh issue create \
+            --title "[probe] Primary down — $STAMP" \
+            --body "Two consecutive /api/health failures on $APP_URL (HTTP $CODE) at $STAMP. Render resume requested. Probe body: $LOG. Runbook: docs/RUNBOOK.md." \
+            --label incident 2>/dev/null || \
+          gh issue create \
+            --title "[probe] Primary down — $STAMP" \
+            --body "Two consecutive /api/health failures on $APP_URL (HTTP $CODE) at $STAMP. Render resume requested. Probe body: $LOG. Runbook: docs/RUNBOOK.md."
+
+      - name: Handle recovery streak
+        if: steps.probe.outputs.skip != 'true' && steps.probe.outputs.healthy == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo 0 > probe-state/fails
+          OPEN=$(gh issue list --state open --search "[probe] in:title" --json number --jq '.[0].number // empty' || true)
+          if [ -z "$OPEN" ]; then
+            echo "Healthy, no open incident."
+            exit 0
+          fi
+          # Recovery needs 2 consecutive successes: the first posts a marker
+          # comment, the second suspends + closes. Any failure between them
+          # breaks the streak because the failure handler runs instead.
+          LAST=$(gh issue view "$OPEN" --comments --json comments --jq '.comments[-1].body // ""' || echo "")
+          case "$LAST" in
+            *"Recovery probe success 1 of 2"*)
+              if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
+                echo "::warning::Render suspend skipped: RENDER_API_KEY secret or RENDER_SERVICE_ID variable not set (not red)."
+              else
+                curl -sS -X POST "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/suspend" \
+                  -H "Authorization: Bearer ${RENDER_API_KEY}" \
+                  -H "Accept: application/json" || echo "::warning::Render suspend call failed (not red)."
+              fi
+              gh issue close "$OPEN" --comment "Recovery confirmed: two consecutive healthy probes. Render suspended. Flip traffic back per docs/RUNBOOK.md."
+              ;;
+            *)
+              gh issue comment "$OPEN" --body "Recovery probe success 1 of 2 — primary healthy once, waiting for one more consecutive success before suspending."
+              ;;
+          esac
+
+      - name: Save probe counter cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: probe-state
+          key: probe-state-v1-${{ github.run_id }}

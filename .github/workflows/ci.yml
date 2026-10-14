@@ -13,11 +13,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run lint
       - run: npx tsc --noEmit
+      - run: npm run build
       - run: npm run test:smoke
       # Abuse-case suite for the 20-point baseline. Zero deps and no network, so
       # it runs in the same gate as everything else; the live-database half of

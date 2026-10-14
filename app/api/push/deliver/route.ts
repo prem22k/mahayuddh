@@ -3,7 +3,7 @@ import { getServiceClient, requireUser } from "@/lib/supabase/service";
 import { sendPushToUser } from "@/lib/push";
 import { readJsonBounded } from "@/lib/security/body";
 import { rateLimit, rateLimitKey, RATE_RULES } from "@/lib/security/rateLimit";
-import { logSecurityEvent } from "@/lib/security/log";
+import { logSecurityEvent, redactForLog } from "@/lib/security/log";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +75,19 @@ export async function POST(request: Request) {
       body: row.body ?? undefined,
       url: row.deep_link ?? undefined,
     });
+    if (result.sent === 0) {
+      console.warn(
+        JSON.stringify(
+          redactForLog({
+            event: "push.sent_zero",
+            route: "/api/push/deliver",
+            user_id: user.id,
+            sent: result.sent,
+            retired: result.retired,
+          })
+        )
+      );
+    }
     return NextResponse.json(result);
   } catch {
     // A push failure is not the bell's problem. The row is still unread and the

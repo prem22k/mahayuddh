@@ -1,0 +1,77 @@
+name: Nightly backup
+
+on:
+  schedule:
+    # 02:30 UTC daily — off-peak for both IST evenings and US nights.
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: pg_dump irreplaceable tables
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check DB URL secret
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set. Add it under Settings → Secrets → Actions as the Supabase pooled (or direct) Postgres connection string, then re-run."
+            exit 1
+          fi
+
+      - name: Install Postgres client
+        run: |
+          if ! command -v pg_dump >/dev/null 2>&1; then
+            sudo apt-get update && sudo apt-get install -y postgresql-client
+          fi
+
+      - name: Dump irreplaceable tables
+        run: |
+          STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          pg_dump "$SUPABASE_DB_URL" \
+            --data-only --column-inserts --no-owner --no-privileges \
+            -t public.profiles \
+            -t public.user_problem_status \
+            -t public.problem_events \
+            -t public.battles \
+            -t public.suggestions \
+            -t public.approaches \
+            -t public.primers \
+            -t public.notebook_notes \
+            -t public.feed_events \
+            -t public.notifications \
+            -t public.squads \
+            -t public.squad_members \
+            -t public.squad_goals \
+            -t public.squad_milestones \
+            -t public.squad_recaps \
+            -t public.squad_referrals \
+            -t public.squad_seasons \
+            | gzip > "mahayuddh-backup-$STAMP.sql.gz"
+          ls -lh "mahayuddh-backup-$STAMP.sql.gz"
+          echo "BACKUP_FILE=mahayuddh-backup-$STAMP.sql.gz" >> "$GITHUB_ENV"
+
+      - name: Upload backup artifact (30-day retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mahayuddh-backup-${{ env.STAMP }}
+          path: ${{ env.BACKUP_FILE }}
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Optional S3 copy (skips gracefully when unconfigured)
+        run: |
+          if [ -z "$BACKUP_S3_BUCKET" ] || [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "S3 backup skipped: BACKUP_S3_BUCKET / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY not all set."
+            exit 0
+          fi
+          export AWS_DEFAULT_REGION="${AWS_REGION:-us-east-1}"
+          aws s3 cp "$BACKUP_FILE" "s3://$BACKUP_S3_BUCKET/mahayuddh/$BACKUP_FILE"

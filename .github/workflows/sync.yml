@@ -6,6 +6,8 @@ on:
     - cron: '0 */3 * * *'
     # Catalog sync: weekly (LeetCode adds ~5 problems/week)
     - cron: '17 4 * * 1'
+    # Streak nudges: daily, morning IST (07:00 IST = 01:30 UTC)
+    - cron: '30 1 * * *'
   workflow_dispatch: # Allows manual trigger from GitHub Actions tab
 
 jobs:
@@ -23,15 +25,34 @@ jobs:
           # Page through handles (5/invocation) so each call stays under the
           # Vercel Hobby 10s function cap. Stops when hasMore != true.
           OFFSET=0
+          TOTAL_FAILED=0
+          FAILED_HANDLES=""
           for i in $(seq 1 40); do
             RESP=$(curl -sS -f "https://${APP_URL}/api/sync/leetcode?limit=5&offset=${OFFSET}" \
               -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}") || { echo "Sync page offset=$OFFSET failed"; echo "$RESP"; exit 1; }
             echo "$RESP"
             MORE=$(echo "$RESP" | jq -r '.hasMore // false')
             COUNT=$(echo "$RESP" | jq -r '.synced // 0')
+            PAGE_FAILED=$(echo "$RESP" | jq -r '(.failed // []) | length')
+            if [ "$PAGE_FAILED" != "0" ]; then
+              NAMES=$(echo "$RESP" | jq -r '(.failed // []) | join(" ")')
+              TOTAL_FAILED=$((TOTAL_FAILED + PAGE_FAILED))
+              FAILED_HANDLES="$FAILED_HANDLES $NAMES"
+            fi
             if [ "$COUNT" = "0" ] || [ "$MORE" != "true" ]; then break; fi
             OFFSET=$((OFFSET + 5))
           done
+          if [ "$TOTAL_FAILED" != "0" ]; then
+            {
+              echo "### LeetCode sync failures"
+              echo ""
+              echo "Failed handles ($TOTAL_FAILED):$FAILED_HANDLES"
+              echo ""
+              echo "Replay a page with the resume-offset curl in docs/RUNBOOK.md."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::LeetCode sync reported $TOTAL_FAILED failed handle(s):$FAILED_HANDLES"
+            exit 1
+          fi
 
   catalog:
     name: Sync LeetCode Problem Catalog
@@ -45,3 +66,21 @@ jobs:
           curl -X POST "https://${APP_URL}/api/sync/catalog" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -f || echo "Catalog sync completed or pending live deployment"
+
+  nudges:
+    name: Streak and lapsed nudges
+    runs-on: ubuntu-latest
+    # This workflow's schedules are shared: without the guard below, every
+    # sync tick would also fire the nudges (and vice versa). Manual runs still
+    # fire everything, which is the point of the button.
+    if: github.event.schedule == '30 1 * * *' || github.event_name == 'workflow_dispatch'
+    env:
+      APP_URL: ${{ vars.APP_URL }}
+    steps:
+      - name: Trigger streak nudges
+        run: |
+          if [ -z "$APP_URL" ]; then echo "::error::APP_URL repo variable is not set"; exit 1; fi
+          curl -X POST "https://${APP_URL}/api/cron/streak-nudges" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' -f

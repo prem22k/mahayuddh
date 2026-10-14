@@ -7,6 +7,7 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const backupUrl = process.env.NEXT_PUBLIC_BACKUP_URL;
   return (
     <html lang="en" className="dark">
       <body className="bg-canvas text-text-primary antialiased">
@@ -22,6 +23,19 @@ export default function GlobalError({
           >
             Reload Mahayuddh
           </button>
+          {backupUrl && (
+            <div className="flex flex-col items-center gap-1">
+              <a
+                href={backupUrl}
+                className="px-5 py-2.5 rounded-full bg-surface-overlay text-text-primary hover:brightness-110 text-xs font-bold"
+              >
+                Open backup server
+              </a>
+              <p className="text-xs text-text-tertiary max-w-sm">
+                The backup needs about a minute to wake up, and you will need to sign in again.
+              </p>
+            </div>
+          )}
         </div>
       </body>
     </html>
