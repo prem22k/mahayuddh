@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { safeNext } from "@/lib/safeNext";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const nextParam = searchParams.get("next") ?? "/";
-  // Only allow same-origin relative paths (block "//evil.com", "/\\evil.com", "https://...").
-  const next = nextParam.startsWith("/") && !nextParam.startsWith("//")
-    ? nextParam
-    : "/";
+  // Same-origin relative-path guard shared with middleware + login page.
+  const next = safeNext(searchParams.get("next")) ?? "/";
 
   if (code) {
     const supabase = await createClient();

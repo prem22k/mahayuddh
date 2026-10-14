@@ -8,7 +8,16 @@ import {
 } from "@/lib/supabase/service";
 import { fetchLeetCodeProfile, fetchRecentSubmissions, fetchUserCalendar, fetchSolvedSlugsFromSession } from "@/lib/leetcode";
 import { decryptSession } from "@/lib/leetcodeSession";
+import { readJsonBounded } from "@/lib/security/body";
 import type { Profile } from "@/types/database";
+
+// Squad-wide GET fans out to LeetCode per handle with a 1.5s politeness
+// delay, so large squads exceed Vercel Hobby's 10s cap. Cron-only path:
+// invoked by GitHub Actions, never from the UI. `?limit=&offset=` lets the
+// caller page through handles to stay under the timeout. maxDuration
+// applies on Pro/Render; on Hobby the cron caller pages via limit/offset.
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 async function fetchLeetCode(username: string): Promise<{
   profile: NonNullable<Awaited<ReturnType<typeof fetchLeetCodeProfile>>>;
@@ -44,13 +53,15 @@ async function persistStatsByHandle(
     contestTopPercentage?: number | null;
     contestAttended?: number | null;
     ranking?: number | null;
-    streak: number;
+    /** Null/undefined = calendar fetch failed: do not touch the stored streak. */
+    streak?: number | null;
     avatar?: string | null;
   },
   prev: { total_easy: number; total_medium: number; total_hard: number; streak: number } | null
 ): Promise<boolean> {
   const attended = stats.contestAttended ?? 0;
-  const updateData: Partial<Profile> = {
+  const nowISO = new Date().toISOString();
+  const updateData: Partial<Profile> & { streak_updated_at?: string | null } = {
     // LeetCode totals are cumulative: never regress on a partial upstream
     // failure (already filtered upstream, belt + suspenders here).
     total_easy: Math.max(prev?.total_easy ?? 0, stats.totalEasy ?? 0),
@@ -62,9 +73,14 @@ async function persistStatsByHandle(
     contest_attended: attended,
     contest_global_rank: attended > 0 ? (stats.contestGlobalRank ?? null) : null,
     contest_top_percentage: attended > 0 ? (stats.contestTopPercentage ?? null) : null,
-    streak: Math.max(prev?.streak ?? 0, stats.streak ?? 0),
-    last_synced_at: new Date().toISOString(),
+    last_synced_at: nowISO,
   };
+  // Streak is NOT cumulative: a real decrease (broken streak) must land.
+  // A missing streak means the calendar fetch failed — never treat it as 0.
+  if (typeof stats.streak === "number" && Number.isFinite(stats.streak) && stats.streak >= 0) {
+    updateData.streak = Math.trunc(stats.streak);
+    updateData.streak_updated_at = nowISO;
+  }
   if (stats.avatar) updateData.avatar_url = stats.avatar;
 
   const handle = leetcodeUsername.trim().toLowerCase();
@@ -85,6 +101,20 @@ async function persistStatsByHandle(
     .eq("id", profile.id);
 
   if (error) {
+    // streak_updated_at lands with its migration; until then, retry without it
+    // rather than failing the whole sync.
+    if (updateData.streak_updated_at && /streak_updated_at/i.test(error.message)) {
+      const { streak_updated_at: _drop, ...withoutStamp } = updateData;
+      const { error: retryErr } = await supabase
+        .from("profiles")
+        .update(withoutStamp)
+        .eq("id", profile.id);
+      if (retryErr) {
+        console.error("Sync persistence error:", retryErr);
+        return false;
+      }
+      return true;
+    }
     console.error("Sync persistence error:", error);
     return false;
   }
@@ -104,7 +134,8 @@ async function persistStats(
     contestTopPercentage?: number | null;
     contestAttended?: number | null;
     ranking?: number | null;
-    streak: number;
+    /** Null/undefined = calendar fetch failed: do not touch the stored streak. */
+    streak?: number | null;
     avatar?: string | null;
   },
   opts?: { userId?: string }
@@ -125,7 +156,8 @@ async function persistStats(
     .eq("id", opts.userId)
     .maybeSingle();
 
-  const updateData: Partial<Profile> = {
+  const nowISO = new Date().toISOString();
+  const updateData: Partial<Profile> & { streak_updated_at?: string | null } = {
     total_easy: Math.max(prev?.total_easy ?? 0, stats.totalEasy ?? 0),
     total_medium: Math.max(prev?.total_medium ?? 0, stats.totalMedium ?? 0),
     total_hard: Math.max(prev?.total_hard ?? 0, stats.totalHard ?? 0),
@@ -135,9 +167,14 @@ async function persistStats(
     contest_attended: attended,
     contest_global_rank: attended > 0 ? (stats.contestGlobalRank ?? null) : null,
     contest_top_percentage: attended > 0 ? (stats.contestTopPercentage ?? null) : null,
-    streak: Math.max(prev?.streak ?? 0, stats.streak ?? 0),
-    last_synced_at: new Date().toISOString(),
+    last_synced_at: nowISO,
   };
+  // Streak is NOT cumulative: a real decrease (broken streak) must land.
+  // A missing streak means the calendar fetch failed — never treat it as 0.
+  if (typeof stats.streak === "number" && Number.isFinite(stats.streak) && stats.streak >= 0) {
+    updateData.streak = Math.trunc(stats.streak);
+    updateData.streak_updated_at = nowISO;
+  }
   if (stats.avatar) updateData.avatar_url = stats.avatar;
 
   // Authenticated self-sync: write by user id (also claims handle on first connect).
@@ -149,6 +186,20 @@ async function persistStats(
     .eq("id", opts.userId);
 
   if (error) {
+    // streak_updated_at lands with its migration; until then, retry without it
+    // rather than failing the whole sync.
+    if (updateData.streak_updated_at && /streak_updated_at/i.test(error.message)) {
+      const { streak_updated_at: _drop, ...withoutStamp } = updateData;
+      const { error: retryErr } = await supabase
+        .from("profiles")
+        .update(withoutStamp)
+        .eq("id", opts.userId);
+      if (retryErr) {
+        console.error("Sync persistence error:", retryErr);
+        return false;
+      }
+      return true;
+    }
     console.error("Sync persistence error:", error);
     return false;
   }
@@ -175,7 +226,7 @@ async function verifySuggestions(
 
   const { data: pending } = await supabase
     .from("suggestions")
-    .select("id, problem_slug")
+    .select("id, problem_slug, from_user")
     .eq("to_user", profile.id)
     .eq("status", "pending")
     .in("problem_slug", Array.from(recentSlugs));
@@ -192,6 +243,54 @@ async function verifySuggestions(
     console.error("Suggestion verification error:", error);
     return 0;
   }
+  // Timeline: auto-verified completions append history like manual ones.
+  await supabase.from("problem_events").insert(
+    pending.map((s) => ({
+      user_id: profile.id,
+      problem_slug: s.problem_slug,
+      kind: "challenge_completed",
+      metadata: { source: "leetcode" },
+    }))
+  );
+
+  // Squad activity from LeetCode verification (anti-ghost, §50). Without this a
+  // squad that syncs purely via LeetCode shows an empty feed.
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("active_squad_id")
+    .eq("id", profile.id)
+    .maybeSingle();
+  const squadId = (prof as { active_squad_id: string | null } | null)?.active_squad_id;
+  if (squadId) {
+    await supabase.from("feed_events").insert(
+      pending.map((s) => ({
+        user_id: profile.id,
+        event_type: "complete",
+        squad_id: squadId,
+        object_type: "suggestion",
+        object_id: s.id,
+        problem_slug: s.problem_slug,
+        metadata: { source: "leetcode" },
+      }))
+    );
+  }
+
+  // The sender is owed an answer.
+  for (const s of pending) {
+    try {
+      await supabase.from("notifications").insert({
+        user_id: s.from_user,
+        kind: "challenge_completed",
+        title: "Challenge completed",
+        body: `Verified on LeetCode.`,
+        deep_link: `/c/${s.id}`,
+        actor_id: profile.id,
+      });
+    } catch {
+      // Best-effort: never block the verification pass.
+    }
+  }
+
   return pending.length;
 }
 
@@ -290,13 +389,22 @@ export async function GET(request: Request) {
     }
 
     const service = getServiceClient();
-    const handles = username
+    const allHandles = username
       ? [username.trim()]
       : service
         ? ((await service.from("profiles").select("leetcode_username").not("leetcode_username", "is", null)).data || [])
             .map((r) => r.leetcode_username as string | null)
             .filter((h): h is string => !!h)
         : [];
+    // Paging keeps each invocation under serverless timeouts: with a 1.5s
+    // politeness delay, ~5 handles ≈ 8s. Cron pages with ?limit=5&offset=N.
+    // No limit param = legacy behaviour (whole squad in one call).
+    const limitRaw = searchParams.get("limit");
+    const offsetRaw = searchParams.get("offset");
+    const limit = limitRaw === null ? allHandles.length : Math.min(Math.max(parseInt(limitRaw, 10) || 0, 1), 50);
+    const offset = Math.max(parseInt(offsetRaw ?? "0", 10) || 0, 0);
+    const handles = allHandles.slice(offset, offset + limit);
+    const totalHandles = allHandles.length;
     // Politeness delay between LeetCode hits so squad scale doesn't throttle.
     const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -321,7 +429,7 @@ export async function GET(request: Request) {
           contestTopPercentage: data.profile.contestTopPercentage ?? null,
           contestAttended: data.profile.contestAttended ?? 0,
           ranking: data.profile.ranking ?? null,
-          streak: data.calendar.streak ?? 0,
+          streak: data.calendar.streak,
           avatar: data.profile.avatar ?? null,
         });
         if (ok) persisted += 1;
@@ -346,6 +454,9 @@ export async function GET(request: Request) {
       inferredSolved: inferred,
       sessionImported,
       synced: handles.length,
+      totalHandles,
+      offset,
+      hasMore: offset + handles.length < totalHandles,
       failed,
     });
   } catch (error) {
@@ -356,8 +467,14 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { username } = body;
+    // Bounded read: this route is a credentialed sync, so an unbounded body is
+    // both a memory-exhaustion vector and an unauthenticated upstream-call
+    // amplifier if the auth check below were ever moved after the parse.
+    const parsed = await readJsonBounded<{ username?: unknown }>(request);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: "Request body too large." }, { status: 413 });
+    }
+    const { username } = parsed.value ?? {};
 
     if (!username || typeof username !== "string") {
       return NextResponse.json({ error: "Username is required" }, { status: 400 });
@@ -428,7 +545,7 @@ export async function POST(request: Request) {
       contestTopPercentage: data.profile.contestTopPercentage ?? null,
       contestAttended: data.profile.contestAttended ?? 0,
       ranking: data.profile.ranking ?? null,
-      streak: data.calendar.streak ?? 0,
+      streak: data.calendar.streak,
       avatar: data.profile.avatar ?? null,
     }, { userId: authedUserId });
 

@@ -1,9 +1,12 @@
 import { createClient } from "@/lib/supabase/client";
 import { normalizeSlugList } from "@/lib/slug";
 import { Problem, TriState } from "@/types/database";
+import { DataError } from "@/lib/data/errors";
 
 // PostgREST caps .in() lists and default selects at ~1000 rows; chunk / paginate
 // explicitly so the ~3.4k-row catalog never silently truncates.
+// Explicit projection: the problems table has exactly these columns.
+const PROBLEM_COLUMNS = "title_slug,title,difficulty,question_id,paid_only,topics,updated_at";
 const CATALOG_PAGE_SIZE = 1000;
 const MAX_CATALOG_ROWS = 5000;
 const MAX_SLUGS_PER_LOOKUP = 1000;
@@ -16,8 +19,15 @@ export async function getCatalogBySlugs(slugs: string[]): Promise<Problem[]> {
   const rows: Problem[] = [];
   for (let i = 0; i < unique.length; i += IN_CHUNK) {
     const slice = unique.slice(i, i + IN_CHUNK);
-    const { data, error } = await supabase.from("problems").select("*").in("title_slug", slice);
-    if (error || !data) continue;
+    const { data, error } = await supabase.from("problems").select(PROBLEM_COLUMNS).in("title_slug", slice);
+    // A failed chunk would silently drop 200 problems from the result. Throw so
+    // callers surface a retry instead of rendering an incomplete list (Step 0).
+    if (error) {
+      throw new DataError("catalog", "Couldn't load those problems. Retry.", { cause: error });
+    }
+    if (!data) {
+      throw new DataError("catalog", "Couldn't load those problems. Retry.");
+    }
     rows.push(...(data as Problem[]));
   }
   return rows;
@@ -46,9 +56,14 @@ export async function searchCatalogProblems(query: string, limit = 50): Promise<
     filters.push(`question_id.eq.${raw.trim()}`);
   }
 
-  const { data, error } = await supabase.from("problems").select("*").or(filters.join(",")).limit(safeLimit);
+  const { data, error } = await supabase.from("problems").select(PROBLEM_COLUMNS).or(filters.join(",")).limit(safeLimit);
 
-  if (error || !data) return [];
+  if (error) {
+    throw new DataError("catalog", "Search failed. Retry.", { cause: error });
+  }
+  if (!data) {
+    throw new DataError("catalog", "Search failed. Retry.");
+  }
   return data as Problem[];
 }
 
@@ -126,13 +141,35 @@ export async function getCatalogCount(): Promise<number> {
   const supabase = createClient();
   const { count, error } = await supabase
     .from("problems")
-    .select("*", { count: "exact", head: true });
+    .select("title_slug", { count: "exact", head: true });
 
   if (!error && typeof count === "number" && count > 0) {
     return count;
   }
+  // A hard failure here is worth surfacing: a wrong "0 problems" count reads as
+  // "you have solved everything".
+  if (error) {
+    throw new DataError("catalog", "Couldn't count the catalog. Retry.", { cause: error });
+  }
 
-  // Fallback count from unique curated problems
+  // Catalog genuinely empty (sync hasn't run): fall back to curated sheets.
   const unique = new Set(CURATED_SHEETS.flatMap((s) => s.problems.map((p) => p.title_slug)));
   return unique.size;
+}
+
+/** Problems tagged with a topic (pattern hub starters + approach scoping). */
+export async function getCatalogByTopic(topic: string, limit = 50): Promise<Problem[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("problems")
+    .select(PROBLEM_COLUMNS)
+    .contains("topics", [topic])
+    .limit(Math.min(Math.max(limit, 1), 100));
+  if (error) {
+    throw new DataError("catalog", "Couldn't load that pattern's problems. Retry.", { cause: error });
+  }
+  if (!data) {
+    throw new DataError("catalog", "Couldn't load that pattern's problems. Retry.");
+  }
+  return data as Problem[];
 }

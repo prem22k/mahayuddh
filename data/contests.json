@@ -1,0 +1,58 @@
+{
+  "_comment": [
+    "Contest calendar for Step 23 / Bible §36.",
+    "",
+    "MANUAL, NOT SCRAPED. The execution plan says \"manual LeetCode contest",
+    "calendar entry v0, no scraping\", and scraping leetcode.com would be both",
+    "fragile and a terms problem. So the calendar is data in this repository and",
+    "the sync script only upserts what is here.",
+    "",
+    "To add a week: append an entry with an ISO start time. Times are UTC, which",
+    "is what LeetCode posts contests in.",
+    "",
+    "Re-running the sync is safe. `contests` has a unique index on",
+    "(starts_at, platform), so the same week can be re-ingested any number of",
+    "times without creating a second reminder.",
+    "",
+    "Entries more than CONTEST_HORIZON_DAYS in the past are skipped, so an old",
+    "calendar cannot spam reminders retroactively."
+  ],
+  "contests": [
+    {
+      "title": "Weekly Contest",
+      "starts_at": "2026-10-04T00:00:00.000Z",
+      "platform": "leetcode",
+      "url": "https://leetcode.com/contest/"
+    },
+    {
+      "title": "Weekly Contest",
+      "starts_at": "2026-10-11T00:00:00.000Z",
+      "platform": "leetcode",
+      "url": "https://leetcode.com/contest/"
+    },
+    {
+      "title": "Weekly Contest",
+      "starts_at": "2026-10-18T00:00:00.000Z",
+      "platform": "leetcode",
+      "url": "https://leetcode.com/contest/"
+    },
+    {
+      "title": "Weekly Contest",
+      "starts_at": "2026-10-25T00:00:00.000Z",
+      "platform": "leetcode",
+      "url": "https://leetcode.com/contest/"
+    },
+    {
+      "title": "Weekly Contest",
+      "starts_at": "2026-11-01T00:00:00.000Z",
+      "platform": "leetcode",
+      "url": "https://leetcode.com/contest/"
+    },
+    {
+      "title": "Biweekly Contest",
+      "starts_at": "2026-10-10T17:00:00.000Z",
+      "platform": "leetcode",
+      "url": "https://leetcode.com/contest/"
+    }
+  ]
+}

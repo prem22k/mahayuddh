@@ -2,12 +2,36 @@
 
 import React, { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { X } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { NowSolvingBar } from "./NowSolvingBar";
+import { MobileTabBar } from "./MobileTabBar";
 import { SearchModal } from "../modals/SearchModal";
 import { LeetCodeAutoSync } from "@/components/providers/LeetCodeAutoSync";
 import { useAuth } from "@/components/providers/AuthProvider";
+
+function BackupModeBanner() {
+  const [dismissed, setDismissed] = useState(false);
+  if (process.env.NEXT_PUBLIC_BACKUP_MODE !== "true") return null;
+  if (dismissed) return null;
+  return (
+    <div
+      role="status"
+      className="flex items-center justify-between gap-3 border-b border-hairline bg-primary-tint px-4 py-2 text-sm leading-5 text-text-primary"
+    >
+      <p>You are on the backup server. Data may be up to a day old.</p>
+      <button
+        type="button"
+        aria-label="Dismiss backup notice"
+        onClick={() => setDismissed(true)}
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary"
+      >
+        <X className="h-4 w-4" strokeWidth={1.5} />
+      </button>
+    </div>
+  );
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -15,8 +39,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-  // Global Cmd/Ctrl+K toggles the search modal. Lives here (always mounted);
-  // SearchModal unmounts its listener when closed, so the shortcut can't open it.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -28,64 +50,73 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // If on login page or auth callbacks, show clean full-page view
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [pathname]);
+
   if (pathname?.startsWith("/login") || pathname?.startsWith("/auth")) {
-    return <main className="min-h-screen bg-surface-base">{children}</main>;
+    return (
+      <main className="min-h-screen bg-canvas">
+        <BackupModeBanner />
+        {children}
+      </main>
+    );
   }
 
-  // If not logged in, user will be redirected to /login by middleware
   if (!user) {
-    return <main className="min-h-screen bg-surface-base">{children}</main>;
+    return (
+      <main className="min-h-screen bg-canvas">
+        <BackupModeBanner />
+        {children}
+      </main>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-surface-base text-txt-primary">
-      {/* ── Floating Sidebar (desktop) ──────────────────── */}
-      <div className="hidden md:flex floating-sidebar">
+    <div className="min-h-screen bg-canvas text-text-primary">
+      <BackupModeBanner />
+      {/* Desktop sidebar S1 */}
+      <div className="shell-sidebar hidden md:flex">
         <Sidebar onSearchOpen={() => setIsSearchOpen(true)} />
       </div>
 
-      {/* ── Mobile Drawer Overlay ───────────────────────── */}
+      {/* Mobile drawer S2 */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-[200] flex md:hidden">
           <div
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            className="modal-scrim fixed inset-0"
             onClick={() => setIsMobileMenuOpen(false)}
           />
-          <div className="relative w-64 max-w-[80vw] h-full z-10">
-            <div className="h-full rounded-r-2xl overflow-hidden glass-panel border-r border-border-subtle">
-              <Sidebar
-                onSearchOpen={() => {
-                  setIsMobileMenuOpen(false);
-                  setIsSearchOpen(true);
-                }}
-              />
-            </div>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation"
+            className="relative z-10 h-full w-64 max-w-[80vw] border-r border-hairline bg-surface"
+          >
+            <Sidebar
+              onSearchOpen={() => {
+                setIsMobileMenuOpen(false);
+                setIsSearchOpen(true);
+              }}
+            />
           </div>
         </div>
       )}
 
-      {/* ── Main Content Area ───────────────────────────── */}
-      <div className="main-content-area">
-        <Header
-          onMenuToggle={() => setIsMobileMenuOpen(true)}
-          onSearchOpen={() => setIsSearchOpen(true)}
-        />
-        <main className="p-4 md:p-8 max-w-7xl mx-auto w-full">
-          {children}
-        </main>
+      <div className="shell-content">
+        <div className="shell-content-inner">
+          <Header
+            onMenuToggle={() => setIsMobileMenuOpen(true)}
+            onSearchOpen={() => setIsSearchOpen(true)}
+          />
+          <main className="pb-8 pt-6">{children}</main>
+        </div>
       </div>
 
-      {/* ── Floating Bottom Bar (Now Solving) ───────────── */}
       <NowSolvingBar onSearchOpen={() => setIsSearchOpen(true)} />
+      <MobileTabBar />
 
-      {/* ── Global Cmd+K Search Modal ───────────────────── */}
-      <SearchModal
-        isOpen={isSearchOpen}
-        onClose={() => setIsSearchOpen(false)}
-      />
-
-      {/* ── Background LeetCode Focus & Milestone Auto-Sync ── */}
+      <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
       <LeetCodeAutoSync />
     </div>
   );

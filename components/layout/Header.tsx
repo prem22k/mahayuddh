@@ -1,25 +1,40 @@
 "use client";
 
 import React, { useState } from "react";
-import { Bell, BellRing, RefreshCw, Menu, Search } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { RefreshCw, Menu, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { syncUserProfileStats } from "@/lib/data/profiles";
-
-import { UserStatsDossierModal } from "@/components/profile/UserStatsDossierModal";
+import { NotificationBell } from "./NotificationBell";
 
 interface HeaderProps {
   onMenuToggle?: () => void;
   onSearchOpen?: () => void;
 }
 
-export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
-  const { profile, user, refreshProfile } = useAuth();
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [isDossierOpen, setIsDossierOpen] = useState(false);
+function breadcrumbFor(pathname: string | null): string {
+  if (!pathname || pathname === "/") return "Arena";
+  const seg = pathname.split("/").filter(Boolean);
+  const head = seg[0] || "Arena";
+  return head.charAt(0).toUpperCase() + head.slice(1);
+}
 
-  const displayName = profile?.username || user?.email?.split("@")[0] || "Squad Member";
+/** Honest relative sync label from the profile row (never hardcoded). */
+function syncLabel(iso: string | null): string {
+  if (!iso) return "Not synced yet";
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (mins < 1) return "Synced just now";
+  if (mins < 60) return `Synced ${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `Synced ${hrs}h ago`;
+  return `Synced ${Math.floor(hrs / 24)}d ago`;
+}
+
+export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
+  const pathname = usePathname();
+  const { profile, user, refreshProfile } = useAuth();
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -35,113 +50,43 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
     }
   };
 
-  const toggleNotifications = async () => {
-    if (!notificationsEnabled && "Notification" in window) {
-      const permission = await Notification.requestPermission();
-      setNotificationsEnabled(permission === "granted");
-    } else {
-      setNotificationsEnabled(!notificationsEnabled);
-    }
-  };
-
   return (
-    <>
-      <header className="sticky top-0 z-20 px-4 md:px-8 py-3 flex items-center justify-between bg-black/60 backdrop-blur-xl border-b border-white/[0.04] select-none">
-        {/* Left: Mobile controls + Currently Active User */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onMenuToggle}
-            className="md:hidden p-2 rounded-xl text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors"
-            aria-label="Open navigation menu"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+    <header className="shell-header select-none">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <button
+          onClick={onMenuToggle}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:hidden"
+          aria-label="Open navigation menu"
+        >
+          <Menu className="h-5 w-5" strokeWidth={1.5} />
+        </button>
+        <nav aria-label="Breadcrumb" className="truncate text-sm text-text-secondary">
+          {breadcrumbFor(pathname)}
+        </nav>
+        <button
+          onClick={onSearchOpen}
+          className="ml-2 hidden items-center gap-2 rounded-md px-2 py-1 text-sm text-text-tertiary transition-colors hover:text-text-primary md:flex"
+        >
+          <Search className="h-4 w-4" strokeWidth={1.5} />
+          <span className="hidden lg:inline">Search</span>
+          <kbd className="kbd hidden lg:inline-flex">⌘K</kbd>
+        </button>
+      </div>
 
-          <button
-            onClick={onSearchOpen}
-            className="md:hidden p-2 rounded-xl text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors"
-            aria-label="Search problems"
-          >
-            <Search className="w-5 h-5" />
-          </button>
-
-          {/* Currently Active User Display - Clickable to open Dossier */}
-          {profile && (
-            <button
-              onClick={() => setIsDossierOpen(true)}
-              className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.06] hover:border-[#fa586a]/40 transition-all cursor-pointer group"
-              title="Click to view your Warrior Stats Dossier & Combat Radar"
-            >
-              <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#fa586a] to-[#ff8a9c] flex items-center justify-center font-bold text-[9px] text-white shrink-0 overflow-hidden group-hover:scale-105 transition-transform">
-                {profile.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={profile.avatar_url}
-                    alt={displayName}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  displayName.charAt(0).toUpperCase()
-                )}
-              </div>
-              <div className="flex items-center gap-1.5 text-xs">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#30d158]" />
-                <span className="font-semibold text-white/90 group-hover:text-white truncate max-w-[130px]">{displayName}</span>
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-white/[0.06] text-[#fa586a]">Dossier</span>
-              </div>
-            </button>
-          )}
-        </div>
-
-      {/* Right: Controls */}
-      <div className="flex items-center gap-2.5">
-        {/* Sync Button */}
+      <div className="flex shrink-0 items-center gap-2">
         <button
           onClick={handleSync}
           disabled={isSyncing}
-          className="p-2 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-white/40 hover:text-white transition-all disabled:opacity-50 cursor-pointer"
-          title="Sync LeetCode Submissions"
-          aria-label="Sync LeetCode Submissions"
+          className="flex h-10 items-center gap-2 rounded-md px-3 text-sm text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary disabled:opacity-50"
+          title="Sync LeetCode submissions"
         >
-          <RefreshCw
-            className={cn(
-              "w-3.5 h-3.5",
-              isSyncing && "animate-spin text-[#fa586a]"
-            )}
-          />
+          <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} strokeWidth={1.5} />
+          <span className="hidden sm:inline">
+            {isSyncing ? "Syncing…" : syncLabel(profile?.last_synced_at ?? null)}
+          </span>
         </button>
-
-        {/* Notifications */}
-        <button
-          onClick={toggleNotifications}
-          className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all cursor-pointer",
-            notificationsEnabled
-              ? "bg-[#fa586a]/15 border-[#fa586a]/30 text-[#fa586a]"
-              : "bg-white/[0.04] border-white/[0.06] text-white/40 hover:text-white/70"
-          )}
-          aria-label="Toggle push notifications"
-        >
-          {notificationsEnabled ? (
-            <>
-              <BellRing className="w-3 h-3 fill-[#fa586a]" />
-              <span className="hidden md:inline">Alerts On</span>
-            </>
-          ) : (
-            <>
-              <Bell className="w-3 h-3" />
-              <span className="hidden md:inline">Alerts</span>
-            </>
-          )}
-        </button>
+        <NotificationBell />
       </div>
     </header>
-
-    <UserStatsDossierModal
-      isOpen={isDossierOpen}
-      onClose={() => setIsDossierOpen(false)}
-      profile={profile}
-    />
-  </>
   );
 }

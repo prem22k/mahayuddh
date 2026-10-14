@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import { useAuth } from "./AuthProvider";
-import confetti from "canvas-confetti";
 
 export function LeetCodeAutoSync() {
   const { profile, refreshProfile, session } = useAuth();
@@ -55,12 +54,17 @@ export function LeetCodeAutoSync() {
         });
 
         if (newlyDetected > 0) {
-          confetti({
-            particleCount: 45,
-            spread: 55,
-            origin: { y: 0.85 },
-            colors: ["#30d158", "#fa586a", "#ffffff"],
-          });
+          try {
+            const confetti = (await import("canvas-confetti")).default;
+            confetti({
+              particleCount: 45,
+              spread: 55,
+              origin: { y: 0.85 },
+              colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
+            });
+          } catch {
+            // ignore
+          }
           void refreshProfile();
         }
       }

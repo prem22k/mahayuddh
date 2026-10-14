@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { getServiceClient, isAuthorizedCron, type ServiceClient } from "@/lib/supabase/service";
 import { fetchFullProblemCatalog } from "@/lib/leetcode";
 
+// Cron-only full-catalog pull (~3.5k LeetCode rows + chunk-500 upserts).
+// Exceeds Vercel Hobby's 10s function cap at scale — invoked by GitHub
+// Actions (.github/workflows/sync.yml), never from the UI. maxDuration
+// applies on Pro/Render; on Hobby the cron caller owns retries.
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 async function upsertCatalog(supabase: ServiceClient) {
   const { problems: catalog, complete } = await fetchFullProblemCatalog();
   if (catalog.length === 0) {

@@ -36,12 +36,12 @@ export function ProblemLink({
         onClick={(e) => e.stopPropagation()}
         title={label}
         className={cn(
-          "px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/80 hover:text-white font-semibold flex items-center gap-1.5 transition-colors text-[11px]",
+          "px-3 py-1.5 rounded-full bg-surface-overlay hover:bg-surface-raised border border-hairline text-text-secondary hover:text-text-primary font-semibold flex items-center gap-1.5 transition-colors text-[11px]",
           className
         )}
       >
         <span>LeetCode</span>
-        <ExternalLink className="w-3 h-3 text-white/50" />
+        <ExternalLink className="w-3 h-3 text-text-tertiary" />
       </a>
     );
   }
@@ -53,7 +53,12 @@ export function ProblemLink({
       onClick={(e) => e.stopPropagation()}
       title={label}
       aria-label={label}
-      className={cn("text-white/40 hover:text-white transition-colors", className)}
+      /* A 14px glyph in a padding-less anchor measured 14x14 — untappable.
+         44px on touch, natural size on desktop where the mouse is precise. */
+      className={cn(
+        "inline-flex items-center justify-center min-h-11 min-w-11 md:min-h-0 md:min-w-0 text-text-tertiary hover:text-text-primary transition-colors",
+        className
+      )}
     >
       <ExternalLink className={iconClassName} />
     </a>

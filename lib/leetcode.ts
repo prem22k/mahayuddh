@@ -1,6 +1,20 @@
 /**
  * LeetCode Public GraphQL Data Engine
  * Fetches profile stats, contest ranking, recent submissions, and calendar streaks.
+ *
+ * EXTERNAL DEPENDENCIES (undocumented-endpoint ban — see execution plan Step 0.5):
+ * - POST https://leetcode.com/graphql — public, no auth. Operations:
+ *   getUserProfile, getRecentSubmissions, userProfileCalendar,
+ *   problemsetQuestionListV2. Rate: polite (~1 req/1.5s in cron, 12s timeout,
+ *   300-600s ISR revalidate). Fallback when down: callers return null / keep
+ *   last persisted stats (never regress cumulative totals); UI shows retry.
+ * - GET/POST https://leetcode.com/accounts/login/ — credential login, returns
+ *   LEETCODE_SESSION cookie. Optional enhancement only; app works without it.
+ *   Risk: upstream captcha/2FA/layout change breaks login → lose evidence badge
+ *   only, never identity/squads/notes/challenges (Bible §43).
+ * - GET https://leetcode.com/api/problems/algorithms/ — session-cookie auth,
+ *   returns full solved set. Returns null (not []) on expired session so
+ *   callers distinguish "nothing solved" from "could not verify".
  */
 
 import type { Difficulty } from "@/types/database";

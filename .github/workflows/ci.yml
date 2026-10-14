@@ -1,0 +1,28 @@
+name: CI Gate
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  gate:
+    name: lint + typecheck + smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm run build
+      - run: npm run test:smoke
+      # Abuse-case suite for the 20-point baseline. Zero deps and no network, so
+      # it runs in the same gate as everything else; the live-database half of
+      # it is `test:integration:security` and stays out of CI on purpose (it
+      # creates and destroys rows in the real project).
+      - run: npm run test:security
+      - run: npm run test:static

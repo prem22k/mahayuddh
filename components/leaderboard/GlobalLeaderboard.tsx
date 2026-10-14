@@ -1,0 +1,185 @@
+"use client";
+
+import { profileHref } from "@/lib/profiles/username";
+import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import {
+  LEADERBOARD_SEGMENTS,
+  getGlobalLeaderboard,
+  isLifetimeView,
+  type LeaderboardRow,
+  type LeaderboardSegment,
+} from "@/lib/data/leaderboard";
+import { dataErrorMessage } from "@/lib/data/errors";
+import { PageLoader } from "@/components/ui/PageLoader";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+
+/**
+ * Global leaderboard segments (§34).
+ *
+ * §34's complaint is that "a beginner should not feel: 'Why compete with
+ * someone who has solved 2,000 problems?'" The fix is not to hide the lifetime
+ * board — it is to stop making it the default and to offer segments where a
+ * week of real work moves you up.
+ *
+ * So: the landing segment is chosen by the database from the viewer's own
+ * history, "Most solved" is opt-in and labelled, and every row states what it
+ * was ranked by. A number with no stated basis is how people end up feeling
+ * arbitrarily badged.
+ */
+export function GlobalLeaderboard() {
+  const [rows, setRows] = useState<LeaderboardRow[]>([]);
+  const [segment, setSegment] = useState<LeaderboardSegment>("rising");
+  const [pattern, setPattern] = useState("");
+  const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const PAGE = 25;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await getGlobalLeaderboard({
+        segment,
+        pattern: segment === "pattern" && pattern.trim() ? pattern.trim() : null,
+        limit: PAGE,
+        offset: page * PAGE,
+      });
+      setRows(res.rows);
+      // The server may override the segment for a first-time viewer; reflect
+      // what was actually returned rather than what was requested.
+      setSegment(res.segment);
+    } catch (err) {
+      setError(dataErrorMessage(err, "Couldn't load the leaderboard."));
+    } finally {
+      setLoading(false);
+    }
+  }, [segment, pattern, page]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const meta = LEADERBOARD_SEGMENTS.find((s) => s.id === segment);
+
+  return (
+    <div className="space-y-4 select-none">
+      <SegmentedControl
+        label="Leaderboard segment"
+        value={segment}
+        size="sm"
+        wrap
+        onChange={(v) => {
+          setSegment(v);
+          setPage(0);
+        }}
+        options={LEADERBOARD_SEGMENTS.map((sg) => ({ value: sg.id, label: sg.label, title: sg.ranks }))}
+      />
+
+      {segment === "pattern" && (
+        <div className="flex items-center gap-2">
+          <input
+            value={pattern}
+            onChange={(e) => {
+              setPattern(e.target.value);
+              setPage(0);
+            }}
+            aria-label="Pattern to rank by, for example Graphs"
+            placeholder="Pattern, e.g. Graphs"
+            className="px-3 py-1.5 min-h-11 rounded-full bg-well border border-hairline text-xs text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong"
+          />
+          <button
+            onClick={() => void load()}
+            className="px-3 py-1.5 min-h-11 rounded-full bg-surface-overlay text-text-secondary hover:text-text-primary cursor-pointer flex items-center"
+          >
+            Apply
+          </button>
+        </div>
+      )}
+
+      {/* The ranking basis is stated, always. */}
+      {meta && (
+        <p className="text-[11px] text-text-tertiary">
+          {meta.ranks}.
+          {isLifetimeView(segment) &&
+            " Lifetime totals — this one is honest about being a long-run tally, which is why it is not the default view."}
+        </p>
+      )}
+
+      {error && (
+        <div role="alert" className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-error/10 border border-error/30">
+          <span className="text-xs text-error">{error}</span>
+          <button
+            onClick={() => void load()}
+            className="px-3 py-1 rounded-full bg-error/15 text-error text-[11px] font-bold cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <PageLoader label="Loading..." className="h-32" />
+      ) : rows.length === 0 ? (
+        <div className="p-10 text-center rounded-xl bg-surface border border-hairline">
+          <p className="text-xs text-text-secondary">
+            {segment === "pattern"
+              ? "Nobody has logged a solve on that pattern yet. Try a broader pattern name."
+              : "Nobody has anything recorded in this view yet. It fills up as people log activity — nothing here is back-filled."}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {rows.map((r, i) => (
+            <div
+              key={r.user_id}
+              className="flex items-center gap-3 p-3 rounded-2xl bg-surface border border-hairline"
+            >
+              <span className="w-6 text-right font-mono text-xs text-text-disabled">
+                {page * PAGE + i + 1}
+              </span>
+              <div className="w-8 h-8 rounded-full bg-surface-overlay border border-hairline flex items-center justify-center font-bold text-[11px] text-text-primary shrink-0 overflow-hidden">
+                {r.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={r.avatar_url} alt={r.username} className="w-full h-full object-cover" />
+                ) : (
+                  r.username.charAt(0).toUpperCase()
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <Link
+                  href={profileHref(r.username)}
+                  className="inline-block text-xs font-bold text-text-primary hover:text-primary transition-colors py-2.5 -my-1"
+                >
+                  @{r.username}
+                </Link>
+                <p className="text-[10px] text-text-tertiary">{r.segment_label}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {rows.length >= PAGE && (
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <button
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className="px-3 py-1.5 rounded-full bg-surface-overlay text-text-secondary hover:text-text-primary disabled:opacity-40 cursor-pointer"
+          >
+            ← Previous
+          </button>
+          <span className="text-[10px] text-text-disabled">Page {page + 1}</span>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            className="px-3 py-1.5 rounded-full bg-surface-overlay text-text-secondary hover:text-text-primary cursor-pointer"
+          >
+            Next →
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -42,10 +42,10 @@ export function getTierInfo(rating: number | null = null): TierInfo {
     return {
       tier: "GRANDMASTER",
       title: "Supreme Guardian",
-      badgeColor: "#fa586a",
-      bgGradient: "from-[#fa586a]/20 via-[#ff2a6d]/10 to-transparent",
-      borderColor: "border-[#fa586a]/40",
-      glowColor: "shadow-[0_0_30px_rgba(250,88,106,0.35)]",
+      badgeColor: "#F5B83D",
+      bgGradient: "from-[#F5B83D]/20 via-[#E0A32B]/10 to-transparent",
+      borderColor: "border-[#F5B83D]/40",
+      glowColor: "shadow-[0_0_30px_rgba(245,184,61,0.35)]",
       minRating: 2200,
     };
   }
@@ -53,10 +53,10 @@ export function getTierInfo(rating: number | null = null): TierInfo {
     return {
       tier: "MASTER",
       title: "Astral Knight",
-      badgeColor: "#bf5af2",
-      bgGradient: "from-[#bf5af2]/20 via-[#9d4edd]/10 to-transparent",
-      borderColor: "border-[#bf5af2]/40",
-      glowColor: "shadow-[0_0_30px_rgba(191,90,242,0.35)]",
+      badgeColor: "#8B91F7",
+      bgGradient: "from-[#8B91F7]/20 via-[#8B91F7]/10 to-transparent",
+      borderColor: "border-[#8B91F7]/40",
+      glowColor: "shadow-[0_0_30px_rgba(139,145,247,0.35)]",
       minRating: 1900,
     };
   }
@@ -64,10 +64,10 @@ export function getTierInfo(rating: number | null = null): TierInfo {
     return {
       tier: "DIAMOND",
       title: "Arena Gladiator",
-      badgeColor: "#30d158",
-      bgGradient: "from-[#30d158]/20 via-[#2ec4b6]/10 to-transparent",
-      borderColor: "border-[#30d158]/40",
-      glowColor: "shadow-[0_0_30px_rgba(48,209,88,0.35)]",
+      badgeColor: "#3DDC97",
+      bgGradient: "from-[#3DDC97]/20 via-[#3DDC97]/10 to-transparent",
+      borderColor: "border-[#3DDC97]/40",
+      glowColor: "shadow-[0_0_30px_rgba(61,220,151,0.35)]",
       minRating: 1650,
     };
   }
@@ -75,20 +75,20 @@ export function getTierInfo(rating: number | null = null): TierInfo {
     return {
       tier: "GOLD",
       title: "Algorithmic Specialist",
-      badgeColor: "#ff9f0a",
-      bgGradient: "from-[#ff9f0a]/20 via-[#f77f00]/10 to-transparent",
-      borderColor: "border-[#ff9f0a]/40",
-      glowColor: "shadow-[0_0_30px_rgba(255,159,10,0.35)]",
+      badgeColor: "#F5B83D",
+      bgGradient: "from-[#F5B83D]/20 via-[#E0A32B]/10 to-transparent",
+      borderColor: "border-[#F5B83D]/40",
+      glowColor: "shadow-[0_0_30px_rgba(245,184,61,0.35)]",
       minRating: 1450,
     };
   }
   return {
     tier: "VANGUARD",
     title: "Rising Challenger",
-    badgeColor: "#64d2ff",
-    bgGradient: "from-[#64d2ff]/20 via-[#0077b6]/10 to-transparent",
-    borderColor: "border-[#64d2ff]/40",
-    glowColor: "shadow-[0_0_30px_rgba(100,210,255,0.35)]",
+      badgeColor: "#A1A3AB",
+      bgGradient: "from-[#A1A3AB]/20 via-[#84868F]/10 to-transparent",
+      borderColor: "border-[#A1A3AB]/40",
+      glowColor: "shadow-[0_0_30px_rgba(161,163,171,0.35)]",
     minRating: 0,
   };
 }

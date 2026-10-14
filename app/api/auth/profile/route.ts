@@ -4,10 +4,12 @@ import {
   extractBearerToken,
   resolveUser,
 } from "@/lib/supabase/service";
+import { readJsonBounded } from "@/lib/security/body";
+import { validateAvatarUrl } from "@/lib/security/urls";
 import type { Profile } from "@/types/database";
 
 const PUBLIC_PROFILE_SELECT =
-  "id,username,leetcode_username,avatar_url,contest_rating,global_rank,streak,total_easy,total_medium,total_hard,contest_attended,contest_global_rank,contest_top_percentage,last_synced_at,created_at";
+  "id,username,leetcode_username,avatar_url,active_squad_id,contest_rating,global_rank,streak,total_easy,total_medium,total_hard,contest_attended,contest_global_rank,contest_top_percentage,last_synced_at,created_at";
 
 async function getAuthedUserId(request: Request) {
   const token = extractBearerToken(request);
@@ -75,7 +77,12 @@ export async function POST(request: Request) {
     baseUsername = baseUsername.trim().slice(0, 30);
     if (!baseUsername) baseUsername = "Squad_Member";
 
-    const avatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
+    const avatarUrlRaw = user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
+    // https-only + host allowlist (same hosts as next.config images.remotePatterns).
+    // An untrusted provider value that fails validation is dropped to null rather
+    // than stored: profile creation must still succeed, just without the picture.
+    const avatarVerdict = validateAvatarUrl(avatarUrlRaw);
+    const avatarUrl = avatarVerdict.ok ? avatarVerdict.url : null;
 
     // Try insert; if collision on username, append random digits
     let createdProfile: Profile | null = null;
@@ -117,4 +124,58 @@ export async function POST(request: Request) {
     console.error("Profile creation error:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
+}
+
+const OBJECTIVES = ["internship", "fulltime", "consistency"] as const;
+
+// Narrow, whitelisted preference updates. Deliberately NOT a generic profile
+// editor: stats, handles and squad membership are all server-derived, and a
+// blanket PATCH would be an open self-privilege-escalation surface.
+export async function PATCH(request: Request) {
+  const supabase = getServiceClient();
+  if (!supabase) {
+    return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+  }
+  const authed = await getAuthedUserId(request);
+  if ("error" in authed) {
+    return NextResponse.json({ error: authed.error }, { status: 401 });
+  }
+  const { user } = authed;
+
+  const parsed = await readJsonBounded<Record<string, unknown>>(request);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: "Request body too large." }, { status: 413 });
+  }
+  const body = (parsed.value ?? {}) as Record<string, unknown>;
+  const patch: Record<string, string> = {};
+
+  if (typeof body.objective === "string") {
+    const value = body.objective.trim().toLowerCase();
+    if (value && !(OBJECTIVES as readonly string[]).includes(value)) {
+      return NextResponse.json(
+        { error: `Objective must be one of: ${OBJECTIVES.join(", ")}` },
+        { status: 400 }
+      );
+    }
+    if (value) patch.objective = value;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return NextResponse.json(
+      { error: "Nothing to update. Supported fields: objective" },
+      { status: 400 }
+    );
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .update(patch)
+    .eq("id", user.id)
+    .select(PUBLIC_PROFILE_SELECT)
+    .maybeSingle();
+
+  if (error) {
+    return NextResponse.json({ error: "Couldn't save that. Retry." }, { status: 500 });
+  }
+  return NextResponse.json({ profile: data });
 }

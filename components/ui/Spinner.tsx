@@ -9,12 +9,12 @@ const SIZES = {
 } as const;
 
 const TONES = {
-  /** Brand spinner on dark surfaces (page loaders). */
-  accent: "border-white/10 border-t-[#fa586a]",
-  /** Brand spinner on lighter/raised surfaces. */
-  soft: "border-white/20 border-t-[#fa586a]",
-  /** White spinner on brand/colored backgrounds. */
-  inverse: "border-white/30 border-t-white",
+  /** Gold spinner on dark surfaces (page loaders). */
+  accent: "border-surface-overlay border-t-primary",
+  /** Gold spinner on lighter/raised surfaces. */
+  soft: "border-surface-overlay border-t-primary",
+  /** Dark spinner on gold backgrounds. */
+  inverse: "border-on-primary/30 border-t-on-primary",
 } as const;
 
 interface SpinnerProps {

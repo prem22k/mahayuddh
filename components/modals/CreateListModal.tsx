@@ -120,18 +120,15 @@ export function CreateListModal({
       panelClassName="shadow-[0_25px_70px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col max-h-[85vh]"
     >
         {/* Header */}
-        <div className="p-5 border-b border-white/[0.06] flex items-center justify-between">
+        <div className="p-5 border-b border-hairline flex items-center justify-between">
           <div>
-            <span className="text-[10px] text-[#fa586a] font-bold uppercase tracking-[0.16em]">
-              Squad Custom Playlist
-            </span>
-            <h2 className="text-xl font-extrabold text-white tracking-tight mt-0.5">
+            <h2 className="text-xl font-semibold text-text-primary tracking-tight mt-0.5">
               Create New Problem List
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-white/40 hover:text-white rounded-lg transition-colors cursor-pointer"
+            className="p-1.5 text-text-secondary hover:text-text-primary rounded-lg transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -140,15 +137,15 @@ export function CreateListModal({
         {/* Content Form */}
         <form onSubmit={handleCreate} className="flex-1 overflow-y-auto p-5 space-y-4">
           {error && (
-            <div className="p-3 bg-[#ff453a]/10 border border-[#ff453a]/25 text-[#ff453a] rounded-xl text-xs font-medium">
+            <div className="p-3 bg-error/10 border border-error/25 text-error rounded-xl text-xs font-medium">
               {error}
             </div>
           )}
 
           {/* Title */}
           <div>
-            <label className="block text-xs font-semibold text-white/70 mb-1.5">
-              List Name <span className="text-[#fa586a]">*</span>
+            <label className="block text-xs font-semibold text-text-secondary mb-1.5">
+              List Name <span className="text-primary">*</span>
             </label>
             <input
               ref={titleInputRef}
@@ -157,13 +154,13 @@ export function CreateListModal({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Google Interview Prep, Graph Masterclass"
-              className="w-full px-3.5 py-2 bg-white/[0.04] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl text-xs text-white placeholder:text-white/25 focus:outline-none transition-colors"
+              className="w-full px-3.5 py-2 bg-well border border-hairline focus:border-primary/60 rounded-xl text-xs text-text-primary placeholder:text-text-disabled focus:outline-none transition-colors"
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-xs font-semibold text-white/70 mb-1.5">
+            <label className="block text-xs font-semibold text-text-secondary mb-1.5">
               Description (Optional)
             </label>
             <input
@@ -171,21 +168,21 @@ export function CreateListModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="e.g. Must-solve problems discussed during squad mock interview"
-              className="w-full px-3.5 py-2 bg-white/[0.04] border border-white/[0.08] focus:border-[#fa586a]/60 rounded-xl text-xs text-white placeholder:text-white/25 focus:outline-none transition-colors"
+              className="w-full px-3.5 py-2 bg-well border border-hairline focus:border-primary/60 rounded-xl text-xs text-text-primary placeholder:text-text-disabled focus:outline-none transition-colors"
             />
           </div>
 
           {/* Problem Selector */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="block text-xs font-semibold text-white/70">
+              <label className="block text-xs font-semibold text-text-secondary">
                 Add Problems ({selectedSlugs.length} selected)
               </label>
               {selectedSlugs.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setSelectedSlugs([])}
-                  className="text-[11px] text-white/40 hover:text-[#ff453a] transition-colors"
+                  className="text-[11px] text-text-secondary hover:text-error transition-colors"
                 >
                   Clear all
                 </button>
@@ -194,25 +191,25 @@ export function CreateListModal({
 
             {/* Problem Search Bar */}
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-white/30 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-3.5 h-3.5 text-text-tertiary absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search problems by name or category..."
-                className="w-full pl-8 pr-3 py-1.5 bg-white/[0.03] border border-white/[0.06] rounded-xl text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-[#fa586a]/60"
+                className="w-full pl-8 pr-3 py-1.5 bg-surface-overlay border border-hairline rounded-xl text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-primary/60"
               />
             </div>
 
             {/* Problem Selection List */}
-            <div className="max-h-48 overflow-y-auto rounded-xl border border-white/[0.06] bg-black/30 divide-y divide-white/[0.03] p-1">
+            <div className="max-h-48 overflow-y-auto rounded-xl border border-hairline bg-black/30 divide-y divide-hairline p-1">
               {loadingProblems ? (
-                <div className="p-4 text-center text-white/40 text-xs flex items-center justify-center gap-2">
+                <div className="p-4 text-center text-text-secondary text-xs flex items-center justify-center gap-2">
                   <Spinner size="sm" tone="soft" />
                   <span>Loading problems...</span>
                 </div>
               ) : filteredProblems.length === 0 ? (
-                <div className="p-4 text-center text-white/40 text-xs">
+                <div className="p-4 text-center text-text-secondary text-xs">
                   No problems match your query.
                 </div>
               ) : (
@@ -225,8 +222,8 @@ export function CreateListModal({
                       className={cn(
                         "flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors",
                         isSelected
-                          ? "bg-[#fa586a]/15 text-white"
-                          : "hover:bg-white/[0.04] text-white/70"
+                          ? "bg-primary text-on-primary hover:bg-primary-hover"
+                          : "hover:bg-well text-text-secondary"
                       )}
                     >
                       <div className="flex items-center gap-2 truncate">
@@ -234,8 +231,8 @@ export function CreateListModal({
                           className={cn(
                             "w-4 h-4 rounded flex items-center justify-center border text-[10px] transition-colors shrink-0",
                             isSelected
-                              ? "bg-[#fa586a] border-[#fa586a] text-white"
-                              : "border-white/20 text-transparent"
+                              ? "bg-primary border-primary text-on-primary"
+                              : "border-hairline-strong text-transparent"
                           )}
                         >
                           <Check className="w-3 h-3 stroke-[3]" />
@@ -244,13 +241,13 @@ export function CreateListModal({
                         <span
                           className={cn(
                             "px-1.5 py-0.2 rounded-full text-[9px] font-semibold border shrink-0",
-                            difficultyBadgeClass(p.difficulty)
+                            difficultyBadgeClass()
                           )}
                         >
                           {p.difficulty}
                         </span>
                       </div>
-                      <span className="text-[10px] text-white/30 shrink-0 pl-2">
+                      <span className="text-[10px] text-text-tertiary shrink-0 pl-2">
                         {p.category}
                       </span>
                     </div>
@@ -262,26 +259,26 @@ export function CreateListModal({
         </form>
 
         {/* Footer */}
-        <div className="p-4 bg-black/40 border-t border-white/[0.06] flex items-center justify-between">
-          <span className="text-xs text-white/40">
+        <div className="p-4 bg-black/40 border-t border-hairline flex items-center justify-between">
+          <span className="text-xs text-text-secondary">
             {selectedSlugs.length} {selectedSlugs.length === 1 ? "problem" : "problems"} included
           </span>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-3.5 py-1.5 rounded-full border border-white/[0.08] text-white/60 hover:text-white text-xs font-semibold transition-colors cursor-pointer"
+              className="px-3.5 py-1.5 rounded-full border border-hairline text-text-secondary hover:text-text-primary text-xs font-semibold transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               onClick={handleCreate}
               disabled={isSubmitting || !title.trim()}
-              className="px-4 py-1.5 rounded-full bg-[#fa586a] hover:bg-[#fa586a]/90 text-white text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-glow cursor-pointer flex items-center gap-1.5"
+              className="px-4 py-1.5 rounded-full bg-primary text-on-primary hover:bg-primary-hover text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lifted cursor-pointer flex items-center gap-1.5"
             >
               {isSubmitting ? (
                 <>
-                  <Spinner size="xs" tone="inverse" className="border-white/40" />
+                  <Spinner size="xs" tone="inverse" className="border-surface-overlay" />
                   <span>Creating...</span>
                 </>
               ) : (

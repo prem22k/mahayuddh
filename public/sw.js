@@ -1,9 +1,27 @@
 // ============================================================
 // Mahayuddh Service Worker: Caching & Web Push Notifications
+// Scope: same-origin GET navigations + static assets only.
+// NEVER cache: /api/*, POST/PUT/DELETE, cross-origin, or
+// authenticated sync routes (stale sync = dishonest proof).
 // ============================================================
 
-const CACHE_NAME = "mahayuddh-v1";
-const STATIC_ASSETS = ["/", "/leaderboard", "/suggestions", "/vault", "/globals.css"];
+const CACHE_NAME = "mahayuddh-v2";
+const STATIC_ASSETS = ["/", "/offline"];
+const API_PREFIX = "/api/";
+
+function isCacheable(request) {
+  if (request.method !== "GET") return false;
+  let url;
+  try {
+    url = new URL(request.url);
+  } catch {
+    return false;
+  }
+  if (url.origin !== self.location.origin) return false;
+  if (url.pathname.startsWith(API_PREFIX)) return false;
+  if (url.pathname.startsWith("/auth/")) return false;
+  return true;
+}
 
 // Install Event
 self.addEventListener("install", (event) => {
@@ -15,7 +33,7 @@ self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
-// Activate Event
+// Activate Event — drop old versioned caches.
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -27,19 +45,30 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Fetch Event (Network-First with Cache Fallback)
+// Fetch Event (Network-First with Cache Fallback, cacheable GET only)
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
+  if (!isCacheable(event.request)) return;
 
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
-        return caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, networkResponse.clone());
-          return networkResponse;
-        });
+        // Only cache clean same-origin responses.
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type === "basic") {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return networkResponse;
       })
-      .catch(() => caches.match(event.request))
+      .catch(async () => {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+        // Navigation fallback: never strand the user on a blank page.
+        if (event.request.mode === "navigate") {
+          const offline = await caches.match("/offline");
+          if (offline) return offline;
+        }
+        throw new Error("offline");
+      })
   );
 });
 

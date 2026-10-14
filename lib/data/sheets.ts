@@ -3,12 +3,19 @@ import { getCatalogBySlugs } from "@/lib/data/problems";
 import { slugifyTitle } from "@/lib/slug";
 import { CustomList, ListProblem, UserProblemStatus, TriState, Problem } from "@/types/database";
 import { CURATED_SHEETS } from "@/lib/data/curatedSheetsData";
+import { DataError } from "@/lib/data/errors";
+
+/** Explicit projections (no `*`): every column of each table, per schema. */
+const CUSTOM_LIST_COLUMNS = "id,slug,title,emoji,description,is_curated,created_by,created_at";
+// list_problems has no created_at column in the schema.
+const LIST_PROBLEM_COLUMNS = "id,list_id,title,title_slug,difficulty,category,order_index";
+const STATUS_COLUMNS = "id,user_id,problem_slug,status,notes,solved_at";
 
 export async function getAllLists(): Promise<CustomList[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("custom_lists")
-    .select("*")
+    .select(CUSTOM_LIST_COLUMNS)
     .order("is_curated", { ascending: false });
 
   if (!error && data && data.length > 0) {
@@ -42,7 +49,7 @@ export async function getAllProblems(): Promise<ListProblem[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("list_problems")
-    .select("*")
+    .select(LIST_PROBLEM_COLUMNS)
     .order("order_index", { ascending: true });
 
   if (!error && data && data.length > 0) {
@@ -73,7 +80,7 @@ export async function getListWithProblems(slug: string): Promise<{
 
   const { data: listData } = await supabase
     .from("custom_lists")
-    .select("*")
+    .select(CUSTOM_LIST_COLUMNS)
     .eq("slug", slug)
     .maybeSingle();
 
@@ -99,7 +106,7 @@ export async function getListWithProblems(slug: string): Promise<{
   if (listData?.id) {
     const { data: problemsData } = await supabase
       .from("list_problems")
-      .select("*")
+      .select(LIST_PROBLEM_COLUMNS)
       .eq("list_id", listData.id)
       .order("order_index", { ascending: true });
 
@@ -235,12 +242,18 @@ export async function getSquadProblemStatuses(
     const slice = problemSlugs.slice(i, i + CHUNK);
     let query = supabase
       .from("user_problem_status")
-      .select("*")
+      .select(STATUS_COLUMNS)
       .in("problem_slug", slice);
     if (userId) query = query.eq("user_id", userId);
     const { data, error } = await query;
-    if (error) continue;
-    if (data) rows.push(...(data as UserProblemStatus[]));
+    // Silent `continue` here would under-report progress without any signal.
+    if (error) {
+      throw new DataError("sheets", "Couldn't load your problem statuses. Retry.", { cause: error });
+    }
+    if (!data) {
+      throw new DataError("sheets", "Couldn't load your problem statuses. Retry.");
+    }
+    rows.push(...(data as UserProblemStatus[]));
   }
   return rows;
 }
@@ -253,19 +266,26 @@ export async function getUserStatusesBySlugs(userId: string): Promise<UserProble
     .select("problem_slug, status, solved_at, notes")
     .eq("user_id", userId);
 
-  if (error || !data) return [];
+  // This feeds the Arena progress strip. Returning [] on failure rendered a
+  // confident "0 solved" — the most misleading failure mode in the app.
+  if (error) {
+    throw new DataError("sheets", "Couldn't load your progress. Retry.", { cause: error });
+  }
+  if (!data) {
+    throw new DataError("sheets", "Couldn't load your progress. Retry.");
+  }
   return data as UserProblemStatus[];
 }
 
-export type StatusMap = Record<string, TriState>;
+// StatusMap / toStatusMap moved to lib/statusMap.ts: pure, dependency-free, and
+// therefore importable from node:test. Re-exported here so existing call sites
+// keep working.
+export type { StatusMap } from "@/lib/statusMap";
+export { toStatusMap } from "@/lib/statusMap";
 
-export function toStatusMap(
-  rows: { problem_slug: string; status: "solved" | "attempted" }[]
-): StatusMap {
-  const map: StatusMap = {};
-  for (const r of rows) map[r.problem_slug] = r.status;
-  return map;
-}
+// Internal use below: the re-exports above are for existing call sites.
+import { toStatusMap as buildStatusMap } from "@/lib/statusMap";
+import type { StatusMap as StatusMapType } from "@/lib/statusMap";
 
 // Tri-state setter: "solved" | "attempted" | "unsolved" (deletes the row).
 // Returns false when the write fails so optimistic UI can roll back.
@@ -342,7 +362,7 @@ export async function getSheetWithCatalog(
   list: CustomList | null;
   problems: ListProblem[];
   catalogBySlug: Map<string, Problem>;
-  statusMap: StatusMap;
+  statusMap: StatusMapType;
 }> {
   const { list, problems } = await getListWithProblems(slug);
   const slugs = problems.map((p) => p.title_slug);
@@ -356,6 +376,6 @@ export async function getSheetWithCatalog(
     list,
     problems,
     catalogBySlug: new Map(catalog.map((c) => [c.title_slug, c])),
-    statusMap: toStatusMap(statuses),
+    statusMap: buildStatusMap(statuses),
   };
 }
