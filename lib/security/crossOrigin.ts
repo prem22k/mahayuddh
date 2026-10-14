@@ -34,6 +34,20 @@ export interface CrossOriginCheckInput {
   requestOrigin: string;
   /** Extra origins the app genuinely accepts, from configuration. */
   allowedOrigins: readonly string[];
+  /**
+   * True when the request carries a non-empty `Authorization: Bearer` token.
+   *
+   * Bearer credentials are never ambient: a cross-site attacker cannot attach
+   * the victim's token (it lives in same-origin storage, and setting the
+   * header cross-origin fails preflight without our opt-in). So a request
+   * presenting one is either first-party code or the token holder — and the
+   * route still validates it (invalid → 401). The Origin check adds nothing
+   * for such requests, while privacy browsers (Brave shields), in-app
+   * webviews, and sandboxed previews legitimately anonymise Origin. Cookie-
+   * only or anonymous anonymised requests stay rejected, where ambient
+   * credentials are actually at stake.
+   */
+  hasBearer?: boolean;
 }
 
 export interface CrossOriginVerdict {
@@ -100,7 +114,7 @@ export function checkCrossOriginRequest(input: CrossOriginCheckInput): CrossOrig
 
   const origin = normalizeOrigin(rawOrigin);
   if (!origin) {
-    return { ok: false, reason: `origin not parseable: ${rawOrigin.slice(0, 64)}` };
+    return bearerBypass(input, `origin not parseable: ${rawOrigin.slice(0, 64)}`);
   }
 
   const requestOrigin = normalizeOrigin(input.requestOrigin);
@@ -115,7 +129,22 @@ export function checkCrossOriginRequest(input: CrossOriginCheckInput): CrossOrig
     return { ok: true, reason: null };
   }
 
-  return { ok: false, reason: `origin not allowed: ${origin}` };
+  return bearerBypass(input, `origin not allowed: ${origin}`);
+}
+
+/** Reason prefix marking a pass granted by the bearer bypass (never a block). */
+export const BEARER_BYPASS_PREFIX = "bearer-present";
+
+/**
+ * Anonymised-origin escape hatch. See `hasBearer` for the threat model:
+ * bearer-present requests are CSRF-immune by construction, so a rejection
+ * grounded only in the origin becomes an audit line instead of a block.
+ */
+function bearerBypass(input: CrossOriginCheckInput, reason: string): CrossOriginVerdict {
+  if (input.hasBearer) {
+    return { ok: true, reason: `${BEARER_BYPASS_PREFIX}, origin check skipped (${reason})` };
+  }
+  return { ok: false, reason };
 }
 
 /**
