@@ -1,13 +1,17 @@
 import { createClient } from "@/lib/supabase/client";
 import { Battle, BattleOutcome } from "@/types/database";
 
+/** Explicit projection: every Battle column, no `*` (keeps every field callers use). */
+const BATTLE_COLUMNS =
+  "id,user_id,problem_slug,squad_id,started_at,ended_at,duration_sec,outcome,self_reported,evidence,scratchpad_md,confidence,created_at";
+
 async function token(): Promise<string | null> {
   const supabase = createClient();
   const { data } = await supabase.auth.getSession();
   return data.session?.access_token ?? null;
 }
 
-async function post(body: Record<string, unknown>): Promise<{ battle?: Battle; error?: string }> {
+async function post(body: Record<string, unknown>): Promise<{ battle?: Battle; error?: string; expired?: boolean }> {
   const t = await token();
   const res = await fetch("/api/battles", {
     method: "POST",
@@ -15,8 +19,8 @@ async function post(body: Record<string, unknown>): Promise<{ battle?: Battle; e
     body: JSON.stringify(body),
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) return { error: json.error || "Battle sync failed." };
-  return { battle: json.battle as Battle };
+  if (!res.ok) return { error: (json as { error?: string }).error || "Battle sync failed.", expired: (json as { expired?: boolean }).expired === true || res.status === 410 };
+  return { battle: (json as { battle?: Battle }).battle as Battle | undefined };
 }
 
 export async function startBattle(
@@ -37,7 +41,7 @@ export async function getInProgressBattle(): Promise<Battle | null> {
   const supabase = createClient();
   const { data } = await supabase
     .from("battles")
-    .select("*")
+    .select(BATTLE_COLUMNS)
     .eq("outcome", "in_progress")
     .order("started_at", { ascending: false })
     .limit(1)
@@ -68,7 +72,7 @@ export async function getBattlesForSlug(problemSlug: string, limit = 10): Promis
   const supabase = createClient();
   const { data } = await supabase
     .from("battles")
-    .select("*")
+    .select(BATTLE_COLUMNS)
     .eq("problem_slug", problemSlug.toLowerCase())
     .order("started_at", { ascending: false })
     .limit(limit);

@@ -191,16 +191,21 @@ export async function getChallengesForSlug(problemSlug: string): Promise<Suggest
 }
 
 // Dismiss is recipient-or-sender; completed history stays.
+// Never writes completed_at: the suggestions table has no dismissed_at column,
+// and stamping a dismissal as a completion would corrupt season metrics and
+// the timeline. Guarded to pending so a completed row cannot be re-dismissed.
 export async function dismissSuggestion(suggestionId: string): Promise<boolean> {
   const supabase = createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("suggestions")
-    .update({ status: "dismissed", completed_at: new Date().toISOString() })
-    .eq("id", suggestionId);
+    .update({ status: "dismissed" })
+    .eq("id", suggestionId)
+    .eq("status", "pending")
+    .select("id");
   if (error) {
     throw new DataError("suggestions", "Couldn't dismiss that challenge. Try again.", { cause: error });
   }
-  return true;
+  return Array.isArray(data) ? data.length > 0 : !!data;
 }
 
 /**
@@ -221,12 +226,19 @@ export async function acceptSuggestion(
   if (!row || row.to_user !== callerUserId) return { ok: false, reason: "not_recipient" };
   if (row.status !== "pending") return { ok: false, reason: "not_pending" };
 
-  const { error } = await supabase
+  // Guarded write: a concurrent accept/complete/dismiss wins the race and this
+  // becomes a no-op instead of resurrecting a dead row.
+  const { data: updated, error } = await supabase
     .from("suggestions")
     .update({ accepted_at: new Date().toISOString() })
-    .eq("id", suggestionId);
+    .eq("id", suggestionId)
+    .eq("status", "pending")
+    .select("id");
   if (error) {
     throw new DataError("suggestions", "Couldn't accept that challenge. Try again.", { cause: error });
+  }
+  if (!updated || (Array.isArray(updated) && updated.length === 0)) {
+    return { ok: false, reason: "not_pending" };
   }
   return { ok: true };
 }
@@ -255,12 +267,22 @@ export async function remindSuggestion(
     return { ok: false, reason: "throttled" };
   }
 
-  const { error } = await supabase
+  // Race-safe throttle: the 24h window is enforced in the WHERE clause
+  // (reminded_at IS NULL OR reminded_at < now()-24h), and the affected row
+  // count decides. Two tabs nudging together send one reminder, not two.
+  const cutoffISO = new Date(Date.now() - 86_400_000).toISOString();
+  const { data: updated, error } = await supabase
     .from("suggestions")
     .update({ reminded_at: new Date().toISOString() })
-    .eq("id", suggestionId);
+    .eq("id", suggestionId)
+    .eq("status", "pending")
+    .or(`reminded_at.is.null,reminded_at.lt.${cutoffISO}`)
+    .select("id");
   if (error) {
     throw new DataError("suggestions", "Couldn't send that reminder. Try again.", { cause: error });
+  }
+  if (!updated || (Array.isArray(updated) && updated.length === 0)) {
+    return { ok: false, reason: "throttled" };
   }
 
   // Tell the other party, if they are a real user with notifications on.
@@ -311,15 +333,28 @@ export async function markSuggestionCompleted(
 
   if (!solved) return { ok: false, reason: "not_solved" };
 
-  const { error } = await supabase
+  // Guarded to pending: a concurrent complete/dismiss wins instead of a double write.
+  const { data: updated, error } = await supabase
     .from("suggestions")
     .update({
       status: "completed",
       completed_at: new Date().toISOString(),
     })
-    .eq("id", suggestionId);
+    .eq("id", suggestionId)
+    .eq("status", "pending")
+    .select("id");
 
   if (error) return { ok: false, reason: "not_assignee" };
+  if (!updated || (Array.isArray(updated) && updated.length === 0)) {
+    // Lost the race (or already completed above): re-read to report honestly.
+    const { data: reread } = await supabase
+      .from("suggestions")
+      .select("status")
+      .eq("id", suggestionId)
+      .maybeSingle();
+    if ((reread as { status?: string } | null)?.status === "completed") return { ok: true };
+    return { ok: false, reason: "not_assignee" };
+  }
   const { logProblemEvent } = await import("@/lib/data/problemEvents");
   await logProblemEvent({ problemSlug: suggestion.problem_slug, kind: "challenge_completed" }).catch(() => {});
 

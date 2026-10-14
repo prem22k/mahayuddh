@@ -37,6 +37,13 @@ interface Snapshot {
   slugPattern: Map<string, string>;
 }
 
+/** Explicit projections (no `*`): every column the snapshot reconciler reads. */
+const REVIEW_BATTLE_COLUMNS =
+  "id,user_id,problem_slug,squad_id,started_at,ended_at,duration_sec,outcome,self_reported,evidence,scratchpad_md,confidence,created_at";
+const REVIEW_EVENT_COLUMNS =
+  "id,user_id,problem_slug,kind,battle_id,duration_sec,metadata,created_at";
+const REVIEW_ROW_COLUMNS = "id,user_id,problem_slug,reason,due_at,done_at,created_at";
+
 /** Gather everything needed to reconcile + display revision state. */
 export async function getSnapshot(): Promise<Snapshot> {
   const supabase = createClient();
@@ -44,9 +51,9 @@ export async function getSnapshot(): Promise<Snapshot> {
   if (!user) throw new DataError("review", "Log in to see your revision queue.");
   const [statusRes, battleRes, eventRes, queueRes] = await Promise.all([
     supabase.from("user_problem_status").select("problem_slug, status, solved_at").eq("user_id", user.id).limit(2000),
-    supabase.from("battles").select("*").eq("user_id", user.id).order("started_at", { ascending: false }).limit(300),
-    supabase.from("problem_events").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(500),
-    supabase.from("review_queue").select("*").eq("user_id", user.id).is("done_at", null),
+    supabase.from("battles").select(REVIEW_BATTLE_COLUMNS).eq("user_id", user.id).order("started_at", { ascending: false }).limit(300),
+    supabase.from("problem_events").select(REVIEW_EVENT_COLUMNS).eq("user_id", user.id).order("created_at", { ascending: false }).limit(500),
+    supabase.from("review_queue").select(REVIEW_ROW_COLUMNS).eq("user_id", user.id).is("done_at", null),
   ]);
   if (statusRes.error) throw new DataError("review", "Couldn't load progress. Retry.", { cause: statusRes.error });
   const statuses = (statusRes.data ?? []) as Snapshot["statuses"];
@@ -173,7 +180,7 @@ export async function refreshReviewQueue(): Promise<ReviewItem[]> {
 
   const { data } = await supabase
     .from("review_queue")
-    .select("*")
+    .select(REVIEW_ROW_COLUMNS)
     .eq("user_id", user.id)
     .is("done_at", null)
     .order("due_at", { ascending: true })
@@ -187,7 +194,7 @@ export async function getOpenReviews(): Promise<ReviewItem[]> {
   if (!user) return [];
   const { data } = await supabase
     .from("review_queue")
-    .select("*")
+    .select(REVIEW_ROW_COLUMNS)
     .eq("user_id", user.id)
     .is("done_at", null)
     .order("due_at", { ascending: true })
@@ -212,7 +219,13 @@ export async function toggleBookmark(problemSlug: string): Promise<boolean> {
     await supabase.from("review_queue").delete().eq("id", (existing as { id: string }).id);
     return false;
   }
-  await supabase.from("review_queue").insert({ user_id: user.id, problem_slug: slug, reason: "bookmark" });
+  const { error } = await supabase.from("review_queue").insert({ user_id: user.id, problem_slug: slug, reason: "bookmark" });
+  if (error) {
+    // Insert/delete race (two tabs bookmarking together): the unique guard
+    // fired, which means the bookmark exists. Report it as bookmarked.
+    if ((error as { code?: string }).code === "23505") return true;
+    return false;
+  }
   return true;
 }
 
@@ -238,7 +251,7 @@ export async function getReviewForSlug(problemSlug: string): Promise<ReviewItem 
   if (!user) return null;
   const { data } = await supabase
     .from("review_queue")
-    .select("*")
+    .select(REVIEW_ROW_COLUMNS)
     .eq("user_id", user.id)
     .eq("problem_slug", problemSlug.toLowerCase())
     .is("done_at", null)

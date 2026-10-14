@@ -190,7 +190,7 @@ export async function replyToStuckRequest(params: {
   return { ok: true };
 }
 
-/** Accept a reply and close the loop. */
+/** Accept a reply and close the loop. Guarded: only an open request resolves. */
 export async function acceptStuckReply(requestId: string, replyId: string): Promise<boolean> {
   const supabase = createClient();
   const { error } = await supabase
@@ -208,10 +208,14 @@ export async function setStuckRequestStatus(
   status: StuckRequest["status"]
 ): Promise<void> {
   const supabase = createClient();
-  const { error } = await supabase
-    .from("stuck_requests")
-    .update({ status })
-    .eq("id", requestId);
+  // Guard closing transitions to open rows only, so two tabs resolving together
+  // cannot flip a dismissed/re-resolved row and the affected count is honest.
+  // Reopening (resolved -> open) is the only transition allowed off open.
+  let query = supabase.from("stuck_requests").update({ status }).eq("id", requestId);
+  if (status === "resolved" || status === "helped") {
+    query = query.eq("status", "open");
+  }
+  const { error } = await query;
   if (error) {
     throw new DataError("stuck", "Couldn't update that request. Try again.", { cause: error });
   }
@@ -225,17 +229,23 @@ export async function deleteStuckRequest(requestId: string): Promise<void> {
   }
 }
 
-/** One nudge per 24h. The server stamps `last_reminded_at`. */
+/** One nudge per 24h, open requests only. The server stamps `last_reminded_at`. */
 export async function remindStuckRequest(requestId: string): Promise<{ ok: boolean; error?: string }> {
   const supabase = createClient();
+  // Race-safe throttle enforced in WHERE (last_reminded_at IS NULL OR older
+  // than 24h) plus open-status guard; the affected row count decides.
+  const cutoffISO = new Date(Date.now() - 86_400_000).toISOString();
   const { data, error } = await supabase
     .from("stuck_requests")
     .update({ last_reminded_at: new Date().toISOString() })
-    .eq("id", requestId);
+    .eq("id", requestId)
+    .eq("status", "open")
+    .or(`last_reminded_at.is.null,last_reminded_at.lt.${cutoffISO}`)
+    .select("id");
 
   if (error) return { ok: false, error: "Couldn't send that nudge. Try again." };
-  const row = data as StuckRequest | null;
-  if (!row) return { ok: false, error: "Couldn't send that nudge. Try again." };
+  const rows = Array.isArray(data) ? data : data ? [data] : [];
+  if (rows.length === 0) return { ok: false, error: "Already nudged in the last 24 hours, or the request is closed." };
   // The RLS update policy only allows the author, so a successful update means
   // the caller owns the request. A helper nudging is not permitted by design:
   // low noise beats responsiveness here (§37).

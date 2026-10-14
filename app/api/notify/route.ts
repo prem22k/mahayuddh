@@ -2,18 +2,12 @@ import { NextResponse } from "next/server";
 import { getServiceClient, requireUser } from "@/lib/supabase/service";
 import { rateLimit, rateLimitKey, RATE_RULES } from "@/lib/security/rateLimit";
 import { readJsonBounded } from "@/lib/security/body";
-import { logSecurityEvent } from "@/lib/security/log";
+import { logSecurityEvent, redactForLog } from "@/lib/security/log";
+import { inQuietHoursIST } from "@/lib/quietHours";
 
 export const dynamic = "force-dynamic";
 
-const KINDS = ["challenge", "challenge_completed", "goal", "revenge", "recap", "contest"] as const;
-const QUIET_START_HOUR = 22;
-const QUIET_END_HOUR = 8;
-
-function inQuietHours(now: Date): boolean {
-  const hour = now.getHours();
-  return hour >= QUIET_START_HOUR || hour < QUIET_END_HOUR;
-}
+const KINDS = ["challenge", "challenge_completed", "goal", "revenge", "recap", "contest", "nudge"] as const;
 
 // POST /api/notify {userId, kind, title, body?, deepLink?, actorId?, urgent?}
 // The notifications table has no client INSERT policy, so writes are service-role
@@ -79,10 +73,13 @@ export async function POST(request: Request) {
     });
   }
 
-  // Quiet hours: batchable nudges (goal / recap) are suppressed, direct
-  // challenge pings are not — someone is waiting on a reply.
-  const BATCHABLE = new Set(["goal", "recap", "contest"]);
-  if (!urgent && BATCHABLE.has(kind) && inQuietHours(new Date())) {
+  // Quiet hours: batchable nudges (goal / recap / contest / nudge) are
+  // suppressed, direct challenge pings are not — someone is waiting on a reply. Hours are IST
+  // (Asia/Kolkata) via the shared helper. NOTE: the DB in_quiet_hours()
+  // function still uses UTC until a migration lands; trigger-based nudges
+  // (goal/contest) follow that path and are out of scope for this wave.
+  const BATCHABLE = new Set(["goal", "recap", "contest", "nudge"]);
+  if (!urgent && BATCHABLE.has(kind) && inQuietHoursIST(new Date())) {
     return NextResponse.json({ skipped: "quiet_hours" });
   }
 
@@ -107,7 +104,20 @@ export async function POST(request: Request) {
   // Push is a nice-to-have: a push failure must not undo the in-app record.
   try {
     const { sendPushToUser } = await import("@/lib/push");
-    await sendPushToUser(userId, { title, body: text ?? undefined, url: deepLink ?? "/" });
+    const push = await sendPushToUser(userId, { title, body: text ?? undefined, url: deepLink ?? "/" });
+    if (push.sent === 0) {
+      console.warn(
+        JSON.stringify(
+          redactForLog({
+            event: "push.sent_zero",
+            route: "/api/notify",
+            user_id: userId,
+            sent: push.sent,
+            retired: push.retired,
+          })
+        )
+      );
+    }
   } catch (err) {
     console.warn("Push delivery failed (notification stored):", err);
   }

@@ -20,6 +20,13 @@ export interface MySquads {
   activeSquadId: string | null;
 }
 
+/** Explicit projections (no `*`): every column callers use, per schema. */
+const SQUAD_COLUMNS = "id,name,avatar_url,description,created_by,invite_code,shared_goal_text,season_name,created_at";
+const SQUAD_MEMBER_COLUMNS =
+  "squad_id,user_id,role,active,joined_at,last_active_at,profile:user_id (id, username, leetcode_username, avatar_url, streak, total_easy, total_medium, total_hard, contest_rating)";
+const SQUAD_GOAL_COLUMNS =
+  "id,squad_id,title,target_count,pattern,deadline,status,created_by,created_at,starts_at,archived";
+
 export async function getMySquads(userId: string, activeSquadId?: string | null): Promise<MySquads> {
   const supabase = createClient();
   const { data: memberships, error: mErr } = await supabase
@@ -31,7 +38,7 @@ export async function getMySquads(userId: string, activeSquadId?: string | null)
   }
   if (!memberships || memberships.length === 0) return { squads: [], activeSquadId: activeSquadId ?? null };
   const ids = memberships.map((m) => m.squad_id);
-  const { data: squads, error: sErr } = await supabase.from("squads").select("*").in("id", ids);
+  const { data: squads, error: sErr } = await supabase.from("squads").select(SQUAD_COLUMNS).in("id", ids);
   if (sErr) {
     throw new DataError("squads", "Couldn't load your squads. Check your connection and retry.", { cause: sErr });
   }
@@ -46,15 +53,15 @@ export async function getSquadDetail(squadId: string): Promise<{
   const supabase = createClient();
   const [{ data: squad, error: sErr }, { data: members, error: mErr }, { data: goals, error: gErr }] =
     await Promise.all([
-      supabase.from("squads").select("*").eq("id", squadId).maybeSingle(),
+      supabase.from("squads").select(SQUAD_COLUMNS).eq("id", squadId).maybeSingle(),
       supabase
         .from("squad_members")
-        .select("*, profile:user_id (id, username, leetcode_username, avatar_url, streak, total_easy, total_medium, total_hard, contest_rating)")
+        .select(SQUAD_MEMBER_COLUMNS)
         .eq("squad_id", squadId)
         .order("joined_at", { ascending: true }),
       supabase
         .from("squad_goals")
-        .select("*")
+        .select(SQUAD_GOAL_COLUMNS)
         .eq("squad_id", squadId)
         .eq("status", "active")
         .order("created_at", { ascending: false }),
@@ -66,22 +73,25 @@ export async function getSquadDetail(squadId: string): Promise<{
   if (gErr) throw new DataError("squads", "Couldn't load squad goals. Retry.", { cause: gErr });
   return {
     squad: squad as Squad,
-    members: (members ?? []) as SquadMember[],
+    members: (members ?? []) as unknown as SquadMember[],
     goals: (goals ?? []) as SquadGoal[],
   };
 }
 
-/** All-time solved count per member (v0 goal progress; honest label, no date gaming). */
+/** Solves per member in the last 7 days (same window pattern as getSolvesWindow). */
 export async function getSquadSolveCounts(userIds: string[]): Promise<Record<string, number>> {
-  if (userIds.length === 0) return {};
+  const counts: Record<string, number> = {};
+  for (const id of userIds) counts[id] = 0;
+  if (userIds.length === 0) return counts;
   const supabase = createClient();
+  const sinceISO = new Date(Date.now() - 7 * 86_400_000).toISOString();
   const { data, error } = await supabase
-    .from("user_problem_status")
+    .from("problem_events")
     .select("user_id")
     .in("user_id", userIds)
-    .eq("status", "solved");
-  if (error || !data) return {};
-  const counts: Record<string, number> = {};
+    .eq("kind", "solved")
+    .gte("created_at", sinceISO);
+  if (error || !data) return counts;
   for (const row of data as { user_id: string }[]) {
     counts[row.user_id] = (counts[row.user_id] ?? 0) + 1;
   }

@@ -32,6 +32,11 @@ import {
   type SquadStreak,
 } from "@/lib/data/squadActivity";
 import { longestActiveChain } from "@/lib/chains";
+import {
+  squadWeekDayNums,
+  squadDayKeyFromDayNum,
+  squadDayLabel,
+} from "@/lib/squadDays";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
 import { logFeedEvent } from "@/lib/data/feed";
@@ -177,6 +182,7 @@ export default function SquadPage() {
     setFormError(null);
     try {
       const squad = await createSquad({ name: name.trim(), description: description.trim() || undefined });
+      track("squad_created", { via: "squad_page", squad_id: squad.id });
       setName("");
       setDescription("");
       setShowCreate(false);
@@ -198,6 +204,7 @@ export default function SquadPage() {
     try {
       const { squad } = await joinSquad(code, null);
       track("invite_opened", { squad_id: squad.id });
+      track("squad_joined", { via: "code", squad_id: squad.id });
       setCode("");
       setShowJoin(false);
       await refreshProfile();
@@ -265,18 +272,13 @@ export default function SquadPage() {
   };
 
   // Real last-7-day labels, oldest -> newest, aligned with the week grid.
+  // Squad-local (IST) buckets — same day definition as getMemberWeekGrid.
   // useMemo stays above every early return (rules of hooks).
   const weekDays = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(today);
-      d.setDate(d.getDate() - (6 - i));
-      return {
-        key: `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`,
-        label: d.toLocaleDateString(undefined, { weekday: "short" }),
-      };
-    });
+    return squadWeekDayNums(7).map((dayNum) => ({
+      key: squadDayKeyFromDayNum(dayNum),
+      label: squadDayLabel(dayNum),
+    }));
   }, []);
 
   if (loading) return <PageLoader label="Loading squad..." />;
@@ -526,7 +528,7 @@ export default function SquadPage() {
                           {m.admin ? " · Admin" : ""}
                         </span>
                         <span className="block font-mono text-xs text-text-tertiary tnum">
-                          {m.solves} solves this week · {m.streak}-day streak
+                          {m.solves} solves this week · {m.streak}-day LeetCode streak
                         </span>
                       </div>
                     </div>

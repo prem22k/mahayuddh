@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Play,
@@ -12,6 +12,7 @@ import { cn, formatTime } from "@/lib/utils";
 import { ProblemLink } from "@/components/ui/ProblemLink";
 import {
   useSolving,
+  useSolvingTimer,
   BATTLE_ID_STORAGE_KEY,
 } from "@/components/providers/SolvingProvider";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -35,17 +36,16 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
     setActiveProblem,
     isPlaying,
     setIsPlaying,
-    seconds,
-    setSeconds,
-    startedAt,
+    resetSolving,
   } = useSolving();
+  // Ticking subscription: only the dock reads the per-second timer, so only
+  // the dock re-renders on tick. Timer math itself is untouched.
+  const { seconds } = useSolvingTimer();
 
-  // Elapsed time derived from wall clock, not accumulated ticks: a backgrounded
-  // tab or a throttled interval must not make the timer drift (Step 7 honesty).
-  const elapsedSec = useMemo(() => {
-    if (startedAt == null) return seconds;
-    return Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-  }, [seconds, startedAt]);
+  // Elapsed time is the provider's accumulated value (performance.now()
+  // deltas, frozen while paused). Never derived from Date.now() here, so
+  // clock jumps cannot invent solving time.
+  const elapsedSec = seconds;
 
   const [isScratchpadOpen, setIsScratchpadOpen] = useState(false);
   const [scratchpadNote, setScratchpadNote] = useState("");
@@ -53,6 +53,8 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
   const [battleId, setBattleId] = useState<string | null>(null);
   const [stuckOpen, setStuckOpen] = useState(false);
   const [ending, setEnding] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [isHeartbeatLeader, setIsHeartbeatLeader] = useState(true);
   // Step 17: closes the "failed -> solved" loop with the real before/after.
   const [revengeResult, setRevengeResult] = useState<RevengeResult | null>(null);
   // Feeds the ladder's suggested level: how many tries have you already had?
@@ -60,6 +62,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
 
   // Load scratchpad note whenever activeProblem changes
   useEffect(() => {
+    setSessionExpired(false);
     if (activeProblem?.slug) {
       const savedNote = localStorage.getItem(`mahayuddh_notes_${activeProblem.slug}`) || "";
       setScratchpadNote(savedNote);
@@ -124,40 +127,108 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProblem?.slug]);
 
-  // Stopwatch interval. Ticks only to re-render; elapsedSec comes from the clock.
+  // The per-second tick lives in the provider (performance.now()
+  // accumulation); this component only re-renders from `seconds`.
+
+  // Multi-tab leader election: only one tab heartbeats. Tabs announce over a
+  // BroadcastChannel and the lowest id wins; others suppress heartbeats but
+  // keep counting locally so a leader handoff never loses time.
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-    if (isPlaying && activeProblem) {
-      interval = setInterval(() => {
-        setSeconds((prev) => prev + 1);
-      }, 1000);
+    if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") {
+      setIsHeartbeatLeader(true);
+      return;
     }
-    return () => {
-      if (interval) clearInterval(interval);
+    const tabId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const peers = new Set<string>([tabId]);
+    let closed = false;
+    const channel = new BroadcastChannel("mahayuddh_battle_heartbeat");
+    const elect = () => {
+      if (closed) return;
+      const leader = Array.from(peers).sort()[0];
+      setIsHeartbeatLeader(leader === tabId);
     };
-  }, [isPlaying, activeProblem, setSeconds]);
+    channel.onmessage = (ev: MessageEvent) => {
+      const msg = ev.data as { type?: string; id?: string } | null;
+      if (!msg || typeof msg.id !== "string") return;
+      if (msg.type === "hello" || msg.type === "ping") {
+        peers.add(msg.id);
+        channel.postMessage({ type: "hello", id: tabId });
+        elect();
+      } else if (msg.type === "bye") {
+        peers.delete(msg.id);
+        elect();
+      }
+    };
+    channel.postMessage({ type: "hello", id: tabId });
+    const ping = setInterval(() => {
+      if (!closed) channel.postMessage({ type: "ping", id: tabId });
+    }, 5000);
+    const t = setTimeout(elect, 600);
+    const onUnload = () => {
+      try {
+        channel.postMessage({ type: "bye", id: tabId });
+      } catch {
+        // ignore
+      }
+      channel.close();
+    };
+    window.addEventListener("beforeunload", onUnload);
+    return () => {
+      closed = true;
+      clearInterval(ping);
+      clearTimeout(t);
+      window.removeEventListener("beforeunload", onUnload);
+      try {
+        channel.postMessage({ type: "bye", id: tabId });
+      } catch {
+        // ignore
+      }
+      channel.close();
+    };
+  }, []);
 
   const handleSaveNote = (text: string) => {
     setScratchpadNote(text);
     if (activeProblem?.slug) {
       localStorage.setItem(`mahayuddh_notes_${activeProblem.slug}`, text);
       // Mirror to server session (debounced by keystroke batching upstream).
-      if (battleId) heartbeatBattle(battleId, { scratchpad_md: text.slice(0, 20000) }).catch(() => {});
+      if (battleId) {
+        heartbeatBattle(battleId, { scratchpad_md: text.slice(0, 20000) })
+          .then((res) => {
+            if (res.expired) {
+              setSessionExpired(true);
+              setIsPlaying(false);
+            }
+          })
+          .catch(() => {});
+      }
     }
   };
 
   // Heartbeat duration every 15s while solving (plan Step 7: persist every 15s).
-  // Sends the real elapsed time computed from the wall clock, never a guess.
+  // Sends the accumulated value, only from the leader tab. A 410/expired
+  // response stops the timer and tells the truth instead of counting silently.
   useEffect(() => {
-    if (!isPlaying || !battleId) return;
+    if (!isPlaying || !battleId || !isHeartbeatLeader || sessionExpired) return;
+    let stopped = false;
     const send = () => {
-      const real = Math.max(0, Math.floor((Date.now() - (startedAt ?? Date.now())) / 1000));
-      heartbeatBattle(battleId, { duration_sec: real }).catch(() => {});
+      heartbeatBattle(battleId, { duration_sec: elapsedSec })
+        .then((res) => {
+          if (stopped) return;
+          if (res.expired) {
+            setSessionExpired(true);
+            setIsPlaying(false);
+          }
+        })
+        .catch(() => {});
     };
     send();
     const t = setInterval(send, 15000);
-    return () => clearInterval(t);
-  }, [isPlaying, battleId, startedAt]);
+    return () => {
+      stopped = true;
+      clearInterval(t);
+    };
+  }, [isPlaying, battleId, isHeartbeatLeader, sessionExpired, elapsedSec, setIsPlaying]);
 
   const handleComplete = useCallback(async (evidence: "leetcode" | "none" = "none") => {
     if (!activeProblem) return;
@@ -186,7 +257,14 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
       track("battle_solved", { problem_slug: activeProblem.slug });
       if (wasSolved) track("revisit_done", { problem_slug: activeProblem.slug, via: "dock" });
       if (battleId) {
-        endBattle(battleId, "solved", { duration_sec: elapsedSec, evidence }).catch(() => {});
+        endBattle(battleId, "solved", { duration_sec: elapsedSec, evidence })
+          .then((res) => {
+            if (res.expired) {
+              setSessionExpired(true);
+              setIsPlaying(false);
+            }
+          })
+          .catch(() => {});
       }
       logProblemEvent({
         problemSlug: activeProblem.slug,
@@ -267,7 +345,14 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
         );
       }
       if (battleId) {
-        await endBattle(battleId, "failed", { duration_sec: elapsedSec }).catch(() => {});
+        await endBattle(battleId, "failed", { duration_sec: elapsedSec })
+          .then((res) => {
+            if (res.expired) {
+              setSessionExpired(true);
+              setIsPlaying(false);
+            }
+          })
+          .catch(() => {});
       }
       await logProblemEvent({
         problemSlug: activeProblem.slug,
@@ -288,7 +373,10 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
   const handleAbandon = useCallback(async () => {
     if (!activeProblem) return;
     if (!window.confirm("Abandon this battle? The timer stops; nothing is recorded as attempted.")) return;
-    if (battleId) await endBattle(battleId, "abandoned", { duration_sec: elapsedSec }).catch(() => {});
+    if (battleId) {
+      const res = await endBattle(battleId, "abandoned", { duration_sec: elapsedSec }).catch(() => null);
+      if (res?.expired) setSessionExpired(true);
+    }
     setBattleId(null);
     setActiveProblem(null);
     setIsPlaying(false);
@@ -300,6 +388,9 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
     if (!isPlaying || !activeProblem?.slug || !profile?.leetcode_username) return;
 
     const interval = setInterval(async () => {
+      // Visibility gate only: the timer/heartbeat math below is untouched.
+      // A hidden tab skips the network poll; detection resumes on return.
+      if (document.visibilityState !== "visible") return;
       try {
         const res = await fetch("/api/sync/leetcode", {
           method: "POST",
@@ -429,6 +520,26 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
       )}
 
       {/* ── Solve dock S1 (active) / idle one-liner ── */}
+      {sessionExpired && activeProblem && (
+        <div className="solve-dock-wrap select-none">
+          <div className="card flex items-center justify-between gap-3 border border-error/30">
+            <p className="text-sm leading-6 text-text-primary">
+              Session expired, restart the battle to keep time honestly.
+            </p>
+            <button
+              onClick={() => {
+                setSessionExpired(false);
+                setBattleId(null);
+                resetSolving();
+                setActiveProblem(null);
+              }}
+              className="inline-flex min-h-[44px] shrink-0 items-center rounded-md bg-primary px-4 text-sm font-medium text-on-primary transition-colors hover:bg-primary-hover"
+            >
+              Restart battle
+            </button>
+          </div>
+        </div>
+      )}
       <div className="solve-dock-wrap select-none">
         <div className="solve-dock">
           <div className="flex shrink-0 items-center gap-2">
@@ -520,7 +631,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                       Abandon
                     </button>
                     <button
-                      onClick={() => setSeconds(0)}
+                      onClick={() => resetSolving()}
                       className="flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
                     >
                       <RotateCcw className="h-3.5 w-3.5" /> Reset timer

@@ -62,7 +62,7 @@ export async function computeGoalProgress(
       pct: 0,
       participants: 0,
       memberCount: 0,
-      daysRemaining: goal.deadline ? Math.max(0, daysBetween(goal.deadline, now)) : null,
+      daysRemaining: goal.deadline ? Math.max(0, daysBetween(now, new Date(goal.deadline))) : null,
       remaining: target,
       nudge: null,
     };
@@ -105,7 +105,7 @@ export async function computeGoalProgress(
     pct: Math.min(100, Math.round((done / target) * 100)),
     participants: contributors.size,
     memberCount: memberIds.length,
-    daysRemaining: goal.deadline ? Math.max(0, daysBetween(goal.deadline, now)) : null,
+    daysRemaining: goal.deadline ? Math.max(0, daysBetween(now, new Date(goal.deadline))) : null,
     remaining,
     // Honest nudge: only when it is close, and never when it is already met.
     nudge:

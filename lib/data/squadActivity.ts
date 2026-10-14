@@ -1,6 +1,14 @@
 import { createClient } from "@/lib/supabase/client";
 import { normalizeSlugList } from "@/lib/slug";
 import { DataError } from "@/lib/data/errors";
+import {
+  squadDayKeyFromISO,
+  squadDayKeyFromDayNum,
+  squadMidnightUtcISOFromDayNum,
+  squadStartOfTodayUtcISO,
+  squadTodayDayNum,
+  squadTodayKey,
+} from "@/lib/squadDays";
 import type { Difficulty } from "@/types/database";
 
 /**
@@ -32,7 +40,7 @@ export interface TodaySlugTime {
 
 export interface SquadStreak {
   days: number;
-  /** First day of the streak, local YYYY-MM-DD. */
+  /** First day of the streak, squad-local (IST) YYYY-MM-DD. */
   since: string;
 }
 
@@ -51,18 +59,6 @@ export interface IncomingChallenge {
   beatSec: number | null;
   dueAt: string | null;
   note: string | null;
-}
-
-function startOfTodayLocal(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function toLocalDayKey(d: Date): string {
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${m}-${day}`;
 }
 
 function activityError(cause?: unknown): DataError {
@@ -106,7 +102,7 @@ export async function getSquadMembers(squadId: string): Promise<SquadActivityMem
 }
 
 /**
- * Per-member best solve time for one slug, measured today (local day).
+ * Per-member best solve time for one slug, measured today (squad-local day).
  * Considers kind in ('solved','revisited'). `verified` is true when any of
  * the member's events today carries metadata source 'leetcode'.
  */
@@ -120,18 +116,23 @@ export async function getTodaySlugTimes(
   const supabase = createClient();
   const { data, error } = await supabase
     .from("problem_events")
-    .select("user_id, duration_sec, metadata")
+    .select("user_id, duration_sec, metadata, created_at")
     .in("user_id", memberIds)
     .eq("problem_slug", slug.toLowerCase())
     .in("kind", ["solved", "revisited"])
-    .gte("created_at", startOfTodayLocal().toISOString());
+    .gte("created_at", squadStartOfTodayUtcISO());
   if (error) throw activityError(error);
   const rows = (data ?? []) as unknown as {
     user_id: string;
     duration_sec: number | null;
     metadata: { source?: unknown } | null;
+    created_at: string;
   }[];
+  const todayKey = squadTodayKey();
   for (const row of rows) {
+    // Bucket guard: the gte floor is IST midnight, but keep the IST-day check
+    // explicit so a future floor change can't leak another day in.
+    if (squadDayKeyFromISO(row.created_at) !== todayKey) continue;
     const entry = out[row.user_id];
     if (!entry) continue;
     if (typeof row.duration_sec === "number" && row.duration_sec >= 0) {
@@ -146,20 +147,25 @@ export async function getTodaySlugTimes(
   return out;
 }
 
-/** Member ids with a solve event for the slug today (local day). */
+/** Member ids with a solve event for the slug today (squad-local day). */
 export async function getSolvedToday(slug: string, memberIds: string[]): Promise<Set<string>> {
   if (memberIds.length === 0) return new Set();
   const supabase = createClient();
   const { data, error } = await supabase
     .from("problem_events")
-    .select("user_id")
+    .select("user_id, created_at")
     .in("user_id", memberIds)
     .eq("problem_slug", slug.toLowerCase())
     .eq("kind", "solved")
-    .gte("created_at", startOfTodayLocal().toISOString());
+    .gte("created_at", squadStartOfTodayUtcISO());
   if (error) throw activityError(error);
-  const rows = (data ?? []) as unknown as { user_id: string }[];
-  return new Set(rows.map((r) => r.user_id));
+  const rows = (data ?? []) as unknown as { user_id: string; created_at: string }[];
+  const todayKey = squadTodayKey();
+  return new Set(
+    rows
+      .filter((r) => squadDayKeyFromISO(r.created_at) === todayKey)
+      .map((r) => r.user_id)
+  );
 }
 
 async function fetchSolveDays(
@@ -178,7 +184,8 @@ async function fetchSolveDays(
   const rows = (data ?? []) as unknown as { user_id: string; created_at: string }[];
   const byDay = new Map<string, Set<string>>();
   for (const row of rows) {
-    const key = toLocalDayKey(new Date(row.created_at));
+    const key = squadDayKeyFromISO(row.created_at);
+    if (!key) continue;
     let set = byDay.get(key);
     if (!set) {
       set = new Set<string>();
@@ -192,35 +199,33 @@ async function fetchSolveDays(
 /**
  * Consecutive days where EVERY member logged >=1 solve/revisited event.
  * Today counts only when all members solved today; otherwise the walk starts
- * from yesterday. Walk capped at 365 days.
+ * from yesterday. Walk capped at 365 days. Days are squad-local (IST).
  */
 export async function getSquadStreak(memberIds: string[]): Promise<SquadStreak> {
-  const today = startOfTodayLocal();
-  if (memberIds.length === 0) return { days: 0, since: toLocalDayKey(today) };
-  const floor = new Date(today);
-  floor.setDate(floor.getDate() - 364);
-  const byDay = await fetchSolveDays(memberIds, floor.toISOString());
-  const hasAll = (d: Date): boolean => {
-    const set = byDay.get(toLocalDayKey(d));
+  const todayNum = squadTodayDayNum();
+  if (memberIds.length === 0) return { days: 0, since: squadDayKeyFromDayNum(todayNum) };
+  const floorNum = todayNum - 364;
+  const byDay = await fetchSolveDays(memberIds, squadMidnightUtcISOFromDayNum(floorNum));
+  const hasAll = (dayNum: number): boolean => {
+    const set = byDay.get(squadDayKeyFromDayNum(dayNum));
     if (!set) return false;
     return memberIds.every((id) => set.has(id));
   };
-  const cursor = new Date(today);
+  let cursor = todayNum;
   // Today counts only if ALL solved; else the streak is measured through yesterday.
-  if (!hasAll(cursor)) cursor.setDate(cursor.getDate() - 1);
+  if (!hasAll(cursor)) cursor -= 1;
   let days = 0;
   while (days < 365 && hasAll(cursor)) {
     days += 1;
-    cursor.setDate(cursor.getDate() - 1);
+    cursor -= 1;
   }
-  if (days === 0) return { days: 0, since: toLocalDayKey(today) };
-  cursor.setDate(cursor.getDate() + 1);
-  return { days, since: toLocalDayKey(cursor) };
+  if (days === 0) return { days: 0, since: squadDayKeyFromDayNum(todayNum) };
+  return { days, since: squadDayKeyFromDayNum(cursor + 1) };
 }
 
 /**
  * Per-member solve grid for the last `days` days, oldest -> newest.
- * True when the member logged >=1 solve/revisited event that local day.
+ * True when the member logged >=1 solve/revisited event that squad-local day.
  */
 export async function getMemberWeekGrid(
   memberIds: string[],
@@ -229,15 +234,12 @@ export async function getMemberWeekGrid(
   const out: Record<string, boolean[]> = {};
   for (const id of memberIds) out[id] = Array<boolean>(days).fill(false);
   if (memberIds.length === 0 || days <= 0) return out;
-  const today = startOfTodayLocal();
-  const floor = new Date(today);
-  floor.setDate(floor.getDate() - (days - 1));
-  const byDay = await fetchSolveDays(memberIds, floor.toISOString());
+  const todayNum = squadTodayDayNum();
+  const floorNum = todayNum - (days - 1);
+  const byDay = await fetchSolveDays(memberIds, squadMidnightUtcISOFromDayNum(floorNum));
   const indexByDay = new Map<string, number>();
   for (let i = 0; i < days; i++) {
-    const d = new Date(floor);
-    d.setDate(d.getDate() + i);
-    indexByDay.set(toLocalDayKey(d), i);
+    indexByDay.set(squadDayKeyFromDayNum(floorNum + i), i);
   }
   for (const [dayKey, solvers] of byDay) {
     const idx = indexByDay.get(dayKey);

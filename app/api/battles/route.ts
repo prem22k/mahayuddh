@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServiceClient, requireUser } from "@/lib/supabase/service";
 import { readJsonBounded, maxBodyBytesFor } from "@/lib/security/body";
+import { redactForLog } from "@/lib/security/log";
 
 const SLUG_RE = /^[a-z0-9-]{1,80}$/;
 
@@ -70,7 +71,23 @@ export async function POST(request: Request) {
       .insert({ user_id: user.id, problem_slug: slug, squad_id: squadId, challenge_id: challengeId })
       .select("*")
       .maybeSingle();
-    if (error || !data) return NextResponse.json({ error: "Couldn't start battle. Try again." }, { status: 500 });
+    if (error) {
+      // One-live-per-user race (battles_one_live_per_user partial unique):
+      // two starts landed together. Return the existing live row instead of 500.
+      if ((error as { code?: string }).code === "23505") {
+        const { data: live } = await supabase
+          .from("battles")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("outcome", "in_progress")
+          .order("started_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (live) return NextResponse.json({ success: true, battle: live, resumed: true });
+      }
+      return NextResponse.json({ error: "Couldn't start battle. Try again." }, { status: 500 });
+    }
+    if (!data) return NextResponse.json({ error: "Couldn't start battle. Try again." }, { status: 500 });
     return NextResponse.json({ success: true, battle: data }, { status: 201 });
   }
 
@@ -84,12 +101,68 @@ export async function POST(request: Request) {
       }
       patch.scratchpad_md = body.scratchpad_md;
     }
+    let wantDuration: number | null = null;
     if (typeof body.duration_sec === "number" && Number.isFinite(body.duration_sec) && body.duration_sec >= 0) {
-      patch.duration_sec = Math.trunc(body.duration_sec);
+      wantDuration = Math.trunc(body.duration_sec);
     }
-    if (Object.keys(patch).length === 0) return NextResponse.json({ success: true });
-    const { error } = await supabase.from("battles").update(patch).eq("id", battleId).eq("user_id", user.id).eq("outcome", "in_progress");
+    if (Object.keys(patch).length === 0 && wantDuration == null) {
+      return NextResponse.json({ success: true });
+    }
+    // GREATEST-style guard: a stale tab must never regress duration. Read the
+    // stored value first and only overwrite when the new value is >= stored.
+    // endBattle writes the final value directly (it requires in_progress too).
+    if (wantDuration != null) {
+      const { data: current } = await supabase
+        .from("battles")
+        .select("duration_sec")
+        .eq("id", battleId)
+        .eq("user_id", user.id)
+        .eq("outcome", "in_progress")
+        .maybeSingle();
+      if (!current) {
+        // No live row: the session ended elsewhere (or never existed). Tell
+        // the caller to stop instead of letting it keep counting silently.
+        console.warn(
+          JSON.stringify(
+            redactForLog({
+              event: "battle.heartbeat_stale",
+              route: "/api/battles",
+              battle_id: battleId,
+              user_id: user.id,
+            })
+          )
+        );
+        return NextResponse.json({ error: "Session expired. Restart the battle.", expired: true }, { status: 410 });
+      }
+      const stored = (current as { duration_sec: number | null }).duration_sec;
+      if (typeof stored === "number" && wantDuration < stored) {
+        // Keep the larger stored value; still persist scratchpad if present.
+        if (Object.keys(patch).length === 0) return NextResponse.json({ success: true });
+      } else {
+        patch.duration_sec = wantDuration;
+      }
+    }
+    const { data: updated, error } = await supabase
+      .from("battles")
+      .update(patch)
+      .eq("id", battleId)
+      .eq("user_id", user.id)
+      .eq("outcome", "in_progress")
+      .select("id");
     if (error) return NextResponse.json({ error: "Couldn't save session." }, { status: 500 });
+    if (!updated || (Array.isArray(updated) && updated.length === 0)) {
+      console.warn(
+        JSON.stringify(
+          redactForLog({
+            event: "battle.heartbeat_stale",
+            route: "/api/battles",
+            battle_id: battleId,
+            user_id: user.id,
+          })
+        )
+      );
+      return NextResponse.json({ error: "Session expired. Restart the battle.", expired: true }, { status: 410 });
+    }
     return NextResponse.json({ success: true });
   }
 
@@ -118,9 +191,14 @@ export async function POST(request: Request) {
       .update(patch)
       .eq("id", battleId)
       .eq("user_id", user.id)
+      .eq("outcome", "in_progress")
       .select("*")
       .maybeSingle();
-    if (error || !data) return NextResponse.json({ error: "Couldn't end battle. Try again." }, { status: 500 });
+    if (error) return NextResponse.json({ error: "Couldn't end battle. Try again." }, { status: 500 });
+    // No row matched: unknown id, not owned, or already ended elsewhere. 404,
+    // not 500 — this is terminal and clients must stop retrying instead of
+    // looping forever. `expired` stays so existing callers treat it as terminal.
+    if (!data) return NextResponse.json({ error: "Battle not found.", expired: true }, { status: 404 });
     return NextResponse.json({ success: true, battle: data });
   }
 

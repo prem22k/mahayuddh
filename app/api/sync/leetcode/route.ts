@@ -53,13 +53,15 @@ async function persistStatsByHandle(
     contestTopPercentage?: number | null;
     contestAttended?: number | null;
     ranking?: number | null;
-    streak: number;
+    /** Null/undefined = calendar fetch failed: do not touch the stored streak. */
+    streak?: number | null;
     avatar?: string | null;
   },
   prev: { total_easy: number; total_medium: number; total_hard: number; streak: number } | null
 ): Promise<boolean> {
   const attended = stats.contestAttended ?? 0;
-  const updateData: Partial<Profile> = {
+  const nowISO = new Date().toISOString();
+  const updateData: Partial<Profile> & { streak_updated_at?: string | null } = {
     // LeetCode totals are cumulative: never regress on a partial upstream
     // failure (already filtered upstream, belt + suspenders here).
     total_easy: Math.max(prev?.total_easy ?? 0, stats.totalEasy ?? 0),
@@ -71,9 +73,14 @@ async function persistStatsByHandle(
     contest_attended: attended,
     contest_global_rank: attended > 0 ? (stats.contestGlobalRank ?? null) : null,
     contest_top_percentage: attended > 0 ? (stats.contestTopPercentage ?? null) : null,
-    streak: Math.max(prev?.streak ?? 0, stats.streak ?? 0),
-    last_synced_at: new Date().toISOString(),
+    last_synced_at: nowISO,
   };
+  // Streak is NOT cumulative: a real decrease (broken streak) must land.
+  // A missing streak means the calendar fetch failed — never treat it as 0.
+  if (typeof stats.streak === "number" && Number.isFinite(stats.streak) && stats.streak >= 0) {
+    updateData.streak = Math.trunc(stats.streak);
+    updateData.streak_updated_at = nowISO;
+  }
   if (stats.avatar) updateData.avatar_url = stats.avatar;
 
   const handle = leetcodeUsername.trim().toLowerCase();
@@ -94,6 +101,20 @@ async function persistStatsByHandle(
     .eq("id", profile.id);
 
   if (error) {
+    // streak_updated_at lands with its migration; until then, retry without it
+    // rather than failing the whole sync.
+    if (updateData.streak_updated_at && /streak_updated_at/i.test(error.message)) {
+      const { streak_updated_at: _drop, ...withoutStamp } = updateData;
+      const { error: retryErr } = await supabase
+        .from("profiles")
+        .update(withoutStamp)
+        .eq("id", profile.id);
+      if (retryErr) {
+        console.error("Sync persistence error:", retryErr);
+        return false;
+      }
+      return true;
+    }
     console.error("Sync persistence error:", error);
     return false;
   }
@@ -113,7 +134,8 @@ async function persistStats(
     contestTopPercentage?: number | null;
     contestAttended?: number | null;
     ranking?: number | null;
-    streak: number;
+    /** Null/undefined = calendar fetch failed: do not touch the stored streak. */
+    streak?: number | null;
     avatar?: string | null;
   },
   opts?: { userId?: string }
@@ -134,7 +156,8 @@ async function persistStats(
     .eq("id", opts.userId)
     .maybeSingle();
 
-  const updateData: Partial<Profile> = {
+  const nowISO = new Date().toISOString();
+  const updateData: Partial<Profile> & { streak_updated_at?: string | null } = {
     total_easy: Math.max(prev?.total_easy ?? 0, stats.totalEasy ?? 0),
     total_medium: Math.max(prev?.total_medium ?? 0, stats.totalMedium ?? 0),
     total_hard: Math.max(prev?.total_hard ?? 0, stats.totalHard ?? 0),
@@ -144,9 +167,14 @@ async function persistStats(
     contest_attended: attended,
     contest_global_rank: attended > 0 ? (stats.contestGlobalRank ?? null) : null,
     contest_top_percentage: attended > 0 ? (stats.contestTopPercentage ?? null) : null,
-    streak: Math.max(prev?.streak ?? 0, stats.streak ?? 0),
-    last_synced_at: new Date().toISOString(),
+    last_synced_at: nowISO,
   };
+  // Streak is NOT cumulative: a real decrease (broken streak) must land.
+  // A missing streak means the calendar fetch failed — never treat it as 0.
+  if (typeof stats.streak === "number" && Number.isFinite(stats.streak) && stats.streak >= 0) {
+    updateData.streak = Math.trunc(stats.streak);
+    updateData.streak_updated_at = nowISO;
+  }
   if (stats.avatar) updateData.avatar_url = stats.avatar;
 
   // Authenticated self-sync: write by user id (also claims handle on first connect).
@@ -158,6 +186,20 @@ async function persistStats(
     .eq("id", opts.userId);
 
   if (error) {
+    // streak_updated_at lands with its migration; until then, retry without it
+    // rather than failing the whole sync.
+    if (updateData.streak_updated_at && /streak_updated_at/i.test(error.message)) {
+      const { streak_updated_at: _drop, ...withoutStamp } = updateData;
+      const { error: retryErr } = await supabase
+        .from("profiles")
+        .update(withoutStamp)
+        .eq("id", opts.userId);
+      if (retryErr) {
+        console.error("Sync persistence error:", retryErr);
+        return false;
+      }
+      return true;
+    }
     console.error("Sync persistence error:", error);
     return false;
   }
@@ -387,7 +429,7 @@ export async function GET(request: Request) {
           contestTopPercentage: data.profile.contestTopPercentage ?? null,
           contestAttended: data.profile.contestAttended ?? 0,
           ranking: data.profile.ranking ?? null,
-          streak: data.calendar.streak ?? 0,
+          streak: data.calendar.streak,
           avatar: data.profile.avatar ?? null,
         });
         if (ok) persisted += 1;
@@ -503,7 +545,7 @@ export async function POST(request: Request) {
       contestTopPercentage: data.profile.contestTopPercentage ?? null,
       contestAttended: data.profile.contestAttended ?? 0,
       ranking: data.profile.ranking ?? null,
-      streak: data.calendar.streak ?? 0,
+      streak: data.calendar.streak,
       avatar: data.profile.avatar ?? null,
     }, { userId: authedUserId });
 
