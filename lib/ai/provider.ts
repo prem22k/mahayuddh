@@ -25,14 +25,18 @@
  *     attempt is a cost decision, not an engineering one.
  *   - a model choice. Whatever the deployment points at is what runs.
  *
- * Two wire formats, because the two providers anybody actually uses are not the
+ * Two wire formats, because the providers anybody actually uses are not the
  * same API. `AI_PROVIDER` picks; the default is inferred from which key is set.
+ * Gemini rides the OpenAI-compatible wire (Google's documented
+ * /v1beta/openai/ endpoint speaks chat/completions with Bearer auth), so it
+ * inherits the timeout, output cap, envelope parsing, and error scrubbing
+ * with zero new code paths.
  */
 
 import { SYSTEM_PREAMBLE } from "./policy.ts";
 import type { StuckLevel } from "@/types/database";
 
-export type ProviderName = "openai" | "anthropic";
+export type ProviderName = "openai" | "anthropic" | "gemini";
 
 export interface ProviderConfig {
   name: ProviderName;
@@ -45,19 +49,23 @@ export interface ProviderConfig {
 export function readProviderConfig(): ProviderConfig | null {
   const openaiKey = process.env.OPENAI_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
 
   const name = (process.env.AI_PROVIDER ?? "").toLowerCase();
   const chosen: ProviderName | null =
-    name === "openai" || name === "anthropic"
+    name === "openai" || name === "anthropic" || name === "gemini"
       ? name
       : openaiKey
         ? "openai"
         : anthropicKey
           ? "anthropic"
-          : null;
+          : geminiKey
+            ? "gemini"
+            : null;
   if (!chosen) return null;
 
-  const key = chosen === "openai" ? openaiKey : anthropicKey;
+  const key =
+    chosen === "openai" ? openaiKey : chosen === "anthropic" ? anthropicKey : geminiKey;
   if (!key) return null;
 
   // AI_BASE_URL exists so an OpenAI-compatible endpoint (a gateway, a local
@@ -67,10 +75,17 @@ export function readProviderConfig(): ProviderConfig | null {
     process.env.AI_BASE_URL ??
     (chosen === "openai"
       ? "https://api.openai.com/v1"
-      : "https://api.anthropic.com/v1");
+      : chosen === "anthropic"
+        ? "https://api.anthropic.com/v1"
+        : "https://generativelanguage.googleapis.com/v1beta/openai");
 
   const model =
-    process.env.AI_MODEL ?? (chosen === "openai" ? "gpt-4o-mini" : "claude-3-5-haiku-latest");
+    process.env.AI_MODEL ??
+    (chosen === "openai"
+      ? "gpt-4o-mini"
+      : chosen === "anthropic"
+        ? "claude-3-5-haiku-latest"
+        : "gemini-2.5-flash");
 
   return { name: chosen, apiKey: key, baseUrl: baseUrl.replace(/\/+$/, ""), model };
 }
@@ -121,9 +136,9 @@ export async function askLadder(params: {
   const instruction = buildLadderInstruction(requestedLevel, params);
 
   const raw =
-    config.name === "openai"
-      ? await callOpenAiCompatible(config, SYSTEM_PREAMBLE, instruction)
-      : await callAnthropic(config, SYSTEM_PREAMBLE, instruction);
+    config.name === "anthropic"
+      ? await callAnthropic(config, SYSTEM_PREAMBLE, instruction)
+      : await callOpenAiCompatible(config, SYSTEM_PREAMBLE, instruction);
 
   return parseEnvelope(raw);
 }
@@ -142,9 +157,9 @@ export async function askBounded(params: {
 }): Promise<string> {
   const { config } = params;
   const raw =
-    config.name === "openai"
-      ? await callOpenAiCompatible(config, SYSTEM_PREAMBLE, params.instruction, params.maxTokens)
-      : await callAnthropic(config, SYSTEM_PREAMBLE, params.instruction, params.maxTokens);
+    config.name === "anthropic"
+      ? await callAnthropic(config, SYSTEM_PREAMBLE, params.instruction, params.maxTokens)
+      : await callOpenAiCompatible(config, SYSTEM_PREAMBLE, params.instruction, params.maxTokens);
   return raw.trim();
 }
 
