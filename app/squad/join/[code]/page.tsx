@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Copy, Check } from "lucide-react";
 import { copyText } from "@/lib/clipboard";
+import { safeNext } from "@/lib/safeNext";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { Button } from "@/components/ui/Button";
@@ -67,6 +68,7 @@ export default function SquadJoinPage() {
       await refreshProfile();
       router.push("/squad");
       track("referral_join_completed", { squad_id: joined?.squad.id, referred: Boolean(ref) });
+      track("squad_joined", { via: "invite", squad_id: joined?.squad.id, referred: Boolean(ref) });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't join. Try again.");
     } finally {
@@ -76,6 +78,13 @@ export default function SquadJoinPage() {
 
   if (loading) return <PageLoader label="Loading invite..." />;
 
+  // Deep-continue (Wave D): the header sign-in carries ?next=<invite> through
+  // safeNext — and keeps ?ref= inside that target, so the referral survives
+  // auth instead of being dropped at the login form.
+  const inviteTarget =
+    safeNext(ref ? `/squad/join/${code}?ref=${encodeURIComponent(ref)}` : `/squad/join/${code}`) ??
+    "/home";
+
   return (
     <div className="min-h-screen bg-canvas text-text-primary">
       <header className="flex h-14 items-center justify-between px-4 md:px-10">
@@ -84,7 +93,7 @@ export default function SquadJoinPage() {
         </Link>
         {!user && (
           <Link
-            href={`/login?next=${encodeURIComponent(`/squad/join/${code}`)}`}
+            href={`/login?next=${encodeURIComponent(inviteTarget)}`}
             className="inline-flex min-h-[44px] items-center rounded-md px-3 text-sm font-medium text-text-secondary hover:bg-surface-raised hover:text-text-primary"
           >
             Sign in

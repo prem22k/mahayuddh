@@ -26,8 +26,6 @@ export const metadata: Metadata = {
   },
 };
 
-const DEMO_INVITE_CODE = "DEMO2026";
-
 const primaryLg =
   "inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-6 text-sm font-medium text-on-primary transition-colors hover:bg-primary-hover active:bg-primary-pressed";
 const secondaryBtn =
@@ -71,8 +69,12 @@ export default function WelcomePage() {
                     <Link href="/login?mode=signup" className={`${primaryLg} h-12 px-6`}>
                       Start solo
                     </Link>
-                    <Link href={`/squad/join/${DEMO_INVITE_CODE}`} className={secondaryBtn}>
-                      Explore the demo squad
+                    {/* No demo squad is seeded in deployed databases, so the old
+                        /squad/join/DEMO2026 link dead-ended at a 404. Until a
+                        seeded demo exists, this points at the example passes
+                        below — content that exists on this page. */}
+                    <Link href="#examples" className={secondaryBtn}>
+                      Explore example passes
                     </Link>
                   </div>
                   <p className="text-xs leading-5 text-text-tertiary">
@@ -189,7 +191,7 @@ export default function WelcomePage() {
         </section>
 
         {/* Stage 4: things you'll want to screenshot */}
-        <section aria-label="Shareable passes" className="py-16 md:py-20">
+        <section id="examples" aria-label="Shareable passes" className="scroll-mt-20 py-16 md:py-20">
           <h2 className="mx-auto max-w-reading font-display text-3xl font-semibold tracking-tight">
             Proof you&apos;ll actually want to share.
           </h2>

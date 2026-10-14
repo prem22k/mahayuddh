@@ -28,6 +28,10 @@ export const ANALYTICS_EVENTS = [
   // Activation funnel (Step 2 done-criteria: visit -> battle -> solve -> challenge)
   "signup_from_challenge",
   "signup_completed",
+  // A sign-in is not a signup. The old login form fired signup_completed on
+  // both branches, which made the funnel count every returning session as a
+  // new account. Sign-ins are counted here instead.
+  "signin_completed",
   "first_battle_started",
   // Squad
   "squad_created",
@@ -108,6 +112,10 @@ export const ANALYTICS_EVENTS = [
   // Misc
   "sync_completed",
   "stuck_requested",
+  // Post kit (Wave D): the share surface is measurable past the click — the
+  // image download and the composed post copy are separate decisions.
+  "download_copied",
+  "post_copied",
   // Auth security telemetry (controls 12/17). Counters only — never an email,
   // password, token, or any failure string that names the cause.
   "signin_failed",

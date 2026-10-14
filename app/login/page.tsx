@@ -158,6 +158,9 @@ function LoginForm() {
 
   // Fire the deep-link signup event the plan asks for (Step 2/Step 26 Loop A),
   // plus the Loop B attribution when a share link sent the visitor here.
+  // Signup ONLY: a returning session is not a new account, so the sign-in
+  // branch below fires signin_completed instead. Mixing the two made every
+  // login look like growth.
   const trackSignupFromChallenge = useCallback(
     (via: string) => {
       const from = consumeSource();
@@ -177,6 +180,13 @@ function LoginForm() {
     },
     [isChallengeSignup, nextPath, inviteCode]
   );
+
+  // The sign-in half of the split: counted separately so the activation funnel
+  // never mistakes a returning session for a new account. No attribution
+  // events here — share_signup and invite_signup credit a signup, not a login.
+  const trackSigninSuccess = useCallback(() => {
+    track("signin_completed", { next: nextPath });
+  }, [nextPath]);
 
   /**
    * Password recovery request (controls 4, 5, 12, 18).
@@ -278,7 +288,7 @@ function LoginForm() {
 
         if (data.session) {
           clearSigninFailures();
-          trackSignupFromChallenge("password_signin");
+          trackSigninSuccess();
           window.location.replace(nextPath);
           return;
         }
@@ -369,6 +379,7 @@ function LoginForm() {
             // Failure must never block the first battle: the user can create
             // or join a squad later from /squad.
             let squadCreated = false;
+            let createdSquadId: string | null = null;
             if (newSquadName) {
               try {
                 const squadRes = await fetch("/api/squads", {
@@ -380,7 +391,15 @@ function LoginForm() {
                   body: JSON.stringify({ name: newSquadName }),
                 });
                 squadCreated = squadRes.ok;
-                if (!squadRes.ok) {
+                if (squadRes.ok) {
+                  const squadJson = await squadRes.json().catch(() => ({}));
+                  const sid = (squadJson as { squad?: { id?: unknown } })?.squad?.id;
+                  createdSquadId = typeof sid === "string" ? sid : null;
+                  track("squad_created", {
+                    via: "signup",
+                    ...(createdSquadId ? { squad_id: createdSquadId } : {}),
+                  });
+                } else {
                   console.warn("Squad creation failed; user can create one later from /squad.");
                 }
               } catch (squadErr) {

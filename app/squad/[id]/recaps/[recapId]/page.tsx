@@ -2,10 +2,12 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { safeNext } from "@/lib/safeNext";
 import { getPublicRecap } from "@/lib/data/recapPublic";
 import { formatDuration, titleFromSlug } from "@/lib/format";
 import { recapShareText } from "@/lib/recap";
 import { ShareRow } from "@/components/ui/ShareRow";
+import { PostKit } from "@/components/ui/PostKit";
 import { TrackVisit } from "@/components/ui/TrackVisit";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +56,10 @@ export default async function PublicRecapPage({
   const body = recap.body_json;
 
   const path = `/squad/${squadId}/recaps/${recapId}`;
+  // Deep-continue (Wave D): the visitor CTA carries ?next=<artifact> through
+  // safeNext so auth lands back on this recap. Login already honors ?next=.
+  const nextParam = encodeURIComponent(safeNext(path) ?? "/home");
+  const shareText = recapShareText({ squadName, body, url: "" }).trim();
   const metrics = [
     { label: "Solves", value: body.solves },
     { label: "Challenges sent", value: body.challengesSent },
@@ -145,11 +151,17 @@ export default async function PublicRecapPage({
           <ShareRow
             path={path}
             artifact={{ kind: "recap", id: recapId, squadId }}
-            text={recapShareText({ squadName, body, url: "" }).trim()}
+            text={shareText}
             label="Share recap"
           />
+          <PostKit
+            imageHref={`${path}/opengraph-image`}
+            path={path}
+            artifact={{ kind: "recap", id: recapId, squadId }}
+            text={shareText}
+          />
           <Link
-            href="/login"
+            href={`/login?mode=signup&next=${nextParam}`}
             className="inline-flex min-h-[44px] h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium leading-5 text-on-primary transition-colors hover:bg-primary-hover md:min-h-0"
           >
             Start your squad

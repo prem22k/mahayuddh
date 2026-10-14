@@ -8,6 +8,10 @@ import { EmptyState, ErrorCard, Skeleton } from "@/components/ui/States";
 import { VerifiedBadge } from "@/components/ui/Badge";
 import { ShareRow } from "@/components/ui/ShareRow";
 import { getWall } from "@/lib/data/wall";
+import { getRecaps } from "@/lib/data/recap";
+import { getSeasons } from "@/lib/data/goals";
+import { recapShareText } from "@/lib/recap";
+import type { ShareArtifact } from "@/lib/share";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { relativeDays } from "@/lib/format";
 import type { SquadMilestone } from "@/types/database";
@@ -27,6 +31,16 @@ export default function SquadWallPage() {
   const [squadName, setSquadName] = useState("Squad");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Wall-share fix (Wave D): /squad/[id]/wall sits behind auth, so sharing its
+  // URL hands a logged-out visitor a login wall. The share targets the latest
+  // PUBLIC artifact instead — newest recap first, then newest season — both of
+  // which render for strangers. When neither exists yet, there is no ShareRow
+  // at all rather than a link that dead-ends at auth.
+  const [shareTarget, setShareTarget] = useState<{
+    path: string;
+    artifact: ShareArtifact;
+    text: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -35,6 +49,27 @@ export default function SquadWallPage() {
       const { milestones, name } = await getWall(squadId);
       setItems(milestones);
       setSquadName(name);
+      const [recaps, seasons] = await Promise.all([
+        getRecaps(squadId, 1).catch(() => []),
+        getSeasons(squadId).catch(() => []),
+      ]);
+      const latestRecap = recaps[0] ?? null;
+      const latestSeason = seasons[0] ?? null;
+      if (latestRecap) {
+        setShareTarget({
+          path: `/squad/${squadId}/recaps/${latestRecap.id}`,
+          artifact: { kind: "recap", id: latestRecap.id, squadId },
+          text: recapShareText({ squadName: name, body: latestRecap.body_json, url: "" }).trim(),
+        });
+      } else if (latestSeason) {
+        setShareTarget({
+          path: `/squad/${squadId}/seasons/${latestSeason.id}`,
+          artifact: { kind: "season", id: latestSeason.id, squadId },
+          text: `${name} — ${latestSeason.name}${latestSeason.objective ? `: ${latestSeason.objective}` : ""}`,
+        });
+      } else {
+        setShareTarget(null);
+      }
     } catch (err) {
       setLoadError(dataErrorMessage(err, "Couldn't load the wall. Retry."));
     } finally {
@@ -114,12 +149,14 @@ export default function SquadWallPage() {
                 <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-tint text-primary">
                   <Flame className="h-5 w-5" strokeWidth={1.5} fill="currentColor" />
                 </span>
-                <ShareRow
-                  path={`/squad/${squadId}/wall`}
-                  artifact={{ kind: "squad", id: squadId }}
-                  text={`${squadName}: ${latest.title}`}
-                  label="Share"
-                />
+                {shareTarget && (
+                  <ShareRow
+                    path={shareTarget.path}
+                    artifact={shareTarget.artifact}
+                    text={`${squadName}: ${latest.title}`}
+                    label="Share"
+                  />
+                )}
               </div>
               <h2 className="type-title mt-3 text-text-primary">{latest.title}</h2>
               {latest.detail && (

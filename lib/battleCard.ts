@@ -76,6 +76,13 @@ export interface BattleCardPublic {
   stats: BattleCardStats;
   /** True when the owner has a squad/public approach, without exposing its text. */
   hasSharedApproach: boolean;
+  /**
+   * The public approach to link to (/a/[id]), or null when there is none.
+   * Squad-only approaches keep hasSharedApproach true but link nowhere public:
+   * the card points at the artifact without reproducing it, and a squad-only
+   * row must never get a public URL.
+   */
+  sharedApproachId: string | null;
 }
 
 /** Raw rows the projection reads. Kept structural so tests need no Supabase. */
@@ -191,6 +198,15 @@ export function buildPublicCard(input: BattleCardInput): BattleCardPublic {
       a.problem_slug.toLowerCase() === slug &&
       (a.visibility === "public" || a.visibility === "squad")
   );
+  // Only a visibility=public row gets a public URL. A squad-only approach is
+  // still counted above (the viewer learns something exists) but never linked.
+  const publicApproach =
+    input.approaches.find(
+      (a) =>
+        a.user_id === full.ownerId &&
+        a.problem_slug.toLowerCase() === slug &&
+        a.visibility === "public"
+    ) ?? null;
 
   return {
     battleId: full.battleId,
@@ -206,6 +222,7 @@ export function buildPublicCard(input: BattleCardInput): BattleCardPublic {
     startedAt: full.startedAt,
     stats: full.stats,
     hasSharedApproach: shareableApproach,
+    sharedApproachId: publicApproach?.id ?? null,
   };
 }
 

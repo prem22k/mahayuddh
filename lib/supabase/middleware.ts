@@ -60,9 +60,13 @@ export async function updateSession(request: NextRequest) {
   // first, signup second). Join/accept/start actions still require auth inside
   // the pages. /b/* is the share surface (Step 16) — a share link that demands a
   // login before showing anything cannot drive Loop B growth.
+  // /a/* is the public approach projection (Wave D): visibility=public rows
+  // only, served by the service client. Private rows redirect to login inside
+  // the page, so the allowlist cannot leak them.
   const isInvitePath =
     request.nextUrl.pathname.startsWith("/c/") ||
     request.nextUrl.pathname.startsWith("/b/") ||
+    request.nextUrl.pathname.startsWith("/a/") ||
     request.nextUrl.pathname.startsWith("/u/") ||
     request.nextUrl.pathname.startsWith("/squad/join/");
 

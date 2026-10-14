@@ -3,9 +3,11 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { safeNext } from "@/lib/safeNext";
 import { getSeasonResult } from "@/lib/data/seasonResult";
 import { formatDuration } from "@/lib/format";
 import { ShareRow } from "@/components/ui/ShareRow";
+import { PostKit } from "@/components/ui/PostKit";
 import { TrackVisit } from "@/components/ui/TrackVisit";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +54,12 @@ export default async function SeasonResultPage({
   if (!result) notFound();
 
   const path = `/squad/${squadId}/seasons/${seasonId}`;
+  // Deep-continue (Wave D): the visitor CTA carries ?next=<artifact> through
+  // safeNext so auth lands back on this season. "Back to squad" stays a member
+  // nav to the auth-walled hub — a ?next= there would be dropped by the hub —
+  // so the deep-continue lives on Start your squad. Login honors ?next=.
+  const nextParam = encodeURIComponent(safeNext(path) ?? "/home");
+  const shareText = `${result.squadName} — ${result.name}: ${result.headline}`;
 
   const stats = [
     { label: "Solves", value: result.solves },
@@ -196,9 +204,21 @@ export default async function SeasonResultPage({
           <ShareRow
             path={path}
             artifact={{ kind: "season", id: seasonId, squadId }}
-            text={`${result.squadName} — ${result.name}: ${result.headline}`}
+            text={shareText}
             label="Share season"
           />
+          <PostKit
+            imageHref={`${path}/opengraph-image`}
+            path={path}
+            artifact={{ kind: "season", id: seasonId, squadId }}
+            text={shareText}
+          />
+          <Link
+            href={`/login?mode=signup&next=${nextParam}`}
+            className="inline-flex min-h-[44px] h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium leading-5 text-on-primary transition-colors hover:bg-primary-hover md:min-h-0"
+          >
+            Start your squad
+          </Link>
           <Link
             href="/squad"
             className="inline-flex min-h-[44px] h-10 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium leading-5 text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0"

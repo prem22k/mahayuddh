@@ -21,7 +21,10 @@ export type ShareArtifact =
   | { kind: "primer"; id: string }
   | { kind: "season"; id: string; squadId: string }
   | { kind: "squad"; id: string }
-  | { kind: "stuck"; id: string };
+  | { kind: "stuck"; id: string }
+  // Wave D: the public approach projection at /a/[id]. Only ever minted for
+  // visibility=public rows, next to the page that serves them.
+  | { kind: "approach"; id: string };
 
 /** Stable, non-identifying attribution slug: "battle:9f3c…". */
 export function viaSlug(artifact: ShareArtifact): string {
@@ -46,6 +49,8 @@ export function artifactPath(artifact: ShareArtifact): string {
       return `/squad/${artifact.squadId}/seasons/${artifact.id}`;
     case "stuck":
       return `/stuck/${artifact.id}`;
+    case "approach":
+      return `/a/${artifact.id}`;
     case "squad":
       // A squad has no public page of its own; the invite route is the shareable
       // surface, and the token is appended by withVia, not here.

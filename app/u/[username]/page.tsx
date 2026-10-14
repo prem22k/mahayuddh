@@ -3,12 +3,14 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { decodePathSegment } from "@/lib/pathSegment";
+import { safeNext } from "@/lib/safeNext";
 import type { Metadata } from "next";
-import { getPublicJourney } from "@/lib/data/journey";
+import { getPublicJourney } from "@/lib/data/journey.server";
 import { getPublicProfile } from "@/lib/data/profilePublic";
 import { formatDuration } from "@/lib/format";
 import { oftenTeaches, reputationDimensions } from "@/lib/reputation";
 import { ShareRow } from "@/components/ui/ShareRow";
+import { PostKit } from "@/components/ui/PostKit";
 import { TrackVisit } from "@/components/ui/TrackVisit";
 import { FollowButton } from "@/components/profile/FollowButton";
 import { PublicProfileBody } from "@/components/profile/PublicProfileBody";
@@ -70,6 +72,12 @@ export default async function PublicProfilePage({
     handle.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) || handle;
   const featured = profile.approaches[0] ?? null;
 
+  // Deep-continue (Wave D): visitor CTAs carry ?next=<artifact> through
+  // safeNext so auth lands back on this profile. Login already honors ?next=.
+  const artifactPath = profileHref(handle);
+  const nextParam = encodeURIComponent(safeNext(artifactPath) ?? "/home");
+  const shareText = journey?.summary ?? `Follow @${handle} on Mahayuddh.`;
+
   return (
     <div className="min-h-screen bg-canvas text-text-primary">
       <header className="flex h-14 items-center justify-between px-4 md:px-10">
@@ -78,13 +86,13 @@ export default async function PublicProfilePage({
         </Link>
         <div className="flex items-center gap-2">
           <Link
-            href="/login"
+            href={`/login?next=${nextParam}`}
             className="inline-flex min-h-[44px] items-center rounded-md px-3 text-sm font-medium text-text-secondary hover:bg-surface-raised hover:text-text-primary"
           >
             Sign in
           </Link>
           <Link
-            href="/login?mode=signup"
+            href={`/login?mode=signup&next=${nextParam}`}
             className="inline-flex min-h-[44px] items-center rounded-md bg-surface-overlay px-4 text-sm font-medium text-text-primary hover:bg-[#272830]"
           >
             Start your squad
@@ -129,8 +137,14 @@ export default async function PublicProfilePage({
               <ShareRow
                 path={profileHref(handle)}
                 artifact={{ kind: "journey", id: handle }}
-                text={journey?.summary ?? `Follow @${handle} on Mahayuddh.`}
+                text={shareText}
                 label="Share"
+              />
+              <PostKit
+                imageHref={`/u/${encodeURIComponent(handle)}/opengraph-image`}
+                path={artifactPath}
+                artifact={{ kind: "journey", id: handle }}
+                text={shareText}
               />
             </div>
           </div>
@@ -148,7 +162,7 @@ export default async function PublicProfilePage({
                       {featured.core_idea}
                     </p>
                     <Link
-                      href={`/approach/${featured.id}`}
+                      href={`/a/${featured.id}`}
                       className="inline-flex min-h-[44px] items-center rounded-md bg-surface-overlay px-4 text-sm font-medium text-text-primary hover:bg-[#272830]"
                     >
                       Read the approach
@@ -213,7 +227,7 @@ export default async function PublicProfilePage({
             they thought about it.
           </p>
           <Link
-            href="/login?mode=signup"
+            href={`/login?mode=signup&next=${nextParam}`}
             className="mt-5 inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-6 text-sm font-medium text-on-primary transition-colors hover:bg-primary-hover active:bg-primary-pressed"
           >
             Start your squad

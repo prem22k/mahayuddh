@@ -54,8 +54,11 @@ export function PublicProfileBody({
           <ul className="space-y-2">
             {approaches.map((a) => (
               <li key={a.id}>
+                {/* Public rows only (the page query filters visibility=public),
+                    so the public projection is the honest target — the authed
+                    /approach/[id] page would bounce a logged-out visitor. */}
                 <Link
-                  href={`/approach/${a.id}`}
+                  href={`/a/${a.id}`}
                   className="block rounded-xl border border-hairline bg-surface p-4 transition-colors hover:bg-surface-raised"
                 >
                   <div className="flex flex-wrap items-center gap-2">

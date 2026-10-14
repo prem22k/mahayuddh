@@ -26,5 +26,13 @@ export function TrackVisit({ artifact }: { artifact: string }) {
     track("invite_opened", { via, artifact });
   }, [params, artifact]);
 
+  // Wave D funnel: every /b view counts, with or without ?via=. Kept separate
+  // from the attribution above so organic opens are not invisible.
+  useEffect(() => {
+    if (artifact.startsWith("battle:")) {
+      track("battle_card_viewed", { artifact });
+    }
+  }, [artifact]);
+
   return null;
 }

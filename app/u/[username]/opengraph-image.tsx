@@ -1,5 +1,5 @@
 import { ImageResponse } from "next/og";
-import { getPublicJourney } from "@/lib/data/journey";
+import { getPublicJourney } from "@/lib/data/journey.server";
 import { decodePathSegment } from "@/lib/pathSegment";
 
 export const alt = "A personal practice journey on Mahayuddh";

@@ -232,7 +232,11 @@ export type NotificationKind =
   | "goal"
   | "revenge"
   | "recap"
-  | "contest";
+  | "contest"
+  // Wave D growth nudge: streak-at-risk, squad-solved-without-you, and the
+  // 3/7/14-day lapsed digest. One kind for all three so the CHECK stays small;
+  // the dedupe_key names the subtype. See migration 20261004000007.
+  | "nudge";
 
 export interface Notification {
   id: string;

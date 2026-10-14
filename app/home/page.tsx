@@ -29,7 +29,7 @@ import { getBattlesForSlug } from "@/lib/data/battles";
 import { getProblemHistory, cacheDailyBattle } from "@/lib/data/dailyBattles";
 import { pickDailyBattle, formatDuration, ProblemHistory } from "@/lib/dailyBattle";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { useSolving } from "@/components/providers/SolvingProvider";
+import { useSolving, useSolvingTimer } from "@/components/providers/SolvingProvider";
 import { Pass, PassSerial } from "@/components/pass/Pass";
 import { Button } from "@/components/ui/Button";
 import {
@@ -51,7 +51,8 @@ function fmtClock(totalSec: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-const UP_NEXT_SLUG = "trapping-rain-water";
+// Ranking for the up-next shelf: Easy first, then Medium, then Hard.
+const DIFFICULTY_RANK: Record<string, number> = { Easy: 0, Medium: 1, Hard: 2 };
 
 function relDayLabel(iso: string): string {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -72,7 +73,8 @@ function syncLabel(iso: string | null): string {
 
 export default function ArenaPage() {
   const { profile, user, refreshProfile } = useAuth();
-  const { activeProblem, seconds, startSolving } = useSolving();
+  const { activeProblem, startSolving } = useSolving();
+  const { seconds } = useSolvingTimer();
   void refreshProfile;
   const [squadMembers, setSquadMembers] = useState<SquadActivityMember[]>([]);
   const [todayTimes, setTodayTimes] = useState<Record<string, TodaySlugTime>>({});
@@ -277,6 +279,44 @@ export default function ArenaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [squadId, computed?.problem.title_slug, memberKey, activityRefreshKey]);
 
+  // Up next (Wave D first-run): the easiest unsolved starter, never today's
+  // pick and never a Hard wall for a new user. Falls back to the easiest
+  // overall when everything is solved, and to Two Sum before lists load.
+  const upNextList = useMemo(() => {
+    const withoutPick = problems.filter(
+      (p) => p.title_slug.toLowerCase() !== (computed?.problem.title_slug ?? "coin-change-ii").toLowerCase()
+    );
+    const unsolved = withoutPick.filter(
+      (p) => statusMap[p.title_slug.toLowerCase()] !== "solved"
+    );
+    const easiestFirst = (rows: ListProblem[]) =>
+      [...rows].sort(
+        (a, b) =>
+          (DIFFICULTY_RANK[a.difficulty] ?? 1) - (DIFFICULTY_RANK[b.difficulty] ?? 1) ||
+          a.order_index - b.order_index
+      );
+    const list = (unsolved.length > 0 ? easiestFirst(unsolved) : easiestFirst(withoutPick)).slice(0, 5);
+    if (list.length > 0) return list;
+    return [
+      {
+        id: "fallback-two-sum",
+        list_id: "fallback",
+        title: "Two Sum",
+        title_slug: "two-sum",
+        difficulty: "Easy",
+        category: "Arrays & Hashing",
+        order_index: 1,
+      } as ListProblem,
+    ];
+  }, [problems, statusMap, computed?.problem.title_slug]);
+  const [upNextIndex, setUpNextIndex] = useState(0);
+  const upNext = upNextList[upNextIndex % upNextList.length] ?? null;
+  const upNextSlug = (upNext?.title_slug ?? "two-sum").toLowerCase();
+  const upNextTitle = upNext?.title ?? "Two Sum";
+  const upNextDifficulty = upNext?.difficulty ?? "Easy";
+  const upNextPattern = upNext?.category ?? "Arrays & Hashing";
+  const upNextNo = upNext ? `No. ${upNext.order_index}` : "No. 1";
+
   // Caller's most recent failed attempt on the up-next problem (revenge line).
   useEffect(() => {
     if (!user) {
@@ -284,7 +324,7 @@ export default function ArenaPage() {
       return;
     }
     let cancelled = false;
-    getOwnFailedAttempt(UP_NEXT_SLUG)
+    getOwnFailedAttempt(upNextSlug)
       .then((r) => {
         if (!cancelled) setFailedAttempt(r);
       })
@@ -294,7 +334,7 @@ export default function ArenaPage() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user?.id, upNextSlug]);
 
   // Oldest open challenge addressed to the caller.
   useEffect(() => {
@@ -675,17 +715,17 @@ export default function ArenaPage() {
           <section className="card space-y-3" aria-label="Up next">
             <h2 className="text-lg font-semibold leading-7 text-text-primary">Up next</h2>
             <ProblemRow
-              href="/practice/trapping-rain-water"
-              title="Trapping Rain Water"
-              number="No. 42"
-              difficulty="Hard"
-              pattern="Two pointers"
+              href={`/practice/${upNextSlug}`}
+              title={upNextTitle}
+              number={upNextNo}
+              difficulty={upNextDifficulty}
+              pattern={upNextPattern}
               status={failedAttempt ? "attempted" : "none"}
               socialHint={failedAttempt ? "Revenge available" : undefined}
               bestTime={revengeLabel ?? undefined}
             />
             <p className="text-sm leading-6 text-text-secondary">
-              {revengeLine ?? "No failed attempts on Trapping Rain Water. A fresh battle is one click away."}
+              {revengeLine ?? `Easiest unsolved starter${upNextList.length > 1 ? " — skip any time" : ""}.`}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <Button
@@ -693,19 +733,25 @@ export default function ArenaPage() {
                 className="min-h-[44px]"
                 onClick={() =>
                   startSolving({
-                    id: 42,
-                    title: "Trapping Rain Water",
-                    slug: "trapping-rain-water",
-                    difficulty: "Hard",
-                    category: "Two pointers",
+                    id: upNext?.order_index ?? 1,
+                    title: upNextTitle,
+                    slug: upNextSlug,
+                    difficulty: upNextDifficulty,
+                    category: upNextPattern,
                   })
                 }
               >
-                Take revenge
+                {failedAttempt ? "Take revenge" : "Start battle"}
               </Button>
-              <Button variant="ghost" className="min-h-[44px]">
-                Not this
-              </Button>
+              {upNextList.length > 1 && (
+                <Button
+                  variant="ghost"
+                  className="min-h-[44px]"
+                  onClick={() => setUpNextIndex((i) => i + 1)}
+                >
+                  Not this
+                </Button>
+              )}
             </div>
           </section>
 

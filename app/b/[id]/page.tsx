@@ -4,8 +4,10 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { Check, ExternalLink } from "lucide-react";
 import { getServiceClient } from "@/lib/supabase/service";
+import { safeNext } from "@/lib/safeNext";
 import { buildPublicCard, BattleCardInput, formatDuration } from "@/lib/battleCard";
 import { ShareRow } from "@/components/ui/ShareRow";
+import { PostKit } from "@/components/ui/PostKit";
 import { TrackVisit } from "@/components/ui/TrackVisit";
 import type { Battle, ProblemEvent, Approach, Suggestion, Problem } from "@/types/database";
 
@@ -133,12 +135,19 @@ export default async function BattleSharePage({
     .toUpperCase();
   const noLine = card.problemSlug ? `NO. ${card.problemSlug}` : "NO. 3";
 
+  // Deep-continue (Wave D): every CTA carries ?next=<artifact> through
+  // safeNext, so a logged-out visitor lands back on this battle after auth
+  // instead of a generic page. Login already honors ?next=.
+  const artifactPath = `/b/${id}`;
+  const nextParam = encodeURIComponent(safeNext(artifactPath) ?? "/home");
+  const shareText = `I solved ${card.title} on Mahayuddh${solved ? ` in ${solved}` : ""}.`;
+
   return (
     <div className="min-h-screen bg-canvas text-text-primary">
       <header className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4">
         <span className="font-display text-lg font-semibold tracking-tight">Mahayuddh</span>
         <Link
-          href="/login"
+          href={`/login?next=${nextParam}`}
           className="inline-flex min-h-[44px] items-center rounded-md px-3 text-sm font-medium leading-5 text-text-secondary hover:bg-surface-raised hover:text-text-primary"
         >
           Sign in
@@ -221,7 +230,7 @@ export default async function BattleSharePage({
 
         <div className="flex flex-wrap items-center justify-center gap-2">
           <Link
-            href="/login"
+            href={`/login?mode=signup&next=${nextParam}`}
             className="inline-flex h-12 min-h-[44px] items-center rounded-md bg-primary px-6 text-sm font-medium leading-5 text-on-primary hover:bg-primary-hover"
           >
             Try this problem
@@ -238,15 +247,35 @@ export default async function BattleSharePage({
           <ShareRow
             path={`/b/${id}`}
             artifact={{ kind: "battle", id }}
-            text={`I solved ${card.title} on Mahayuddh${solved ? ` in ${solved}` : ""}.`}
+            text={shareText}
             label="Share"
+          />
+        </div>
+
+        {card.sharedApproachId && (
+          <div className="flex items-center justify-center">
+            <Link
+              href={`/a/${card.sharedApproachId}`}
+              className="inline-flex min-h-[44px] items-center rounded-md bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-surface-raised"
+            >
+              Read the approach
+            </Link>
+          </div>
+        )}
+
+        <div className="flex items-center justify-center">
+          <PostKit
+            imageHref={`/b/${id}/opengraph-image`}
+            path={artifactPath}
+            artifact={{ kind: "battle", id }}
+            text={shareText}
           />
         </div>
 
         <footer className="flex flex-wrap items-center justify-center gap-2 pt-6 text-xs leading-4 text-text-tertiary">
           <span>Mahayuddh · Practice DSA with your people</span>
           <Link
-            href="/login"
+            href={`/login?mode=signup&next=${nextParam}`}
             className="inline-flex min-h-[44px] items-center font-medium text-text-primary underline decoration-hairline-strong underline-offset-[3px]"
           >
             Start your squad
