@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Copy, Check } from "lucide-react";
+import { Check, Link2 } from "lucide-react";
 import { copyText } from "@/lib/clipboard";
 import { track } from "@/lib/analytics";
 import { ShareRow } from "@/components/ui/ShareRow";
@@ -60,11 +60,11 @@ export function InviteLink({ squadId, squadName }: { squadId: string; squadName:
 
   if (error) {
     return (
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] text-text-secondary">{error}</p>
+      <div className="flex items-center justify-between gap-3 rounded-md border border-hairline bg-well px-3 py-2">
+        <p className="text-[11px] leading-4 text-text-secondary">{error}</p>
         <button
           onClick={() => void load()}
-          className="px-3 py-1 rounded-full bg-surface-overlay text-[11px] font-bold text-text-secondary hover:text-text-primary cursor-pointer shrink-0"
+          className="inline-flex h-8 min-h-[44px] shrink-0 items-center rounded-sm px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0"
         >
           Retry
         </button>
@@ -81,8 +81,9 @@ export function InviteLink({ squadId, squadName }: { squadId: string; squadName:
           setBusy(false);
         }}
         disabled={busy}
-        className="px-4 py-2 rounded-full bg-surface-overlay hover:bg-surface-raised border border-hairline text-text-secondary text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
+        className="flex h-9 min-h-[44px] w-full items-center justify-center gap-2 rounded-md border border-hairline bg-surface-overlay text-xs font-medium text-text-primary transition-colors hover:bg-[#272830] disabled:text-text-disabled md:min-h-0"
       >
+        <Link2 className="h-3.5 w-3.5 text-text-secondary" strokeWidth={1.5} />
         {busy ? "Getting your link…" : "Get my invite link"}
       </button>
     );
@@ -94,39 +95,53 @@ export function InviteLink({ squadId, squadName }: { squadId: string; squadName:
   );
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 flex-wrap">
+    <div className="space-y-2.5">
+      <div className="flex items-stretch gap-2">
         <button
           onClick={() => void copy()}
-          className="px-3 py-2 rounded-full bg-surface-overlay hover:bg-surface-raised border border-hairline text-text-secondary text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5"
+          className="flex h-9 min-h-[44px] flex-1 items-center justify-center gap-2 rounded-md border border-hairline bg-surface-overlay text-xs font-medium text-text-primary transition-colors hover:bg-[#272830] md:min-h-0"
         >
-          {copied ? <Check className="w-3.5 h-3.5 text-verified" /> : <Copy className="w-3.5 h-3.5" />}
-          {copied ? "Copied" : "Copy link"}
+          {copied ? (
+            <Check className="h-3.5 w-3.5 text-verified" strokeWidth={1.5} />
+          ) : (
+            <Link2 className="h-3.5 w-3.5 text-text-secondary" strokeWidth={1.5} />
+          )}
+          {copied ? "Copied" : "Copy invite link"}
         </button>
         {/* §40: the same distribution targets as every other artifact, because
             a squad invite is shared into the same WhatsApp/Discord groups. */}
         <ShareRow
+          compact
+          className="h-9"
           path={link.path}
           artifact={{ kind: "squad", id: squadId }}
           text={`Join my squad "${squadName}" on Mahayuddh — we battle the same problems and compare approaches.`}
-          label="Share invite"
+          label="Share"
         />
       </div>
 
       {/* Opens next to joins, because the gap between them is the useful part. */}
-      <p className="text-[11px] text-text-secondary">
-        {totals.joins > 0
-          ? `${totals.joins} ${totals.joins === 1 ? "person has" : "people have"} joined through your links (${totals.opens} ${totals.opens === 1 ? "open" : "opens"}).`
-          : totals.opens > 0
-            ? `${totals.opens} ${totals.opens === 1 ? "person has" : "people have"} opened your link but not joined. The link is fine — try naming the squad.`
-            : "Nobody has opened your link yet."}
-      </p>
+      <div className="flex items-center justify-between gap-3 border-t border-hairline pt-2 font-mono text-[11px] text-text-tertiary">
+        <span className="truncate">Link activity</span>
+        <span className="shrink-0 whitespace-nowrap text-text-secondary tnum">
+          {totals.opens} opened · {totals.joins} joined
+        </span>
+      </div>
+      {totals.joins === 0 && totals.opens > 0 && (
+        <p className="text-[11px] leading-4 text-text-tertiary">
+          {totals.opens === 1 ? "Someone opened" : "People opened"} your link but nobody joined yet. The link is
+          fine — try naming the squad.
+        </p>
+      )}
 
       {all.length > 1 && (
-        <ul className="text-[10px] text-text-disabled space-y-0.5">
+        <ul className="space-y-0.5 font-mono text-[10px] text-text-tertiary tnum">
           {all.map((l) => (
-            <li key={l.squad_id}>
-              {l.squad_name}: {l.joins} joined · {l.opens} opened
+            <li key={l.squad_id} className="flex items-center justify-between gap-3">
+              <span className="truncate font-sans">{l.squad_name}</span>
+              <span className="shrink-0">
+                {l.opens} opened · {l.joins} joined
+              </span>
             </li>
           ))}
         </ul>
