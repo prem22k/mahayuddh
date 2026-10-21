@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState } from "react";
-import { Check, Clock, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { StatusGlyph } from "@/components/ui/ProblemRow";
+import type { ProblemStatus } from "@/components/ui/ProblemRow";
 import { TriState, ProblemEvent } from "@/types/database";
 
 interface ProblemStatusCellProps {
@@ -86,106 +87,90 @@ export function ProblemStatusCell({
   const isVerified = isSolved && verified;
   const isSelfReported = isSolved && !verified;
   const hasHistory = (preview?.events.length ?? 0) > 0;
+  const glyph: ProblemStatus = isVerified
+    ? "verified"
+    : isSelfReported
+      ? "self-reported"
+      : isAttempted
+        ? "attempted"
+        : "none";
 
   return (
     <span
-      className="relative inline-flex"
+      className="relative inline-flex shrink-0"
       onMouseEnter={() => {
         setPreviewOpen(true);
         void loadPreview();
       }}
       onMouseLeave={() => setPreviewOpen(false)}
     >
-    <button
-      type="button"
-      onClick={handleClick}
-      title={
-        isVerified
-          ? "Status: Solved · Verified via LeetCode (Click to mark Attempted)"
-          : isSelfReported
-          ? "Status: Solved · Self-reported (Click to mark Attempted)"
-          : isAttempted
-          ? "Status: Attempting (Click to reset to Todo)"
-          : "Status: Todo (Click to mark Solved)"
-      }
-      className={cn(
-        "group relative flex items-center justify-center rounded-xl transition-all select-none cursor-pointer",
-        size === "sm" && "p-1.5 text-xs",
-        size === "md" && "px-2.5 py-1 text-xs",
-        size === "lg" && "px-3.5 py-2 text-sm",
-        isVerified &&
-          "bg-verified/15 text-verified border border-verified/35 hover:bg-verified/25 shadow-[0_0_12px_rgba(61,220,151,0.2)]",
-        isSelfReported &&
-          "bg-surface text-text-secondary border border-hairline-strong hover:bg-surface-overlay hover:text-text-primary",
-        isAttempted &&
-          "bg-primary/15 text-primary border border-primary/35 hover:bg-primary/25 shadow-[0_0_12px_rgba(245,184,61,0.2)]",
-        !isSolved &&
-          !isAttempted &&
-          "bg-surface text-text-tertiary border border-hairline hover:border-hairline-strong hover:text-text-secondary hover:bg-surface-overlay",
-        animating && "scale-110"
-      )}
-    >
-      <div className="flex items-center gap-1.5 font-semibold">
-        {isVerified ? (
-          <div className="w-3.5 h-3.5 rounded-full bg-verified text-on-primary flex items-center justify-center shrink-0">
-            <Check className="w-2.5 h-2.5 stroke-[3]" />
-          </div>
-        ) : isSelfReported ? (
-          <div className="w-3.5 h-3.5 rounded-full border border-hairline-strong text-text-secondary flex items-center justify-center shrink-0">
-            <Check className="w-2.5 h-2.5 stroke-[2.5]" />
-          </div>
-        ) : isAttempted ? (
-          <div className="w-3.5 h-3.5 rounded-full bg-primary/20 text-primary flex items-center justify-center shrink-0">
-            <Clock className="w-2.5 h-2.5 stroke-[2.5]" />
-          </div>
-        ) : (
-          <div className="w-3.5 h-3.5 rounded-full border border-hairline group-hover:border-hairline-strong flex items-center justify-center shrink-0">
-            <Circle className="w-2 h-2 text-transparent" />
-          </div>
+      <button
+        type="button"
+        onClick={handleClick}
+        title={
+          isVerified
+            ? "Status: Solved · Verified via LeetCode (Click to mark Attempted)"
+            : isSelfReported
+              ? "Status: Solved · Self-reported (Click to mark Attempted)"
+              : isAttempted
+                ? "Status: Attempting (Click to reset to Todo)"
+                : "Status: Todo (Click to mark Solved)"
+        }
+        className={cn(
+          "group relative flex cursor-pointer select-none items-center justify-center gap-1.5 rounded-md transition-[background-color,transform] duration-150 hover:bg-surface-overlay",
+          // The glyph stays 16px; the hit area grows to 44px on touch.
+          size === "sm" && "h-11 min-w-11 px-1 md:h-8 md:min-w-8",
+          size === "md" && "h-11 min-w-11 px-2 md:h-8",
+          size === "lg" && "h-11 min-w-11 px-3",
+          animating && "scale-110"
         )}
-
+      >
+        <StatusGlyph status={glyph} />
         {showLabel && (
-          <span className="text-[11px] tracking-tight">
+          <span className="text-xs font-medium leading-4 text-text-secondary">
             {isSolved ? "Solved" : isAttempted ? "Attempting" : "Todo"}
           </span>
         )}
-      </div>
-    </button>
+      </button>
 
       {/* ── Lazy timeline preview (plan Step 8: matrix cell becomes a preview) ── */}
       {slug && previewOpen && preview && (
-        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-56 popover-panel p-3 text-left pointer-events-none">
+        <span className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-64 rounded-md border border-hairline-strong bg-surface-overlay p-3 text-left shadow-overlay">
           {!hasHistory ? (
-            <span className="block text-[11px] text-text-secondary">
+            <span className="block text-xs leading-4 text-text-secondary">
               No history yet. First solve starts the timeline.
             </span>
           ) : (
             <>
-              <span className="block text-[11px] font-semibold text-text-secondary mb-1.5">
-                Your history
+              <span className="mb-2 block font-mono text-[11px] font-medium tracking-[0.06em] text-text-tertiary">
+                YOUR HISTORY
               </span>
-              <span className="flex flex-col gap-1">
+              <span className="flex flex-col gap-1.5">
                 {preview.events.map((e) => (
-                  <span key={e.id} className="block text-[10px] text-text-secondary leading-tight">
-                    <span className="text-text-tertiary font-mono">
+                  <span
+                    key={e.id}
+                    className="flex items-baseline justify-between gap-3 text-xs leading-4 text-text-secondary"
+                  >
+                    <span className="min-w-0 truncate">
+                      {EVENT_LABEL[e.kind] ?? e.kind}
+                      {(e.kind === "solved" || e.kind === "revisited") && (
+                        <span
+                          className={cn(
+                            eventSource(e) === "leetcode" ? "text-verified" : "text-text-tertiary"
+                          )}
+                        >
+                          {" "}· {eventSource(e) === "leetcode" ? "Verified" : "Self-reported"}
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0 font-mono text-[11px] text-text-tertiary tnum">
+                      {e.duration_sec != null && <>{formatSeconds(e.duration_sec)} · </>}
                       {new Date(e.created_at).toLocaleDateString()}
-                    </span>{" "}
-                    {EVENT_LABEL[e.kind] ?? e.kind}
-                    {(e.kind === "solved" || e.kind === "revisited") && (
-                      <span className="text-text-tertiary">
-                        {" "}· {eventSource(e) === "leetcode" ? "Verified" : "Self-reported"}
-                      </span>
-                    )}
-                    {e.duration_sec != null && (
-                      <span className="text-text-tertiary font-mono">
-                        {" "}
-                        · {formatSeconds(e.duration_sec)}
-                      </span>
-                    )}
+                    </span>
                   </span>
                 ))}
               </span>
-              <span className="block text-[10px] text-pattern mt-1.5">
+              <span className="mt-2 block border-t border-hairline pt-2 text-[11px] leading-4 text-pattern">
                 Open problem for the full timeline →
               </span>
             </>

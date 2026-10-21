@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
 import { Sparkles } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Spinner";
 import { LEVEL_LABEL, STUCK_LEVELS } from "@/lib/stuckLadder";
 import { track } from "@/lib/analytics";
@@ -37,6 +38,7 @@ export function StuckAssistant({
   const [blocked, setBlocked] = useState<string | null>(null);
   const [pulledDown, setPulledDown] = useState(false);
   const [busy, setBusy] = useState(false);
+  const requestId = useId();
 
   // The selector can only go DOWN from the level that was asked for. Offering
   // 'full' to somebody who asked for a nudge is the exact drift §45 names.
@@ -92,73 +94,86 @@ export function StuckAssistant({
   };
 
   return (
-    <div className="rounded-xl border border-hairline bg-surface p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <Sparkles className="w-3.5 h-3.5 text-primary" />
-        <span className="text-[11px] font-semibold text-text-secondary">
+    <div className="flex flex-col gap-3 rounded-lg border border-hairline bg-surface-raised p-4">
+      <div className="flex flex-col gap-0.5">
+        <span className="flex items-center gap-2 text-sm font-semibold leading-5 text-text-primary">
+          <Sparkles className="h-4 w-4 text-pattern" strokeWidth={1.5} aria-hidden />
           Stuck assistant
         </span>
+        <p className="text-xs leading-4 text-text-secondary">
+          Hints only, at the level you choose. It will not answer above it.
+        </p>
       </div>
 
-      <p className="text-[11px] text-text-secondary">
-        Hints only, at the level you choose. It will not answer above it.
-      </p>
-
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {allowedLevels.map((l) => (
-          <button
-            key={l}
-            onClick={() => setLevel(l)}
-            className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all cursor-pointer ${
-              level === l
-                ? "bg-surface-overlay text-text-primary"
-                : "bg-surface text-text-secondary hover:text-text-primary"
-            }`}
-          >
-            {LEVEL_LABEL[l]}
-          </button>
-        ))}
+      <div className="flex flex-col gap-1.5">
+        <div
+          role="group"
+          aria-label="Assistant level"
+          className="flex flex-wrap items-center gap-1 rounded-md border border-hairline bg-well p-1"
+        >
+          {allowedLevels.map((l, i) => (
+            <button
+              key={l}
+              type="button"
+              aria-pressed={level === l}
+              onClick={() => setLevel(l)}
+              className={cn(
+                "flex min-h-[44px] flex-1 cursor-pointer items-center justify-center whitespace-nowrap rounded-sm border px-3 py-1.5 text-xs font-medium leading-4 transition-colors md:min-h-0",
+                level === l
+                  ? "border-pattern/40 bg-pattern-tint font-semibold text-pattern"
+                  : "border-transparent text-text-secondary hover:bg-surface-raised hover:text-text-primary"
+              )}
+            >
+              {i + 1}. {LEVEL_LABEL[l]}
+            </button>
+          ))}
+        </div>
         {allowedLevels.length < STUCK_LEVELS.length && (
-          <span className="text-[10px] text-text-disabled">
-            you asked for {LEVEL_LABEL[requestedLevel]}
+          <span className="px-1 font-mono text-[11px] font-medium text-text-tertiary">
+            You asked for {LEVEL_LABEL[requestedLevel].toLowerCase()}. Nothing above it.
           </span>
         )}
       </div>
 
+      <label htmlFor={requestId} className="sr-only">
+        What have you tried?
+      </label>
       <textarea
+        id={requestId}
         value={request}
         onChange={(e) => setRequest(e.target.value)}
         rows={2}
         placeholder="What have you tried? (optional)"
-        className="w-full px-3 py-2 rounded-xl bg-well border border-hairline text-[11px] text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-hairline-strong resize-y"
+        className="w-full resize-y rounded-lg border border-hairline bg-well p-3 text-sm leading-5 text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none"
       />
 
       <button
+        type="button"
         onClick={() => void ask()}
         disabled={busy}
-        className="px-4 py-2 rounded-full bg-surface-overlay hover:bg-surface-raised border border-hairline text-text-primary text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
+        className="inline-flex h-9 min-h-[44px] cursor-pointer items-center justify-center gap-2 self-start rounded-md border border-hairline bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-[#272830] disabled:opacity-50 md:min-h-9"
       >
         {busy && <Spinner size="xs" />}
         Ask for a {LEVEL_LABEL[level].toLowerCase()}
       </button>
 
       {blocked && (
-        <div className="rounded-2xl bg-well border border-hairline p-3 space-y-1">
-          <p className="text-[11px] text-text-secondary">{blocked}</p>
-          <p className="text-[10px] text-text-tertiary">
+        <div className="flex flex-col gap-1 rounded-lg border border-hairline bg-well p-3">
+          <p className="text-sm leading-5 text-text-secondary">{blocked}</p>
+          <p className="text-xs leading-4 text-text-tertiary">
             This is not a placeholder answer. No AI feature here will invent one.
           </p>
         </div>
       )}
 
       {answer && (
-        <div className="rounded-2xl bg-well border border-hairline p-3 space-y-1">
-          <div className="text-[11px] font-semibold text-text-tertiary">
+        <div className="flex flex-col gap-1.5 rounded-lg border border-hairline bg-well p-4">
+          <span className="font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-pattern">
             {LEVEL_LABEL[answeredLevel ?? level]}
-          </div>
-          <p className="text-xs text-text-primary whitespace-pre-wrap">{answer}</p>
+          </span>
+          <p className="whitespace-pre-wrap text-[15px] leading-6 text-text-primary">{answer}</p>
           {pulledDown && (
-            <p className="text-[10px] text-primary">
+            <p className="text-xs leading-4 text-text-secondary">
               Pulled back to your level — the answer came in above what you asked for.
             </p>
           )}
