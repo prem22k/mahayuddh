@@ -6,7 +6,10 @@ import { getServiceClient } from "@/lib/supabase/service";
 import { safeNext } from "@/lib/safeNext";
 import { ShareRow } from "@/components/ui/ShareRow";
 import { TrackVisit } from "@/components/ui/TrackVisit";
-import type { Approach, Problem } from "@/types/database";
+import { ApproachHeaderCard, CoreIdeaCard, ApproachDetails } from "@/components/approach/ApproachParts";
+import { ApproachCode } from "@/components/approach/ApproachCode";
+import { pickSolveProof, type SolveProof } from "@/components/approach/solveProof";
+import type { Approach, Problem, ProblemEvent } from "@/types/database";
 
 /**
  * Public approach projection (Wave D growth).
@@ -31,7 +34,15 @@ function prettify(slug: string): string {
 type LoadResult =
   | { status: "missing" }
   | { status: "private" }
-  | { status: "public"; approach: Approach; authorName: string; problemTitle: string };
+  | {
+      status: "public";
+      approach: Approach & { fork_count?: number | null };
+      authorName: string;
+      authorAvatar: string | null;
+      problemTitle: string;
+      problem: Pick<Problem, "title" | "difficulty" | "question_id"> | null;
+      proof: SolveProof | null;
+    };
 
 async function load(id: string): Promise<LoadResult> {
   const supabase = getServiceClient();
@@ -40,28 +51,44 @@ async function load(id: string): Promise<LoadResult> {
   const { data: approach } = await supabase
     .from("approaches")
     .select(
-      "id,user_id,problem_slug,pattern,core_idea,complexity_time,complexity_space,key_detail,edge_cases,mistakes,code,related_slugs,visibility,squad_id,fork_of,created_at,updated_at"
+      "id,user_id,problem_slug,pattern,core_idea,complexity_time,complexity_space,key_detail,edge_cases,mistakes,code,related_slugs,visibility,squad_id,fork_of,fork_count,created_at,updated_at"
     )
     .eq("id", id)
     .maybeSingle();
   if (!approach) return { status: "missing" };
   if ((approach as Approach).visibility !== "public") return { status: "private" };
 
-  const row = approach as Approach;
-  const [authorRes, problemRes] = await Promise.all([
-    supabase.from("profiles").select("username").eq("id", row.user_id).maybeSingle(),
+  const row = approach as Approach & { fork_count?: number | null };
+  // The author's own solve events carry kind + duration only (no private
+  // content), the same rows the member page reads for its proof box.
+  const [authorRes, problemRes, eventsRes] = await Promise.all([
+    supabase.from("profiles").select("username,avatar_url").eq("id", row.user_id).maybeSingle(),
     supabase
       .from("problems")
-      .select("title_slug,title,difficulty,topics")
+      .select("title_slug,title,difficulty,question_id,topics")
       .eq("title_slug", row.problem_slug.toLowerCase())
       .maybeSingle(),
+    supabase
+      .from("problem_events")
+      .select("kind,duration_sec,metadata")
+      .eq("user_id", row.user_id)
+      .eq("problem_slug", row.problem_slug.toLowerCase())
+      .eq("kind", "solved")
+      .limit(50),
   ]);
+  const author = authorRes.data as { username: string; avatar_url: string | null } | null;
+  const problem = problemRes.data as Problem | null;
 
   return {
     status: "public",
     approach: row,
-    authorName: (authorRes.data as { username: string } | null)?.username ?? "Someone",
-    problemTitle: (problemRes.data as Problem | null)?.title ?? prettify(row.problem_slug),
+    authorName: author?.username ?? "Someone",
+    authorAvatar: author?.avatar_url ?? null,
+    problemTitle: problem?.title ?? prettify(row.problem_slug),
+    problem,
+    proof: eventsRes.error
+      ? null
+      : pickSolveProof((eventsRes.data ?? []) as Pick<ProblemEvent, "kind" | "duration_sec" | "metadata">[]),
   };
 }
 
@@ -96,7 +123,7 @@ export default async function PublicApproachPage({
     redirect(`/login?next=${encodeURIComponent(safeNext(`/a/${id}`) ?? "/home")}`);
   }
 
-  const { approach, authorName, problemTitle } = found;
+  const { approach, authorName, authorAvatar, problemTitle, problem, proof } = found;
   const artifactPath = `/a/${id}`;
   const nextParam = encodeURIComponent(safeNext(artifactPath) ?? "/home");
   const shareText = `@${authorName}'s approach to ${problemTitle} on Mahayuddh.\n${approach.core_idea.split("\n")[0] ?? ""}`.trim();
@@ -123,7 +150,7 @@ export default async function PublicApproachPage({
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-reading space-y-6 px-4 pb-16 pt-6">
+      <main className="mx-auto flex w-full max-w-reading flex-col gap-5 px-4 pb-16 pt-6 md:gap-6">
         <Suspense fallback={null}>
           <TrackVisit artifact={`approach:${id}`} />
         </Suspense>
@@ -137,50 +164,36 @@ export default async function PublicApproachPage({
           </Link>
         </nav>
 
-        <header className="space-y-2">
-          <p className="text-sm leading-6 text-text-secondary">
-            @{authorName} ·{" "}
-            {new Date(approach.created_at).toLocaleDateString(undefined, {
-              month: "short",
-              day: "numeric",
-            })}
-          </p>
-          <h1 className="type-display-md text-text-primary">{problemTitle}</h1>
-          {approach.pattern && (
-            <p className="text-sm leading-6 text-text-secondary">{approach.pattern}</p>
-          )}
-        </header>
+        <ApproachHeaderCard
+          username={authorName}
+          avatarUrl={authorAvatar}
+          visibility={approach.visibility}
+          createdAt={approach.created_at}
+          forkCount={approach.fork_count ?? null}
+          problem={{
+            number: problem?.question_id || null,
+            title: problemTitle,
+            difficulty: problem?.difficulty ?? null,
+            href: `/practice/${approach.problem_slug}`,
+          }}
+          pattern={approach.pattern}
+          proof={proof}
+        />
 
-        <section aria-label="Core idea" className="card">
-          <h2 className="text-xs font-medium leading-4 text-text-tertiary">Core idea</h2>
-          <p className="mt-2 whitespace-pre-wrap text-[17px] leading-7 text-text-primary">
-            {approach.core_idea}
-          </p>
-        </section>
+        <CoreIdeaCard text={approach.core_idea} />
 
-        {(approach.complexity_time || approach.complexity_space) && (
-          <p className="font-mono text-sm leading-6 text-text-tertiary">
-            {approach.complexity_time || "?"} · {approach.complexity_space || "?"}
-          </p>
-        )}
-        {approach.key_detail && (
-          <p className="text-[15px] leading-6 text-text-primary">{approach.key_detail}</p>
-        )}
-        {approach.edge_cases && (
-          <p className="text-[15px] leading-6 text-text-secondary">{approach.edge_cases}</p>
-        )}
-        {approach.mistakes && (
-          <p className="text-[15px] leading-6 text-text-secondary">{approach.mistakes}</p>
-        )}
-        {approach.code && (
-          <section aria-label="Code" className="rounded-xl border border-hairline bg-well p-4">
-            <pre className="overflow-x-auto font-mono text-sm leading-6 text-text-primary">
-              <code>{approach.code}</code>
-            </pre>
-          </section>
-        )}
+        <ApproachDetails
+          time={approach.complexity_time}
+          space={approach.complexity_space}
+          keyDetail={approach.key_detail}
+          edgeCases={approach.edge_cases}
+          mistakes={approach.mistakes}
+        />
 
-        <div className="flex flex-wrap items-center gap-2 pt-1">
+        {/* A shared approach is meant to be read: the code is open here. */}
+        {approach.code && <ApproachCode code={approach.code} spoiler={false} />}
+
+        <div className="flex flex-col gap-2 rounded-xl border border-hairline bg-surface p-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between md:p-4">
           <ShareRow
             path={artifactPath}
             artifact={{ kind: "approach", id }}
@@ -189,7 +202,7 @@ export default async function PublicApproachPage({
           />
           <Link
             href={`/login?mode=signup&next=${nextParam}`}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-6 text-sm font-medium text-on-primary transition-colors hover:bg-primary-hover"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-6 text-sm font-semibold text-on-primary transition-colors hover:bg-primary-hover"
           >
             Start your squad
           </Link>

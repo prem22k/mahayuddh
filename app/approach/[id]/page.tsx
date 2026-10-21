@@ -2,13 +2,16 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Copy, Check, NotebookPen, Trash2 } from "lucide-react";
+import { ArrowLeftRight, Check, Copy, NotebookPen, Swords, Trash2 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { Button } from "@/components/ui/Button";
-import { PatternChip } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { EmptyState, ErrorCard } from "@/components/ui/States";
+import { ShareRow } from "@/components/ui/ShareRow";
+import { ApproachHeaderCard, CoreIdeaCard, ApproachDetails } from "@/components/approach/ApproachParts";
+import { ApproachCode } from "@/components/approach/ApproachCode";
+import { pickSolveProof, type SolveProof } from "@/components/approach/solveProof";
 import { copyText } from "@/lib/clipboard";
 import {
   getApproachById,
@@ -17,11 +20,14 @@ import {
   setApproachVisibility,
 } from "@/lib/data/approaches";
 import { getUserStatusesBySlugs } from "@/lib/data/sheets";
+import { getCatalogBySlugs } from "@/lib/data/problems";
+import { getProblemTimeline } from "@/lib/data/problemEvents";
 import { copyApproachToNotebook } from "@/lib/data/notebook";
 import { dataErrorMessage } from "@/lib/data/errors";
+import { formatDuration } from "@/lib/format";
 import { track } from "@/lib/analytics";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { ApproachVisibility } from "@/types/database";
+import { Approach, ApproachVisibility, Problem } from "@/types/database";
 
 function prettify(slug: string): string {
   return slug
@@ -29,6 +35,9 @@ function prettify(slug: string): string {
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
     .join(" ");
 }
+
+const deckBtn =
+  "inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md px-3.5 text-sm font-medium leading-5 transition-colors md:h-9 md:w-auto";
 
 /**
  * Approach detail page (plan Step 9: "Approach view page with Copy-to-Notebook").
@@ -43,14 +52,14 @@ export default function ApproachPage() {
   const id = params.id;
   const { user, profile } = useAuth();
   const [approach, setApproach] = useState<Awaited<ReturnType<typeof getApproachById>>>(null);
-  const [otherCount, setOtherCount] = useState<number | null>(null);
+  const [others, setOthers] = useState<Approach[] | null>(null);
+  const [problem, setProblem] = useState<Problem | null>(null);
+  const [proof, setProof] = useState<SolveProof | null>(null);
   const [attempted, setAttempted] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [codeCopied, setCodeCopied] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [revealCode, setRevealCode] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,8 +82,17 @@ export default function ApproachPage() {
   useEffect(() => {
     if (!approach) return;
     getApproachesForProblem(approach.problem_slug)
-      .then((rows) => setOtherCount(rows.filter((r) => r.id !== approach.id).length))
-      .catch(() => setOtherCount(null));
+      .then((rows) => setOthers(rows.filter((r) => r.id !== approach.id)))
+      .catch(() => setOthers(null));
+    // Catalog row for the problem number, title and difficulty, and the
+    // author's own solve for the proof box. Both are optional: on failure the
+    // title falls back to the slug and the proof box stays hidden.
+    getCatalogBySlugs([approach.problem_slug])
+      .then((rows) => setProblem(rows[0] ?? null))
+      .catch(() => setProblem(null));
+    getProblemTimeline(approach.problem_slug, approach.user_id)
+      .then((events) => setProof(pickSolveProof(events)))
+      .catch(() => setProof(null));
     if (!user) {
       setAttempted(null);
       return;
@@ -123,10 +141,12 @@ export default function ApproachPage() {
   }
 
   const author = approach.author ?? approach.author_profile;
-  const authorName = author?.username ? `@${author.username}` : "@unknown";
   const displayName = author?.username ?? "Unknown";
   const isOwner = approach.user_id === user?.id;
-  const problemTitle = prettify(approach.problem_slug);
+  const problemTitle = problem?.title ?? prettify(approach.problem_slug);
+  // `fork_count` is trigger-maintained on approaches (select * returns it);
+  // it is not on the shared Approach type.
+  const forkCount = (approach as Approach & { fork_count?: number | null }).fork_count ?? null;
   const asText = [
     approach.core_idea,
     approach.complexity_time ? `Time: ${approach.complexity_time}` : "",
@@ -138,21 +158,12 @@ export default function ApproachPage() {
   ]
     .filter(Boolean)
     .join("\n\n");
-  const codeLines = approach.code ? approach.code.split("\n").length : 0;
   const firstName = displayName.split(" ")[0];
-
-  const DetailRow = ({ label, value, mono = false }: { label: string; value: string | null; mono?: boolean }) =>
-    value ? (
-      <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 py-3">
-        <span className="text-sm font-medium leading-5 text-text-secondary">{label}</span>
-        <span className={mono ? "font-mono text-sm leading-6 text-text-primary" : "whitespace-pre-wrap text-[15px] leading-6 text-text-primary"}>
-          {value}
-        </span>
-      </div>
-    ) : null;
+  const otherCount = others?.length ?? null;
+  const beat = proof ? formatDuration(proof.seconds) : null;
 
   return (
-    <div className="mx-auto max-w-reading space-y-6">
+    <div className="mx-auto flex max-w-reading flex-col gap-5 md:gap-6">
       <nav aria-label="Breadcrumb">
         <Link
           href={`/practice/${approach.problem_slug}`}
@@ -162,178 +173,167 @@ export default function ApproachPage() {
         </Link>
       </nav>
 
-      <header className="space-y-3">
-        <div className="flex items-center gap-3">
-          <Avatar name={displayName} src={author?.avatar_url} size="md" />
-          <div className="min-w-0">
-            <div className="truncate text-sm font-medium leading-5 text-text-primary">{displayName}</div>
-            <div className="text-xs leading-4 text-text-tertiary">
-              {authorName} · {approach.visibility} ·{" "}
-              {new Date(approach.created_at).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-              })}
-            </div>
-          </div>
-        </div>
-        <div className="rounded-xl border border-hairline bg-surface px-4 py-3">
+      <ApproachHeaderCard
+        username={displayName}
+        avatarUrl={author?.avatar_url}
+        visibility={approach.visibility}
+        createdAt={approach.created_at}
+        forkCount={forkCount}
+        isOwner={isOwner}
+        actions={
+          // Only a public approach has a shareable projection (/a/[id]).
+          approach.visibility === "public" ? (
+            <ShareRow
+              path={`/a/${approach.id}`}
+              artifact={{ kind: "approach", id: approach.id }}
+              text={`@${displayName}'s approach to ${problemTitle} on Mahayuddh.\n${approach.core_idea.split("\n")[0] ?? ""}`.trim()}
+              label="Share"
+              compact
+              className="h-8 bg-well"
+            />
+          ) : undefined
+        }
+        problem={{
+          number: problem?.question_id || null,
+          title: problemTitle,
+          difficulty: problem?.difficulty ?? null,
+          href: `/practice/${approach.problem_slug}`,
+        }}
+        pattern={approach.pattern}
+        proof={proof}
+      />
+
+      <CoreIdeaCard text={approach.core_idea} />
+
+      <ApproachDetails
+        time={approach.complexity_time}
+        space={approach.complexity_space}
+        keyDetail={approach.key_detail}
+        edgeCases={approach.edge_cases}
+        mistakes={approach.mistakes}
+      />
+
+      {approach.code && <ApproachCode code={approach.code} spoiler unattempted={attempted === false} />}
+
+      <nav
+        aria-label="Next steps"
+        className="flex flex-col gap-2 rounded-xl border border-hairline bg-surface p-3 md:flex-row md:flex-wrap md:items-center md:justify-between md:gap-3 md:p-4"
+      >
+        <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
           <Link
-            href={`/practice/${approach.problem_slug}`}
-            className="block truncate text-sm font-medium leading-5 text-text-primary hover:underline"
+            href={`/practice/${approach.problem_slug}/compare`}
+            className={`${deckBtn} border border-hairline bg-surface-raised text-text-primary hover:bg-surface-overlay`}
           >
-            {problemTitle}
+            <ArrowLeftRight className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+            {otherCount !== null && otherCount > 0
+              ? `Compare with ${otherCount} other ${otherCount === 1 ? "approach" : "approaches"}`
+              : "Compare approaches"}
           </Link>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2">
-            <span className="font-mono text-xs text-text-tertiary">No. {approach.problem_slug}</span>
-            {approach.pattern && (
-              <PatternChip
-                label={approach.pattern}
-                href={`/patterns/${encodeURIComponent(approach.pattern)}`}
-              />
-            )}
-          </div>
-        </div>
-      </header>
-
-      <section aria-label="Core idea" className="card">
-        <h2 className="text-xs font-medium leading-4 text-text-tertiary">Core idea</h2>
-        <p className="mt-2 whitespace-pre-wrap text-[17px] leading-7 text-text-primary">{approach.core_idea}</p>
-      </section>
-
-      <section aria-label="Details" className="divide-y divide-hairline">
-        <DetailRow label="Time" value={approach.complexity_time} mono />
-        <DetailRow label="Space" value={approach.complexity_space} mono />
-        <DetailRow label="Key detail" value={approach.key_detail} />
-        <DetailRow label="Edge cases" value={approach.edge_cases} />
-        <DetailRow label="Mistakes" value={approach.mistakes} />
-      </section>
-
-      {approach.code && (
-        <section aria-label="Code" className="rounded-xl border border-hairline bg-well p-4">
-          <div className="flex min-h-[44px] flex-wrap items-center justify-between gap-2">
-            <span className="text-sm text-text-secondary">
-              Code · {codeLines} {codeLines === 1 ? "line" : "lines"}
-            </span>
-            {!revealCode && (
-              <Button variant="secondary" onClick={() => setRevealCode(true)}>
-                Reveal code
-              </Button>
-            )}
-          </div>
-          {revealCode ? (
-            <div className="mt-3 space-y-2">
-              <pre className="overflow-x-auto font-mono text-sm leading-6 text-text-primary">
-                <code>{approach.code}</code>
-              </pre>
-              <Button
-                variant="ghost"
-                onClick={async () => {
-                  if (await copyText(approach.code ?? "")) {
-                    setCodeCopied(true);
-                    setTimeout(() => setCodeCopied(false), 2000);
-                  }
-                }}
-              >
-                {codeCopied ? (
-                  <Check className="h-4 w-4 text-verified" strokeWidth={1.5} />
-                ) : (
-                  <Copy className="h-4 w-4" strokeWidth={1.5} />
-                )}
-                {codeCopied ? "Copied" : "Copy code"}
-              </Button>
-            </div>
-          ) : (
-            <p className="mt-2 text-sm leading-6 text-text-tertiary">
-              Hidden so you solve it first. Read it after your own attempt.
-              {attempted === false && " You have not attempted this yet."}
-            </p>
+          {user && (
+            <button
+              type="button"
+              className={`${deckBtn} text-text-secondary hover:bg-surface-raised hover:text-text-primary`}
+              onClick={async () => {
+                try {
+                  await copyApproachToNotebook(approach.id);
+                  track("note_copied", { fork_of: approach.id });
+                  setSaved(true);
+                  setTimeout(() => setSaved(false), 2000);
+                } catch {
+                  // logged out or RLS: the plain Copy button still works
+                }
+              }}
+            >
+              <NotebookPen className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+              {saved ? "Saved to notebook" : "Copy to my notebook"}
+            </button>
           )}
-        </section>
-      )}
-
-      <nav aria-label="Next steps" className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        {otherCount !== null && otherCount > 0 ? (
-          <Link href={`/practice/${approach.problem_slug}/compare`}>
-            <Button variant="secondary" className="w-full min-h-[44px] sm:w-auto">
-              Compare with {otherCount} other {otherCount === 1 ? "approach" : "approaches"}
-            </Button>
-          </Link>
-        ) : (
-          <Link href={`/practice/${approach.problem_slug}/compare`}>
-            <Button variant="secondary" className="w-full min-h-[44px] sm:w-auto">
-              Compare approaches
-            </Button>
-          </Link>
-        )}
-        <Button
-          variant="ghost"
-          className="min-h-[44px]"
-          onClick={async () => {
-            if (await copyText(asText)) {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            }
-          }}
-        >
-          {copied ? (
-            <Check className="h-4 w-4 text-verified" strokeWidth={1.5} />
-          ) : (
-            <Copy className="h-4 w-4" strokeWidth={1.5} />
-          )}
-          {copied ? "Copied" : "Copy"}
-        </Button>
-        {user && (
-          <Button
-            variant="ghost"
-            className="min-h-[44px]"
+          <button
+            type="button"
+            className={`${deckBtn} text-text-secondary hover:bg-surface-raised hover:text-text-primary`}
             onClick={async () => {
-              try {
-                await copyApproachToNotebook(approach.id);
-                track("note_copied", { fork_of: approach.id });
-                setSaved(true);
-                setTimeout(() => setSaved(false), 2000);
-              } catch {
-                // logged out or RLS: the plain Copy button still works
+              if (await copyText(asText)) {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
               }
             }}
           >
-            <NotebookPen className="h-4 w-4" strokeWidth={1.5} />
-            {saved ? "Saved to notebook" : "Copy to my notebook"}
-          </Button>
-        )}
+            {copied ? (
+              <Check className="h-4 w-4 text-verified" strokeWidth={1.5} />
+            ) : (
+              <Copy className="h-4 w-4" strokeWidth={1.5} />
+            )}
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
         {!isOwner && (
-          <Link href="/challenges">
-            <Button variant="ghost" className="w-full min-h-[44px] sm:w-auto">
-              Challenge {firstName}
-            </Button>
+          // The screen's one gold element: the competitive next step.
+          <Link
+            href="/challenges"
+            className={`${deckBtn} group border border-primary/40 bg-well text-primary hover:bg-surface-raised`}
+          >
+            <Swords className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+            Challenge {firstName}
+            {beat && (
+              <span className="font-mono text-[11px] font-medium text-text-tertiary tnum group-hover:text-primary">
+                (Beat {beat})
+              </span>
+            )}
           </Link>
         )}
       </nav>
 
-      {isOwner && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-4">
-          <div
-            role="group"
-            aria-label="Visibility"
-            className="flex h-9 items-center gap-1 rounded-md border border-hairline bg-well p-1"
-          >
-            {(["private", "squad", "public"] as ApproachVisibility[]).map((v) => (
-              <button
-                key={v}
-                type="button"
-                aria-pressed={approach.visibility === v}
-                onClick={async () => {
-                  if (v === "squad" && !profile?.active_squad_id) return;
-                  await setApproachVisibility(approach.id, v, profile?.active_squad_id ?? null);
-                  load();
-                }}
-                className={`flex h-full min-h-[44px] items-center rounded-sm px-3 text-sm font-medium leading-5 transition-colors md:min-h-0 ${
-                  approach.visibility === v ? "bg-surface-overlay text-text-primary" : "text-text-secondary"
-                }`}
+      {others && others.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0 rounded-xl border border-hairline bg-well/50 p-3 md:gap-y-2 md:p-4">
+          <span className="text-xs leading-4 text-text-tertiary">Other approaches:</span>
+          {others.slice(0, 4).map((o) => {
+            const name = o.author?.username ?? o.author_profile?.username ?? "unknown";
+            return (
+              <Link
+                key={o.id}
+                href={`/approach/${o.id}`}
+                className="inline-flex min-h-[44px] items-center md:min-h-0"
               >
-                {v.charAt(0).toUpperCase() + v.slice(1)}
-              </button>
-            ))}
+                <span className="inline-flex h-6 items-center gap-1.5 rounded-xs border border-hairline bg-surface px-2 text-xs leading-4 text-text-secondary transition-colors hover:text-text-primary">
+                  <Avatar name={name} src={o.author?.avatar_url} size="sm" className="h-4 w-4 text-[8px]" />
+                  @{name}
+                </span>
+              </Link>
+            );
+          })}
+          {others.length > 4 && (
+            <span className="font-mono text-xs leading-4 text-text-tertiary tnum">+{others.length - 4} more</span>
+          )}
+        </div>
+      )}
+
+      {isOwner && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-hairline bg-surface p-3 md:p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-medium leading-5 text-text-secondary">Visibility</span>
+            <div
+              role="group"
+              aria-label="Visibility"
+              className="flex h-9 items-center gap-1 rounded-md border border-hairline bg-well p-1"
+            >
+              {(["private", "squad", "public"] as ApproachVisibility[]).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  aria-pressed={approach.visibility === v}
+                  onClick={async () => {
+                    if (v === "squad" && !profile?.active_squad_id) return;
+                    await setApproachVisibility(approach.id, v, profile?.active_squad_id ?? null);
+                    load();
+                  }}
+                  className={`flex h-full min-h-[44px] items-center rounded-sm px-3 text-sm font-medium leading-5 transition-colors md:min-h-0 ${
+                    approach.visibility === v ? "bg-surface-overlay text-text-primary" : "text-text-secondary"
+                  }`}
+                >
+                  {v.charAt(0).toUpperCase() + v.slice(1)}
+                </button>
+              ))}
+            </div>
           </div>
           <Button
             variant="ghost"
@@ -343,7 +343,7 @@ export default function ApproachPage() {
               await deleteApproach(approach.id);
               load();
             }}
-            className="text-text-tertiary hover:text-error"
+            className="min-h-[44px] text-text-tertiary hover:text-error md:min-h-0"
           >
             <Trash2 className="h-4 w-4" strokeWidth={1.5} />
           </Button>
