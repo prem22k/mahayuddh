@@ -2,7 +2,16 @@
 
 import Link from "next/link";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { ExternalLink, RefreshCw, ArrowRight } from "lucide-react";
+import {
+  Clock,
+  ExternalLink,
+  Flame,
+  RefreshCw,
+  ShieldCheck,
+  Swords,
+  TrendingUp,
+  User,
+} from "lucide-react";
 import { GlobalLeaderboard } from "@/components/leaderboard/GlobalLeaderboard";
 import { syncErrorMessage } from "@/lib/syncError";
 import { getSquadProfiles, syncUserProfileStats } from "@/lib/data/profiles";
@@ -25,6 +34,14 @@ import { EmptyState, ErrorCard } from "@/components/ui/States";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { Profile } from "@/types/database";
+import { getSquadName } from "@/lib/data/squadActivity";
+import { cn } from "@/lib/utils";
+import {
+  boardActionCls,
+  boardListCls,
+  boardRankCls,
+  boardRowCls,
+} from "@/components/leaderboard/rowStyles";
 
 type MetricKey = "verified" | "streak" | "hard" | "rating";
 type PeriodKey = "week" | "all";
@@ -70,8 +87,35 @@ function metricLabel(m: Profile, key: MetricKey, value: number, period: PeriodKe
   }
 }
 
+/** Unit after the number: long on desktop, one word on phones. */
+function metricUnit(key: MetricKey, period: PeriodKey): { long: string; short: string } {
+  switch (key) {
+    case "verified":
+      return period === "week"
+        ? { long: "verified this week", short: "solves" }
+        : { long: "verified solves", short: "solves" };
+    case "streak":
+      return period === "week"
+        ? { long: "solves this week", short: "solves" }
+        : { long: "day streak", short: "days" };
+    case "hard":
+      return { long: "hard solved", short: "hard" };
+    case "rating":
+      return { long: "rating", short: "rating" };
+  }
+}
+
+function deltaTone(label: string): string {
+  if (label.startsWith("↑")) return "text-verified";
+  if (label.startsWith("↓")) return "text-error";
+  if (label === "New") return "text-text-secondary";
+  return "text-text-disabled md:text-text-tertiary";
+}
+
+const LONG_BOARD = 8;
+
 export default function LeaderboardPage() {
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile, loading: authLoading } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -125,10 +169,29 @@ export default function LeaderboardPage() {
     }
   };
 
+  // Waits for auth: loading before the profile arrives read "no squad" and
+  // flipped every visit to the Global tab.
   useEffect(() => {
+    if (authLoading) return;
     loadLeaderboardData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authLoading, profile?.active_squad_id]);
+
+  const [squadName, setSquadName] = useState<string | null>(null);
+  useEffect(() => {
+    const id = profile?.active_squad_id;
+    if (!id) {
+      setSquadName(null);
+      return;
+    }
+    let cancelled = false;
+    getSquadName(id)
+      .then((n) => !cancelled && setSquadName(n))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.active_squad_id]);
 
   const handleSyncMyStats = async () => {
     if (!user || !profile?.leetcode_username) return;
@@ -315,20 +378,49 @@ export default function LeaderboardPage() {
   const selfEntry = user ? visibleMembers.find((m) => m.id === user.id) ?? null : null;
   const selfRank = user ? rankMap.get(user.id) ?? null : null;
 
+  const unit = metricUnit(metricKey, period);
+
+  // Each metric's glyph shows on phones (Stitch mobile chips); on desktop only
+  // the selected chip carries its glyph.
+  const metricLeading: Record<string, React.ReactNode> = {
+    "Verified solves": <span className="h-1.5 w-1.5 rounded-full bg-verified" />,
+    Streak: <Flame className="h-3.5 w-3.5 text-primary" strokeWidth={1.5} />,
+    "Hard solved": <span className="h-1.5 w-1.5 rounded-full bg-error" />,
+    "Contest rating": <TrendingUp className="h-3.5 w-3.5 text-pattern" strokeWidth={1.5} />,
+  };
+  const leading = Object.fromEntries(
+    METRICS.map((m) => [
+      m,
+      <span key={m} aria-hidden className={cn("inline-flex", m !== metric && "md:hidden")}>
+        {metricLeading[m]}
+      </span>,
+    ])
+  );
+
+  const periodControl = (
+    <SegmentedControl
+      label="Time period"
+      value={period}
+      onChange={setPeriod}
+      className="max-md:h-auto [&>button]:whitespace-nowrap"
+      options={[
+        { value: "week", label: "Last 7 days" },
+        { value: "all", label: "All time" },
+      ]}
+    />
+  );
+
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="type-display-md text-text-primary">Leaderboard</h1>
-          <p className="mt-1 text-sm leading-6 text-text-secondary">
-            Where you stand among your squad.
-          </p>
-        </div>
+    <div className="mx-auto flex w-full max-w-reading flex-col">
+      <div className="flex items-center justify-between gap-4 pb-4 md:pb-6">
+        <h1 className="type-display-md text-text-primary max-md:text-2xl max-md:leading-[29px] max-md:tracking-[-0.015em]">
+          Leaderboard
+        </h1>
         <SegmentedControl
           label="Squad or global standings"
           value={tab}
           onChange={setTab}
-          size="sm"
+          className="max-md:h-auto [&>button]:whitespace-nowrap"
           options={[
             { value: "squad", label: "Squad", title: "Your active squad" },
             { value: "global", label: "Global", title: "Everyone" },
@@ -336,42 +428,26 @@ export default function LeaderboardPage() {
         />
       </div>
 
-      <div className="flex flex-col gap-3">
-        <FilterChips options={METRICS} value={metric} onChange={setMetric} />
-        <div className="flex flex-wrap items-center gap-3">
-          <SegmentedControl
-            label="Time period"
-            value={period}
-            onChange={setPeriod}
-            size="sm"
-            options={[
-              { value: "week", label: "Last 7 days" },
-              { value: "all", label: "All time" },
-            ]}
-          />
-          <button
-            aria-pressed={hideUnconnected}
-            onClick={() => setHideUnconnected((v) => !v)}
-            className="flex min-h-[44px] items-center rounded-full border border-hairline px-3.5 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary aria-pressed:bg-surface-overlay aria-pressed:text-text-primary md:min-h-0 md:h-9"
-            title="Hide members without a linked LeetCode handle"
-          >
-            Linked only
-          </button>
+      <div className="flex flex-col gap-3 border-b border-hairline pb-4 md:flex-row md:items-center md:justify-between md:pb-6">
+        <FilterChips
+          options={METRICS}
+          value={metric}
+          onChange={setMetric}
+          leading={leading}
+          scroll
+          label="Rank by"
+        />
+        <div className="flex items-center justify-between gap-3 md:shrink-0">
+          <span className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary md:hidden">
+            <Clock className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+            Time window
+          </span>
+          {periodControl}
         </div>
       </div>
 
-      {profile?.leetcode_username ? (
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={handleSyncMyStats} disabled={isSyncing}>
-            <RefreshCw className={isSyncing ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} strokeWidth={1.5} />
-            {syncSuccess ? "Synced" : isSyncing ? "Syncing…" : "Sync stats"}
-          </Button>
-          <Button variant="ghost" onClick={() => setIsConnectModalOpen(true)}>
-            Full history
-          </Button>
-        </div>
-      ) : (
-        <div className="card flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      {!profile?.leetcode_username && (
+        <div className="mt-4 flex flex-col gap-3 rounded-lg border border-hairline bg-surface p-4 md:mt-6 md:flex-row md:items-center md:justify-between md:p-5">
           <div>
             <h2 className="text-lg font-semibold leading-[26px] text-text-primary">
               Connect LeetCode to appear here
@@ -387,7 +463,7 @@ export default function LeaderboardPage() {
               value={inputHandle}
               onChange={(e) => setInputHandle(e.target.value)}
               placeholder="Your LeetCode username"
-              className="h-10 min-h-[44px] rounded-md border border-hairline bg-well px-3.5 font-mono text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:min-h-0"
+              className="h-10 min-h-[44px] min-w-0 flex-1 rounded-md border border-hairline bg-well px-3.5 font-mono text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:min-h-0 md:w-52 md:flex-none"
               required
             />
             <Button type="submit" variant="secondary" loading={isConnectingHandle} disabled={!inputHandle.trim()}>
@@ -398,141 +474,241 @@ export default function LeaderboardPage() {
         </div>
       )}
 
-      {loadError && <ErrorCard message={loadError} onRetry={() => { setLoading(true); loadLeaderboardData(); }} />}
+      {loadError && (
+        <div className="mt-4 md:mt-6">
+          <ErrorCard message={loadError} onRetry={() => { setLoading(true); loadLeaderboardData(); }} />
+        </div>
+      )}
 
       <div aria-live="polite" className="sr-only">
         Sorted by {metric}; {visibleMembers.length} squad member{visibleMembers.length === 1 ? "" : "s"} shown.
       </div>
 
-      {loading ? (
-        <PageLoader label="Loading leaderboard..." className="h-48" />
-      ) : visibleMembers.length === 0 ? (
-        tab === "global" ? (
+      <div className="mt-4 md:mt-6">
+        {loading ? (
+          <PageLoader label="Loading leaderboard..." className="h-48" />
+        ) : visibleMembers.length === 0 ? (
+          tab === "global" ? (
+            <GlobalLeaderboard />
+          ) : (
+            <EmptyState
+              heading="No squad members here yet"
+              body="Join or create a squad, this tab ranks people you practice with."
+              action={
+                <Link
+                  href="/squad"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-[#272830]"
+                >
+                  Go to squad
+                </Link>
+              }
+            />
+          )
+        ) : tab === "global" ? (
           <GlobalLeaderboard />
         ) : (
-          <EmptyState
-            heading="No squad members here yet"
-            body="Join or create a squad, this tab ranks people you practice with."
-            action={
-              <Link
-                href="/squad"
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-[#272830]"
-              >
-                Go to squad
-              </Link>
-            }
-          />
-        )
-      ) : tab === "global" ? (
-        <GlobalLeaderboard />
-      ) : (
-        <div className="relative">
-          <ol className="mx-auto w-full max-w-reading divide-y divide-hairline rounded-xl border border-hairline bg-surface">
-            {visibleMembers.map((member) => {
-              const isCurrentUser = member.id === user?.id;
-              const rank = rankMap.get(member.id) ?? 0;
-              return (
-                <li
-                  key={member.id}
-                  aria-label={`${member.username}, rank ${rank}`}
-                  className={`group flex min-h-[56px] items-center gap-3 px-4 transition-colors hover:bg-surface-raised ${
-                    isCurrentUser ? "bg-surface-overlay" : ""
-                  }`}
-                >
-                  <span
-                    className={`w-8 shrink-0 font-display text-[28px] font-semibold leading-[31px] tnum ${
-                      rank <= 3 ? "text-text-primary" : "text-text-secondary"
-                    }`}
+          <div className="relative">
+            <ol className={boardListCls}>
+              {visibleMembers.map((member) => {
+                const isCurrentUser = member.id === user?.id;
+                const rank = rankMap.get(member.id) ?? 0;
+                const noValue = metricKey === "rating" && member.contest_rating == null;
+                const delta = rankChangeLabel(prevRanks.get(member.id), rank, prevReadOk);
+                return (
+                  <li
+                    key={member.id}
+                    aria-label={`${member.username}, rank ${rank}`}
+                    className={boardRowCls(isCurrentUser)}
                   >
-                    {rank}
-                  </span>
-                  <Avatar name={member.username} src={member.avatar_url} size="md" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium leading-5 text-text-primary">
-                      {member.username}
-                      {isCurrentUser && (
-                        <span className="ml-1.5 text-xs text-text-secondary">(you)</span>
-                      )}
-                    </p>
-                    <p className="truncate font-mono text-xs text-text-tertiary tnum">
-                      @{member.leetcode_username || "no_handle"}
-                    </p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="font-mono text-sm text-text-primary tnum">
-                      {metricKey === "rating" && member.contest_rating == null
-                        ? "—"
-                        : valueOf(member)}
-                    </p>
-                    <p
-                      className="font-mono text-xs text-text-tertiary tnum"
-                      title={
-                        prevDate
-                          ? `Rank change since ${prevDate}`
-                          : prevReadOk
-                            ? "First snapshot: no prior rank yet"
-                            : "No movement data yet"
-                      }
-                    >
-                      {rankChangeLabel(prevRanks.get(member.id), rank, prevReadOk)}
-                    </p>
-                  </div>
-                  <div className="hidden shrink-0 items-center gap-1 md:flex md:opacity-0 md:group-hover:opacity-100">
+                    <span className={cn(boardRankCls(rank), isCurrentUser && "max-md:font-semibold max-md:text-text-primary")}>
+                      {rank}
+                    </span>
                     <button
+                      type="button"
                       onClick={() => setInspectedProfile(member)}
-                      className="flex h-10 items-center rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                      aria-label={`Open ${member.username}'s dossier`}
+                      className="flex min-w-0 flex-1 items-center gap-3 self-stretch text-left md:gap-4"
                     >
-                      Dossier
+                      <Avatar
+                        name={member.username}
+                        src={member.avatar_url}
+                        size="md"
+                        className={isCurrentUser ? "ring-1 ring-primary/40" : undefined}
+                      />
+                      <span className="flex min-w-0 flex-col md:flex-row md:items-center md:gap-2">
+                        <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                          <span className={cn("truncate text-sm font-semibold text-text-primary", isCurrentUser && "shrink-0")}>
+                            {member.username}
+                            {isCurrentUser && <span className="hidden md:inline"> (you)</span>}
+                          </span>
+                          {isCurrentUser && (
+                            <span className="shrink-0 rounded-xs border border-hairline bg-primary-tint px-1.5 text-[10px] font-medium uppercase leading-4 text-primary md:hidden">
+                              You
+                            </span>
+                          )}
+                          {isCurrentUser && squadName && (
+                            <span className="hidden min-w-0 truncate rounded-xs border border-hairline bg-primary-tint px-1.5 py-0.5 font-mono text-xs font-medium tracking-[0.06em] text-primary/80 md:inline-block">
+                              {squadName}
+                            </span>
+                          )}
+                        </span>
+                        {member.leetcode_username && (
+                          <span
+                            className={cn(
+                              "truncate font-mono text-xs leading-4 text-text-tertiary",
+                              isCurrentUser && "md:hidden"
+                            )}
+                          >
+                            @{member.leetcode_username}
+                          </span>
+                        )}
+                      </span>
                     </button>
-                    {!isCurrentUser && (
+
+                    <div className="flex shrink-0 flex-col items-end gap-0.5 md:flex-row md:items-center md:gap-4">
+                      <span className="flex items-baseline gap-1.5">
+                        <span className="font-mono text-sm font-medium text-text-primary tnum md:text-lg md:font-semibold">
+                          {noValue ? "—" : valueOf(member)}
+                        </span>
+                        {!noValue && (
+                          <>
+                            <span className="font-mono text-sm text-text-primary md:hidden">{unit.short}</span>
+                            <span className="hidden font-mono text-xs font-medium tracking-[0.06em] text-text-tertiary md:inline">
+                              {unit.long}
+                            </span>
+                          </>
+                        )}
+                      </span>
+                      <span
+                        className={cn(
+                          "font-mono text-xs font-medium leading-none tnum md:w-8 md:text-center md:text-sm",
+                          deltaTone(delta)
+                        )}
+                        title={
+                          prevDate
+                            ? `Rank change since ${prevDate}`
+                            : prevReadOk
+                              ? "First snapshot: no prior rank yet"
+                              : "No movement data yet"
+                        }
+                      >
+                        {delta}
+                      </span>
+                    </div>
+
+                    <div className="hidden shrink-0 items-center justify-end gap-1.5 md:flex md:w-[144px]">
+                      <button
+                        type="button"
+                        onClick={() => setInspectedProfile(member)}
+                        className={cn(
+                          boardActionCls,
+                          isCurrentUser
+                            ? "px-3 text-text-primary"
+                            : "md:opacity-0 md:focus-visible:opacity-100 md:group-focus-within:opacity-100 md:group-hover:opacity-100"
+                        )}
+                      >
+                        Dossier
+                      </button>
+                      {!isCurrentUser && (
+                        <Link href={`/challenges?to=${member.id}`} className={cn(boardActionCls, "px-3")}>
+                          Challenge
+                        </Link>
+                      )}
+                    </div>
+
+                    {isCurrentUser ? (
+                      <button
+                        type="button"
+                        onClick={() => setInspectedProfile(member)}
+                        aria-label="Open your dossier"
+                        className="-mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-primary hover:bg-well md:hidden"
+                      >
+                        <User className="h-4 w-4" strokeWidth={1.5} />
+                      </button>
+                    ) : (
                       <Link
                         href={`/challenges?to=${member.id}`}
-                        className="flex h-10 items-center rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                        aria-label={`Challenge ${member.username}`}
+                        className="-mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-text-tertiary hover:bg-surface-raised hover:text-text-primary md:hidden"
                       >
-                        Challenge
+                        <Swords className="h-4 w-4" strokeWidth={1.5} />
                       </Link>
                     )}
-                  </div>
-                  {!isCurrentUser && (
-                    <Link
-                      href={`/challenges?to=${member.id}`}
-                      aria-label={`Challenge ${member.username}`}
-                      className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-text-secondary hover:bg-surface-raised hover:text-text-primary md:hidden"
-                    >
-                      <ArrowRight className="h-4 w-4" strokeWidth={1.5} />
-                    </Link>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
+                  </li>
+                );
+              })}
+            </ol>
 
-          {selfEntry && selfRank != null && (
-            <div className="sticky bottom-4 mt-4 flex items-center gap-3 rounded-xl border border-hairline-strong bg-surface-overlay p-4">
-              <Avatar name={selfEntry.username} src={selfEntry.avatar_url} size="md" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-text-primary">
-                  You · #{selfRank}
-                </p>
-                <p className="truncate font-mono text-xs text-text-secondary tnum">
-                  {selfEntry ? metricLabel(selfEntry, metricKey, valueOf(selfEntry), period) : ""}
-                </p>
+            {/* The pinned row covers short boards; long ones keep a sticky "you" bar. */}
+            {selfEntry && selfRank != null && visibleMembers.length > LONG_BOARD && (
+              <div className="sticky bottom-4 mt-4 flex items-center gap-3 rounded-lg border border-hairline-strong bg-surface-overlay p-4">
+                <Avatar name={selfEntry.username} src={selfEntry.avatar_url} size="md" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-text-primary">
+                    You · #{selfRank}
+                  </p>
+                  <p className="truncate font-mono text-xs text-text-secondary tnum">
+                    {selfEntry ? metricLabel(selfEntry, metricKey, valueOf(selfEntry), period) : ""}
+                  </p>
+                </div>
+                {profile?.leetcode_username && (
+                  <a
+                    href={`https://leetcode.com/${profile.leetcode_username}/`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex min-h-[44px] items-center gap-1 text-sm text-text-secondary hover:text-text-primary"
+                  >
+                    <span className="hidden sm:inline">LeetCode</span>
+                    <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.5} />
+                  </a>
+                )}
               </div>
-              {profile?.leetcode_username && (
-                <a
-                  href={`https://leetcode.com/${profile.leetcode_username}/`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex min-h-[44px] items-center gap-1 text-sm text-text-secondary hover:text-text-primary"
-                >
-                  <span className="hidden sm:inline">LeetCode</span>
-                  <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.5} />
-                </a>
-              )}
-            </div>
-          )}
+            )}
+          </div>
+        )}
+      </div>
 
-          <p className="mt-4 text-xs text-text-tertiary">
+      {/* LeetCode-linked controls: the filter and the sync actions travel together. */}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <button
+          aria-pressed={hideUnconnected}
+          onClick={() => setHideUnconnected((v) => !v)}
+          className="flex min-h-[44px] items-center rounded-md border border-hairline bg-surface px-3 text-xs font-medium text-text-secondary transition-colors hover:border-hairline-strong hover:text-text-primary aria-pressed:border-hairline-strong aria-pressed:bg-surface-overlay aria-pressed:text-text-primary md:h-9 md:min-h-0"
+          title="Hide members without a linked LeetCode handle"
+        >
+          Linked only
+        </button>
+        {profile?.leetcode_username && (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSyncMyStats}
+              disabled={isSyncing}
+              className="flex min-h-[44px] items-center gap-1.5 rounded-md border border-hairline bg-surface px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary disabled:opacity-60 md:h-9 md:min-h-0"
+            >
+              <RefreshCw className={isSyncing ? "h-4 w-4 animate-spin" : "h-4 w-4"} strokeWidth={1.5} />
+              {syncSuccess ? "Synced" : isSyncing ? "Syncing…" : "Sync stats"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsConnectModalOpen(true)}
+              className="flex min-h-[44px] items-center rounded-md border border-hairline bg-surface px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:h-9 md:min-h-0"
+            >
+              Full history
+            </button>
+          </div>
+        )}
+        {profile?.leetcode_username && connectError && (
+          <p role="alert" className="w-full text-xs text-error">
+            {connectError}
+          </p>
+        )}
+      </div>
+
+      {tab === "squad" && (
+        <div className="mt-6 flex items-start gap-2.5 rounded-md border border-hairline bg-well p-3 md:mt-8 md:justify-center md:border-0 md:bg-transparent md:p-0 md:text-center">
+          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary md:hidden" strokeWidth={1.5} aria-hidden />
+          <p className="text-xs font-medium leading-5 text-text-tertiary">
             Verified solves come from LeetCode sync. Last 7 days counts solves logged in the window; hard solved and contest rating are lifetime totals.
           </p>
         </div>

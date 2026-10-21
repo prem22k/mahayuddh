@@ -1,10 +1,26 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { X, Check, Trophy, BookOpen, Swords, LifeBuoy, FolderOpen, MessageCircle } from "lucide-react";
+import {
+  X,
+  Check,
+  ArrowRight,
+  BadgeCheck,
+  GraduationCap,
+  Swords,
+  CircleQuestionMark,
+  BookOpen,
+  MessagesSquare,
+  Shield,
+  Globe,
+  Lock,
+  SquarePen,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { Button } from "@/components/ui/Button";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { Avatar } from "@/components/ui/Avatar";
 import { VerifiedBadge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";
 import {
@@ -26,7 +42,8 @@ import { createStuckRequest } from "@/lib/data/stuck";
 import { logFeedEvent } from "@/lib/data/feed";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { dataErrorMessage } from "@/lib/data/errors";
-import { formatDuration } from "@/lib/format";
+import { formatDuration, titleFromSlug } from "@/lib/format";
+import { getCatalogBySlugs } from "@/lib/data/problems";
 import { track } from "@/lib/analytics";
 import { LEVEL_LABEL, STUCK_LEVELS } from "@/lib/stuckLadder";
 
@@ -50,13 +67,13 @@ import { LEVEL_LABEL, STUCK_LEVELS } from "@/lib/stuckLadder";
 
 type Tile = "solve" | "teach" | "challenge" | "stuck" | "resource" | "discuss";
 
-const TILES: { id: Tile; label: string; icon: React.ReactNode }[] = [
-  { id: "solve", label: "Share a solve", icon: <Trophy className="h-4 w-4" strokeWidth={1.5} /> },
-  { id: "teach", label: "Teach", icon: <BookOpen className="h-4 w-4" strokeWidth={1.5} /> },
-  { id: "challenge", label: "Challenge", icon: <Swords className="h-4 w-4" strokeWidth={1.5} /> },
-  { id: "stuck", label: "Ask for help", icon: <LifeBuoy className="h-4 w-4" strokeWidth={1.5} /> },
-  { id: "resource", label: "Share a resource", icon: <FolderOpen className="h-4 w-4" strokeWidth={1.5} /> },
-  { id: "discuss", label: "Start a discussion", icon: <MessageCircle className="h-4 w-4" strokeWidth={1.5} /> },
+const TILES: { id: Tile; label: string; icon: LucideIcon }[] = [
+  { id: "solve", label: "Share a solve", icon: BadgeCheck },
+  { id: "teach", label: "Teach", icon: GraduationCap },
+  { id: "challenge", label: "Challenge", icon: Swords },
+  { id: "stuck", label: "Ask for help", icon: CircleQuestionMark },
+  { id: "resource", label: "Share a resource", icon: BookOpen },
+  { id: "discuss", label: "Start a discussion", icon: MessagesSquare },
 ];
 
 const TILE_BLURB: Record<Exclude<Tile, "discuss">, string> = {
@@ -67,15 +84,34 @@ const TILE_BLURB: Record<Exclude<Tile, "discuss">, string> = {
   resource: "One of your vault items.",
 };
 
+/** "today" / "yesterday" / "Sat" / "12 Oct" for a battle's start. */
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((startOf(new Date()) - startOf(d)) / 86_400_000);
+  if (diff <= 0) return "today";
+  if (diff === 1) return "yesterday";
+  if (diff < 7) return d.toLocaleDateString("en-GB", { weekday: "short" });
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+/** Section label: a quiet sans label on desktop, a mono caps caption on phones. */
+const sectionLabelCls =
+  "text-sm font-medium text-text-primary max-md:font-mono max-md:text-xs max-md:uppercase max-md:tracking-[0.06em] max-md:text-text-tertiary";
+
 export function FeedComposer({
   onClose,
   onPosted,
   onDiscuss,
+  squadName = null,
 }: {
   onClose: () => void;
   onPosted: () => void;
   /** Discuss has its own modal; the tile hands off rather than duplicating it. */
   onDiscuss: () => void;
+  /** Active squad's display name, for the audience note. */
+  squadName?: string | null;
 }) {
   const { profile, user } = useAuth();
   const squadId = profile?.active_squad_id ?? null;
@@ -125,6 +161,34 @@ export function FeedComposer({
     };
     void load();
   }, [tile, squadId]);
+
+  // Catalog title and number for the battles on screen. The battle row only
+  // has a slug; a failed lookup falls back to a title made from it.
+  const [battleMeta, setBattleMeta] = useState<Map<string, { title: string; number: string | null }>>(
+    new Map()
+  );
+  useEffect(() => {
+    const slugs = Array.from(new Set(battles.slice(0, 5).map((b) => b.problem_slug)));
+    if (slugs.length === 0) return;
+    let cancelled = false;
+    getCatalogBySlugs(slugs)
+      .then((rows) => {
+        if (cancelled) return;
+        setBattleMeta(
+          new Map(
+            rows.map((r) => [r.title_slug, { title: r.title, number: r.question_id ? String(r.question_id) : null }])
+          )
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [battles]);
+  const battleTitle = useCallback(
+    (slug: string) => battleMeta.get(slug)?.title ?? titleFromSlug(slug),
+    [battleMeta]
+  );
 
   // A callback rather than a plain function: the submit handlers are callbacks
   // too, and leaving this out of their deps is a lint warning rather than a
@@ -264,8 +328,9 @@ export function FeedComposer({
     }
   }, [resources, pickedResource, squadId, audience, caption, finish]);
 
+
   const selectCls =
-    "w-full min-h-[44px] rounded-md border border-hairline bg-well px-3 py-2 text-sm text-text-primary focus:border-hairline-strong focus:outline-none";
+    "w-full min-h-[44px] rounded-md border border-hairline bg-well px-3 py-2 text-sm text-text-primary focus:border-hairline-strong focus:outline-none md:min-h-10";
 
   const picker = useMemo(() => {
     const empty = (msg: string, cta?: { label: string; href: string }) => (
@@ -287,8 +352,8 @@ export function FeedComposer({
       selected: boolean,
       onPick: () => void,
       title: string,
-      meta: string,
-      badge?: React.ReactNode
+      meta: React.ReactNode,
+      opts: { badge?: React.ReactNode; number?: string | null; aside?: string } = {}
     ) => (
       <button
         key={id}
@@ -297,27 +362,47 @@ export function FeedComposer({
         aria-checked={selected}
         onClick={onPick}
         className={cn(
-          "flex min-h-[44px] w-full cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 text-left transition-colors",
+          "flex min-h-[44px] w-full cursor-pointer items-center gap-3 rounded-md border p-3 text-left transition-colors max-md:rounded-lg max-md:p-2.5",
           selected
-            ? "border-hairline-strong bg-surface-overlay"
-            : "border-hairline bg-transparent hover:bg-surface-raised"
+            ? "border-hairline-strong bg-surface-overlay max-md:border-primary/60 max-md:bg-well"
+            : "border-hairline bg-surface hover:bg-surface-raised"
         )}
       >
         <span
           className={cn(
-            "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
-            selected ? "border-text-primary" : "border-hairline-strong"
+            "flex h-4 w-4 shrink-0 items-center justify-center rounded-full",
+            selected ? "border-2 border-primary" : "border border-text-disabled"
           )}
         >
-          {selected && <span className="h-2 w-2 rounded-full bg-text-primary" />}
+          {selected && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-text-primary">{title}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span
+              className={cn(
+                "truncate text-sm text-text-primary",
+                selected ? "font-semibold" : "font-medium"
+              )}
+            >
+              {title}
+            </span>
+            {opts.number && (
+              <span className="hidden shrink-0 font-mono text-xs font-medium tracking-[0.06em] text-text-tertiary tnum md:inline">
+                No. {opts.number}
+              </span>
+            )}
+            {opts.badge && <span className="shrink-0 md:hidden">{opts.badge}</span>}
+          </span>
           <span className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-text-tertiary">
+            {opts.badge && <span className="hidden md:inline-flex">{opts.badge}</span>}
             {meta}
-            {badge}
           </span>
         </span>
+        {opts.aside && (
+          <span className="shrink-0 font-mono text-xs font-medium tracking-[0.06em] text-text-tertiary max-md:rounded-xs max-md:border max-md:border-hairline max-md:bg-surface max-md:px-1.5 max-md:py-0.5">
+            {opts.aside}
+          </span>
+        )}
       </button>
     );
 
@@ -329,16 +414,32 @@ export function FeedComposer({
         });
       return (
         <div className="space-y-1.5" role="radiogroup" aria-label="Pick a battle">
-          {battles.slice(0, 5).map((b) =>
-            radioRow(
+          {battles.slice(0, 5).map((b) => {
+            const selected = pickedBattle === b.id;
+            const time = b.duration_sec != null ? formatDuration(b.duration_sec) : null;
+            return radioRow(
               b.id,
-              pickedBattle === b.id,
+              selected,
               () => setPickedBattle(b.id),
-              b.problem_slug.replace(/-/g, " "),
-              `${b.duration_sec != null ? formatDuration(b.duration_sec) : "Solved"}`,
-              b.evidence === "leetcode" ? <VerifiedBadge /> : undefined
-            )
-          )}
+              battleTitle(b.problem_slug),
+              <span
+                className={cn(
+                  "font-mono tnum",
+                  time ? (selected ? "max-md:text-primary" : "max-md:text-text-secondary") : ""
+                )}
+              >
+                {time ?? "Solved"}
+              </span>,
+              {
+                number: battleMeta.get(b.problem_slug)?.number ?? null,
+                badge:
+                  b.evidence === "leetcode" ? (
+                    <VerifiedBadge className="h-5 gap-0.5 border border-verified/30 px-1.5 font-mono text-[11px]" />
+                  ) : undefined,
+                aside: dayLabel(b.started_at),
+              }
+            );
+          })}
         </div>
       );
     }
@@ -384,7 +485,8 @@ export function FeedComposer({
             onChange={(e) => setMyTimeSec(e.target.value.replace(/[^0-9]/g, ""))}
             inputMode="numeric"
             placeholder="Your time in seconds (optional)"
-            className={cn(selectCls, "font-mono")}
+            aria-label="Your time in seconds (optional)"
+            className={cn(selectCls, "font-mono placeholder:text-text-disabled")}
           />
         </div>
       );
@@ -424,7 +526,7 @@ export function FeedComposer({
     }
 
     return null;
-  }, [tile, battles, teaching, people, problems, resources, pickedBattle, pickedTeach, pickedPerson, pickedProblem, pickedResource, myTimeSec, level, selectCls]);
+  }, [tile, battles, teaching, people, problems, resources, pickedBattle, pickedTeach, pickedPerson, pickedProblem, pickedResource, myTimeSec, level, selectCls, battleMeta, battleTitle]);
 
   const canSubmit =
     (tile === "solve" && pickedBattle !== "") ||
@@ -442,90 +544,148 @@ export function FeedComposer({
   };
 
   const pickedBattleRow = battles.find((b) => b.id === pickedBattle);
+  const activeTile = TILES.find((t) => t.id === tile);
+  const audienceNote =
+    audience === "squad" ? `Visible to ${squadName ? `${squadName} squad` : "your squad"}` : "Visible to everyone";
 
   return (
-    <ModalShell label="Post to feed" onClose={onClose} maxWidthClass="max-w-[560px]">
-      <div className="space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <h2 className="font-display text-2xl font-semibold tracking-tight">Post to feed</h2>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded-md text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
-          >
-            <X className="h-5 w-5" strokeWidth={1.5} />
-          </button>
+    <ModalShell
+      label="Post to feed"
+      onClose={onClose}
+      variant="sheet"
+      zIndexClass="z-[300]"
+      maxWidthClass="max-w-[560px]"
+      panelClassName="flex max-h-[92dvh] flex-col overflow-hidden p-0 md:max-h-[calc(100dvh-32px)]"
+    >
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-hairline px-4 pb-2.5 pt-6 md:px-6 md:pb-3">
+        <div className="flex min-w-0 items-center gap-2 md:gap-3">
+          <SquarePen className="h-5 w-5 shrink-0 text-primary md:hidden" strokeWidth={1.5} aria-hidden />
+          <h2 className="text-lg font-semibold leading-[26px] tracking-[-0.01em] text-text-primary">
+            Post to feed
+          </h2>
+          {activeTile && (
+            <span className="hidden h-6 items-center rounded-xs border border-primary/30 bg-primary-tint px-2 font-mono text-xs font-medium tracking-[0.06em] text-primary md:inline-flex">
+              {activeTile.label}
+            </span>
+          )}
         </div>
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="-mr-2 inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary md:mr-0 md:h-8 md:w-8"
+        >
+          <X className="h-5 w-5" strokeWidth={1.5} />
+        </button>
+      </div>
 
-        <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Post type">
-          {TILES.map((t) => {
-            const active = tile === t.id;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                onClick={() => {
-                  if (t.id === "discuss") {
-                    onClose();
-                    onDiscuss();
-                    return;
-                  }
-                  setTile(t.id);
-                  setError(null);
-                }}
-                className={cn(
-                  "flex min-h-[44px] cursor-pointer flex-col items-center justify-center gap-1 rounded-md border px-2 py-2.5 text-xs font-medium transition-colors",
-                  active
-                    ? "border-hairline-strong bg-surface-overlay text-text-primary"
-                    : "border-hairline bg-transparent text-text-secondary hover:bg-surface-raised hover:text-text-primary"
-                )}
-              >
-                {t.icon}
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3 md:space-y-6 md:px-6 md:py-4">
+        <section className="space-y-1.5 md:space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-text-tertiary max-md:font-mono max-md:uppercase max-md:tracking-[0.06em]">
+              Select intent
+            </span>
+            {activeTile && (
+              <span className="rounded-xs border border-hairline bg-primary-tint px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-primary md:hidden">
+                {activeTile.label}
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-1.5 md:gap-2" role="radiogroup" aria-label="Post type">
+            {TILES.map((t) => {
+              const active = tile === t.id;
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => {
+                    if (t.id === "discuss") {
+                      onClose();
+                      onDiscuss();
+                      return;
+                    }
+                    setTile(t.id);
+                    setError(null);
+                  }}
+                  className={cn(
+                    "group flex min-h-16 cursor-pointer flex-col items-start justify-between gap-1 rounded-md border p-2 text-left transition-colors md:min-h-0 md:justify-start md:p-2.5",
+                    active
+                      ? "border-primary bg-surface-overlay text-text-primary ring-1 ring-primary/40 max-md:border-primary/50 max-md:bg-primary-tint max-md:ring-0"
+                      : "border-hairline bg-surface text-text-secondary hover:border-hairline-strong hover:bg-surface-overlay hover:text-text-primary"
+                  )}
+                >
+                  <span className="flex w-full items-center justify-between">
+                    <Icon
+                      className={cn(
+                        "h-[18px] w-[18px]",
+                        active ? "text-primary" : "text-text-tertiary group-hover:text-text-primary"
+                      )}
+                      strokeWidth={1.5}
+                      aria-hidden
+                    />
+                    {active && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />}
+                  </span>
+                  <span className="text-xs font-medium leading-tight md:text-[13px]">{t.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
 
-        <div className="space-y-3">
-          <div>
-            <p className="mb-1.5 text-sm font-medium text-text-secondary">
+        <section className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className={sectionLabelCls}>
               {tile === "solve" && "Pick a battle"}
               {tile === "teach" && "Pick something you wrote"}
               {tile === "challenge" && "Pick a squad mate and a problem"}
               {tile === "stuck" && "Pick a problem and a level"}
               {tile === "resource" && "Pick a vault item"}
             </p>
-            {picker}
+            {tile === "solve" && battles.length > 0 && (
+              <span className="font-mono text-xs font-medium tracking-[0.06em] text-text-tertiary tnum">
+                {Math.min(battles.length, 5)} recent {Math.min(battles.length, 5) === 1 ? "solve" : "solves"}
+              </span>
+            )}
           </div>
-
-          {tile !== "discuss" && (
-            <div>
-              <div className="flex items-baseline justify-between">
-                <label htmlFor="composer-caption" className="mb-1.5 block text-sm font-medium text-text-secondary">
-                  Add a line (optional)
-                </label>
-                <span className="font-mono text-xs text-text-tertiary">{caption.length}/280</span>
-              </div>
-              <textarea
-                id="composer-caption"
-                value={caption}
-                onChange={(e) => setCaption(e.target.value.slice(0, 280))}
-                rows={2}
-                placeholder="Finally saw why the loop order matters."
-                className="w-full resize-y rounded-md border border-hairline bg-well px-3 py-2.5 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none"
-              />
-            </div>
+          {tile !== "solve" && tile !== "discuss" && (
+            <p className="text-xs leading-5 text-text-tertiary">{TILE_BLURB[tile]}</p>
           )}
+          {picker}
+        </section>
 
-          <div className="space-y-1.5">
-            <p className="text-sm font-medium text-text-secondary">Audience</p>
+        {tile !== "discuss" && (
+          <section className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <label htmlFor="composer-caption" className={sectionLabelCls}>
+                Add a line (optional)
+              </label>
+              <span className="font-mono text-xs font-medium tracking-[0.06em] text-text-tertiary tnum">
+                {caption.length}/280
+              </span>
+            </div>
+            <textarea
+              id="composer-caption"
+              value={caption}
+              onChange={(e) => setCaption(e.target.value.slice(0, 280))}
+              rows={2}
+              placeholder="Finally saw why the loop order matters."
+              className="w-full resize-y rounded-md border border-hairline bg-well px-3 py-2.5 text-[15px] leading-6 text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none max-md:rounded-lg max-md:text-sm"
+            />
+          </section>
+        )}
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-medium text-text-tertiary max-md:font-mono max-md:uppercase max-md:tracking-[0.06em]">
+              Audience
+            </span>
             <SegmentedControl
               label="Who sees this post"
               value={audience}
               onChange={setAudience}
+              className="max-md:h-auto [&>button]:whitespace-nowrap"
               options={[
                 { value: "squad", label: "Squad" },
                 { value: "everyone", label: "Everyone" },
@@ -534,35 +694,94 @@ export function FeedComposer({
           </div>
 
           {tile === "solve" && pickedBattleRow && (
-            <div className="rounded-md border border-hairline bg-well p-3">
-              <p className="mb-1.5 text-xs text-text-tertiary">Preview</p>
-              <p className="text-sm leading-6 text-text-primary">
-                You solved {pickedBattleRow.problem_slug.replace(/-/g, " ")}
-                {pickedBattleRow.duration_sec != null && (
-                  <> in <span className="font-mono">{formatDuration(pickedBattleRow.duration_sec)}</span></>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-text-tertiary">Preview as it will appear</span>
+                <span className="flex items-center gap-1 font-mono text-xs font-medium tracking-[0.06em] text-text-tertiary">
+                  {audience === "squad" ? (
+                    <Lock className="h-3.5 w-3.5 text-primary" strokeWidth={1.5} aria-hidden />
+                  ) : (
+                    <Globe className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
+                  )}
+                  {audience === "squad" ? "Squad-only" : "Everyone"}
+                </span>
+              </div>
+              <div className="space-y-2 rounded-md border border-hairline bg-surface p-3 md:p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <Avatar
+                      name={profile?.username ?? "You"}
+                      src={profile?.avatar_url}
+                      size="md"
+                      className="ring-1 ring-primary/30"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold text-text-primary">
+                          {profile?.username ?? "You"}
+                        </span>
+                        {pickedBattleRow.evidence === "leetcode" && (
+                          <VerifiedBadge className="h-5 border border-verified/30 px-1.5 font-mono text-[10px]" />
+                        )}
+                      </div>
+                      <p className="text-[13px] leading-snug text-text-secondary">
+                        Solved{" "}
+                        <span className="font-medium text-text-primary">
+                          {battleTitle(pickedBattleRow.problem_slug)}
+                        </span>
+                        {pickedBattleRow.duration_sec != null && (
+                          <>
+                            {" "}in{" "}
+                            <span className="font-mono text-text-primary tnum">
+                              {formatDuration(pickedBattleRow.duration_sec)}
+                            </span>
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="shrink-0 font-mono text-xs font-medium tracking-[0.06em] text-text-tertiary">
+                    Just now
+                  </span>
+                </div>
+                {caption.trim() && (
+                  <blockquote className="border-l-2 border-primary/40 pl-2.5 text-sm italic text-text-primary">
+                    “{caption.trim()}”
+                  </blockquote>
                 )}
-              </p>
-              {caption.trim() && (
-                <p className="mt-1 text-sm leading-6 text-text-secondary">“{caption.trim()}”</p>
-              )}
+              </div>
             </div>
           )}
+        </section>
 
-          {note && (
-            <p className="flex items-center gap-1.5 text-xs leading-5 text-verified">
-              <Check className="h-3.5 w-3.5" strokeWidth={1.5} />
-              {note}
-            </p>
-          )}
-          {error && (
-            <div role="alert" className="rounded-md border border-error/30 bg-error-tint px-3 py-2 text-xs leading-5 text-error">
-              {error}
-            </div>
-          )}
-        </div>
+        {note && (
+          <p className="flex items-center gap-1.5 text-xs leading-5 text-verified">
+            <Check className="h-3.5 w-3.5" strokeWidth={1.5} />
+            {note}
+          </p>
+        )}
+        {error && (
+          <div role="alert" className="rounded-md border border-error/30 bg-error-tint px-3 py-2 text-xs leading-5 text-error">
+            {error}
+          </div>
+        )}
+      </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-hairline pt-4">
-          <Button variant="ghost" onClick={onClose} className="min-h-[44px]">
+      <div className="flex shrink-0 items-center gap-3 border-t border-hairline bg-surface-raised p-4 pb-[calc(16px+env(safe-area-inset-bottom))] md:justify-between md:bg-surface md:px-6 md:pb-4">
+        <p className="hidden min-w-0 items-center gap-2 text-xs font-medium text-text-tertiary md:flex">
+          {audience === "squad" ? (
+            <Shield className="h-4 w-4 shrink-0 text-primary" strokeWidth={1.5} aria-hidden />
+          ) : (
+            <Globe className="h-4 w-4 shrink-0" strokeWidth={1.5} aria-hidden />
+          )}
+          <span className="truncate">{audienceNote}</span>
+        </p>
+        <div className="flex w-full items-center gap-3 md:w-auto">
+          <Button
+            variant="ghost"
+            onClick={onClose}
+            className="h-11 flex-1 border border-hairline bg-surface md:h-10 md:flex-none md:border-transparent md:bg-transparent"
+          >
             Cancel
           </Button>
           <Button
@@ -570,14 +789,17 @@ export function FeedComposer({
             onClick={() => void doSubmit()}
             disabled={!canSubmit || busy}
             loading={busy}
-            className="min-h-[44px]"
+            className="h-11 flex-[2] font-semibold md:h-10 md:flex-none md:px-6 md:font-medium"
           >
-            {!busy && "Post"}
+            {!busy && (
+              <>
+                <span className="md:hidden">Post to Feed</span>
+                <span className="hidden md:inline">Post</span>
+                <ArrowRight className="h-[18px] w-[18px] md:hidden" strokeWidth={1.75} aria-hidden />
+              </>
+            )}
           </Button>
         </div>
-        {tile !== "solve" && tile !== "discuss" && (
-          <p className="text-xs leading-5 text-text-tertiary">{TILE_BLURB[tile]}</p>
-        )}
       </div>
     </ModalShell>
   );
