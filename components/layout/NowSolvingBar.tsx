@@ -7,9 +7,13 @@ import {
   Pause,
   RotateCcw,
   X,
+  Check,
+  ArrowUp,
+  MoreHorizontal,
 } from "lucide-react";
 import { cn, formatTime } from "@/lib/utils";
 import { ProblemLink } from "@/components/ui/ProblemLink";
+import { DifficultyBadgeNew } from "@/components/ui/Badge";
 import {
   useSolving,
   useSolvingTimer,
@@ -59,6 +63,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
   const [revengeResult, setRevengeResult] = useState<RevengeResult | null>(null);
   // Feeds the ladder's suggested level: how many tries have you already had?
   const [attemptCount, setAttemptCount] = useState(1);
+  const [capsuleMenuOpen, setCapsuleMenuOpen] = useState(false);
 
   // Load scratchpad note whenever activeProblem changes
   useEffect(() => {
@@ -541,115 +546,223 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
         </div>
       )}
       <div className="solve-dock-wrap select-none">
-        <div className="solve-dock">
-          <div className="flex shrink-0 items-center gap-2">
-            <span
-              className={cn(
-                "h-2 w-2 rounded-full",
-                isPlaying ? "animate-gold-pulse bg-primary" : "bg-text-tertiary"
-              )}
-              aria-hidden
-            />
-            <span className="type-mono-lg text-text-primary">
-              {formatTime(elapsedSec)}
-            </span>
-          </div>
+        {activeProblem ? (
+          <>
+            {/* Desktop S1 dock */}
+            <div className="solve-dock hidden justify-between md:flex">
+              <div className="flex shrink-0 items-center gap-3 pl-1">
+                <span
+                  className={cn(
+                    "h-2.5 w-2.5 shrink-0 rounded-full",
+                    isPlaying ? "animate-gold-pulse bg-primary" : "bg-text-tertiary"
+                  )}
+                  aria-hidden
+                />
+                <span className="font-mono text-xl font-medium leading-none tracking-tight text-text-primary tnum">
+                  {formatTime(elapsedSec)}
+                </span>
+              </div>
 
-          <div className="flex min-w-0 flex-1 items-center justify-center gap-2 truncate px-2">
-            {activeProblem ? (
-              <>
-                <span className="truncate text-sm font-medium text-text-primary">
+              <div className="flex min-w-0 items-center gap-2.5 px-3">
+                <span className="truncate text-sm font-semibold text-text-primary">
                   {activeProblem.title}
                 </span>
-                <span className="shrink-0 text-xs text-text-secondary">
-                  {activeProblem.difficulty}
-                </span>
-                <span className="hidden shrink-0 font-mono text-xs text-text-tertiary sm:block">
+                {activeProblem.difficulty && (
+                  <DifficultyBadgeNew difficulty={activeProblem.difficulty} size="sm" />
+                )}
+                <span className="hidden shrink-0 font-mono text-xs text-text-tertiary tnum lg:block">
                   No. {activeProblem.id}
                 </span>
-              </>
-            ) : (
-              <span className="hidden truncate text-sm text-text-tertiary md:block">
-                No battle running
-              </span>
-            )}
-          </div>
+              </div>
 
-          <div className="flex shrink-0 items-center gap-1.5">
-            {activeProblem ? (
-              <>
+              <div className="flex shrink-0 items-center gap-1.5">
                 <button
                   onClick={() => setIsScratchpadOpen(!isScratchpadOpen)}
-                  className="hidden h-10 items-center rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary sm:flex"
+                  className="flex h-8 items-center rounded-md px-2.5 text-[13px] font-medium text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                  title="Open scratchpad for this problem"
                 >
                   Notes
                 </button>
                 <button
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  className="flex h-10 w-10 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
-                  aria-label={isPlaying ? "Pause battle" : "Resume battle"}
-                >
-                  {isPlaying ? (
-                    <Pause className="h-4 w-4" />
-                  ) : (
-                    <Play className="ml-0.5 h-4 w-4" />
-                  )}
-                </button>
-                <button
                   onClick={() => setStuckOpen((v) => !v)}
-                  className="hidden h-10 items-center rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary sm:flex"
+                  className="flex h-8 items-center rounded-md px-2.5 text-[13px] font-medium text-pattern transition-colors hover:bg-pattern-tint"
+                  title="Open the Stuck hint ladder"
                 >
                   Stuck?
                 </button>
+                <button
+                  onClick={() => setIsPlaying(!isPlaying)}
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                  aria-label={isPlaying ? "Pause battle" : "Resume battle"}
+                >
+                  {isPlaying ? (
+                    <Pause className="h-4 w-4" strokeWidth={1.75} />
+                  ) : (
+                    <Play className="ml-0.5 h-4 w-4" strokeWidth={1.75} />
+                  )}
+                </button>
                 <ProblemLink
                   slug={activeProblem.slug}
-                  className="rounded-md p-2 text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
                 />
                 <button
                   onClick={() => handleComplete()}
                   disabled={isCompleted}
-                  className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-on-primary transition-colors hover:bg-primary-hover active:bg-primary-pressed disabled:bg-surface-overlay disabled:text-text-disabled"
+                  className="h-9 rounded-md bg-primary px-4 text-[13px] font-medium text-on-primary transition-colors hover:bg-primary-hover active:bg-primary-pressed disabled:bg-surface-overlay disabled:text-text-disabled"
                 >
                   {isCompleted ? "Solved" : "Submit solve"}
                 </button>
-                <details className="relative">
-                  <summary className="flex h-10 w-9 cursor-pointer items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface-overlay hover:text-text-primary">
-                    …
-                  </summary>
-                  <div className="popover-panel absolute bottom-11 right-0 flex w-44 flex-col p-2">
-                    <button
-                      onClick={handleFail}
-                      disabled={ending}
-                      className="rounded-md px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary disabled:opacity-40"
-                    >
-                      Mark failed
-                    </button>
-                    <button
-                      onClick={handleAbandon}
-                      className="rounded-md px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
-                    >
-                      Abandon
-                    </button>
-                    <button
-                      onClick={() => resetSolving()}
-                      className="flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" /> Reset timer
-                    </button>
-                  </div>
-                </details>
-              </>
-            ) : (
-              <button
-                onClick={onSearchOpen}
-                className="flex h-10 items-center rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
-              >
-                Pick a problem
-              </button>
-            )}
+                <BattleMenu
+                  onFail={handleFail}
+                  onAbandon={handleAbandon}
+                  onReset={() => resetSolving()}
+                  ending={ending}
+                />
+              </div>
+            </div>
+
+            {/* Mobile S3 capsule: the timer stays in reach; the title opens the rest. */}
+            <div className="pointer-events-auto relative w-full max-w-[360px] md:hidden">
+              {capsuleMenuOpen && (
+                <div className="popover-panel absolute bottom-[56px] left-0 right-0 flex flex-col p-2">
+                  <button
+                    onClick={() => {
+                      setCapsuleMenuOpen(false);
+                      setIsScratchpadOpen(true);
+                    }}
+                    className="flex min-h-[44px] items-center rounded-md px-3 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+                  >
+                    Notes
+                  </button>
+                  <button
+                    onClick={() => {
+                      setCapsuleMenuOpen(false);
+                      setStuckOpen(true);
+                    }}
+                    className="flex min-h-[44px] items-center rounded-md px-3 text-left text-sm text-pattern hover:bg-pattern-tint"
+                  >
+                    Stuck?
+                  </button>
+                  <button
+                    onClick={() => setIsPlaying(!isPlaying)}
+                    className="flex min-h-[44px] items-center gap-2 rounded-md px-3 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+                  >
+                    {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                    {isPlaying ? "Pause" : "Resume"}
+                  </button>
+                  <button
+                    onClick={handleFail}
+                    disabled={ending}
+                    className="flex min-h-[44px] items-center rounded-md px-3 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary disabled:opacity-40"
+                  >
+                    Mark failed
+                  </button>
+                  <button
+                    onClick={handleAbandon}
+                    className="flex min-h-[44px] items-center rounded-md px-3 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+                  >
+                    Abandon
+                  </button>
+                  <button
+                    onClick={() => resetSolving()}
+                    className="flex min-h-[44px] items-center gap-2 rounded-md px-3 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" /> Reset timer
+                  </button>
+                </div>
+              )}
+              <div className="solve-capsule">
+                <span
+                  className={cn(
+                    "h-2 w-2 shrink-0 rounded-full",
+                    isPlaying ? "animate-gold-pulse bg-primary" : "bg-text-tertiary"
+                  )}
+                  aria-hidden
+                />
+                <span className="shrink-0 font-mono text-[15px] font-medium text-text-primary tnum">
+                  {formatTime(elapsedSec)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCapsuleMenuOpen((v) => !v)}
+                  aria-expanded={capsuleMenuOpen}
+                  aria-label={`${activeProblem.title}: battle options`}
+                  className="flex min-h-[44px] min-w-0 flex-1 items-center justify-center truncate px-1 text-sm text-text-secondary"
+                >
+                  <span className="truncate">{activeProblem.title}</span>
+                </button>
+                <button
+                  onClick={() => handleComplete()}
+                  disabled={isCompleted}
+                  aria-label={isCompleted ? "Solved" : "Submit solve"}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary transition-colors hover:bg-primary-hover active:bg-primary-pressed disabled:bg-surface-overlay disabled:text-text-disabled"
+                >
+                  <Check className="h-5 w-5" strokeWidth={2} />
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="solve-dock solve-dock-idle hidden justify-between pl-4 pr-2 md:flex">
+            <span className="flex items-center gap-3 text-sm text-text-secondary">
+              <span className="h-2 w-2 rounded-full bg-text-tertiary" aria-hidden />
+              No battle running
+            </span>
+            <button
+              onClick={onSearchOpen}
+              className="flex h-9 items-center gap-2 rounded-md border border-hairline px-3 text-sm font-medium text-text-primary transition-colors hover:border-hairline-strong hover:bg-surface-overlay"
+            >
+              Pick a problem
+              <ArrowUp className="h-3.5 w-3.5" strokeWidth={1.75} />
+            </button>
           </div>
-        </div>
+        )}
       </div>
     </>
+  );
+}
+
+/** The dock's overflow: the battle endings that aren't a solve. */
+function BattleMenu({
+  onFail,
+  onAbandon,
+  onReset,
+  ending,
+}: {
+  onFail: () => void;
+  onAbandon: () => void;
+  onReset: () => void;
+  ending: boolean;
+}) {
+  return (
+    <details className="relative">
+      <summary
+        aria-label="More battle options"
+        className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface-overlay hover:text-text-primary [&::-webkit-details-marker]:hidden"
+      >
+        <MoreHorizontal className="h-4 w-4" strokeWidth={1.75} />
+      </summary>
+      <div className="popover-panel absolute bottom-11 right-0 flex w-44 flex-col p-2">
+        <button
+          onClick={onFail}
+          disabled={ending}
+          className="rounded-md px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary disabled:opacity-40"
+        >
+          Mark failed
+        </button>
+        <button
+          onClick={onAbandon}
+          className="rounded-md px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+        >
+          Abandon
+        </button>
+        <button
+          onClick={onReset}
+          className="flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+        >
+          <RotateCcw className="h-3.5 w-3.5" /> Reset timer
+        </button>
+      </div>
+    </details>
   );
 }

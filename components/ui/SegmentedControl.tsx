@@ -16,6 +16,8 @@ interface SegmentedControlProps<T extends string> {
   onChange: (value: T) => void;
   size?: "sm" | "md";
   wrap?: boolean;
+  /** Extra classes for the track (e.g. width, or `max-md:h-auto` so 44px options fit). */
+  className?: string;
 }
 
 export function SegmentedControl<T extends string>({
@@ -25,6 +27,7 @@ export function SegmentedControl<T extends string>({
   onChange,
   size = "md",
   wrap = false,
+  className,
 }: SegmentedControlProps<T>) {
   return (
     <div
@@ -32,7 +35,8 @@ export function SegmentedControl<T extends string>({
       aria-label={label}
       className={cn(
         "flex h-9 items-center gap-1 rounded-md bg-well p-1",
-        wrap && "h-auto flex-wrap rounded-xl"
+        wrap && "h-auto flex-wrap rounded-xl",
+        className
       )}
     >
       {options.map((o) => {

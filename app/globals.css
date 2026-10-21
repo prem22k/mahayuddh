@@ -131,13 +131,19 @@
   }
 
   .shell-header {
+    position: sticky;
+    top: 0;
+    z-index: 90;
     height: var(--header-height);
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    background: transparent;
-    border-bottom: 1px solid transparent;
+    padding: 0 var(--gutter-desktop);
+    background: rgba(10, 11, 14, 0.8);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--hairline);
   }
 
   .shell-content {
@@ -157,6 +163,7 @@
     max-width: var(--reading-max);
   }
 
+  /* Tablet: the sidebar collapses to an icon rail. */
   @media (max-width: 1023px) {
     .shell-sidebar {
       width: 64px;
@@ -168,8 +175,15 @@
     .shell-sidebar .sidebar-sheets {
       display: none;
     }
+    .shell-sidebar .nav-item {
+      justify-content: center;
+      padding: 0;
+    }
     .shell-content {
       margin-left: 64px;
+    }
+    .shell-header {
+      padding: 0 24px;
     }
   }
 
@@ -179,10 +193,16 @@
     }
     .shell-content {
       margin-left: 0;
+      /* Tab bar (64) + capsule (48) + their gaps. */
+      padding-bottom: 140px;
     }
     .shell-content-inner {
       padding-left: var(--gutter-mobile);
       padding-right: var(--gutter-mobile);
+    }
+    .shell-header {
+      padding: 0 4px 0 var(--gutter-mobile);
+      background: rgba(10, 11, 14, 0.9);
     }
   }
 
@@ -190,17 +210,19 @@
   .nav-item {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     height: 36px;
     padding: 0 12px;
     border-radius: 8px;
+    border: 1px solid transparent;
     font-size: 14px;
     font-weight: 500;
     line-height: 20px;
     color: var(--text-secondary);
     background: transparent;
     text-decoration: none;
-    transition: background var(--dur-hover) ease-out, color var(--dur-hover) ease-out;
+    transition: background var(--dur-hover) ease-out, color var(--dur-hover) ease-out,
+      border-color var(--dur-hover) ease-out;
   }
   .nav-item:hover {
     background: var(--surface-raised);
@@ -208,6 +230,8 @@
   }
   .nav-item.active {
     background: var(--surface-raised);
+    border-color: var(--hairline);
+    box-shadow: inset 0 1px 0 var(--edge-highlight);
     color: var(--text-primary);
   }
   .nav-icon {
@@ -262,6 +286,9 @@
   .mobile-tab.active {
     color: var(--text-primary);
   }
+  .mobile-tab.active svg {
+    color: var(--primary);
+  }
 
   /* ── Solve dock / capsule ──────────────────────────── */
   .solve-dock-wrap {
@@ -275,10 +302,21 @@
     z-index: 100;
     padding: 0 16px;
   }
+  /* On phones the capsule floats just above the tab bar. */
+  @media (max-width: 767px) {
+    .solve-dock-wrap {
+      bottom: calc(64px + 12px + env(safe-area-inset-bottom, 0px));
+    }
+  }
   @media (min-width: 768px) {
     .solve-dock-wrap {
-      left: var(--sidebar-width);
+      left: 64px;
       padding: 0 24px;
+    }
+  }
+  @media (min-width: 1024px) {
+    .solve-dock-wrap {
+      left: var(--sidebar-width);
     }
   }
   .solve-dock {
@@ -293,8 +331,11 @@
     padding: 0 12px;
     background: var(--surface-raised);
     border: 1px solid var(--hairline-strong);
-    box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.7);
     position: relative;
+  }
+  .solve-dock-idle {
+    max-width: 560px;
   }
   .solve-dock::before {
     content: "";
@@ -308,14 +349,17 @@
   }
   .solve-capsule {
     pointer-events: auto;
+    width: 100%;
+    max-width: 360px;
     display: flex;
     align-items: center;
     gap: 10px;
     height: 48px;
-    padding: 0 8px 0 14px;
+    padding: 0 4px 0 16px;
     border-radius: 9999px;
     background: var(--surface-raised);
     border: 1px solid var(--hairline-strong);
+    box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.7);
   }
 
   /* ── Cards ─────────────────────────────────────────── */

@@ -33,17 +33,22 @@ export function SelfReportedBadge({ className }: { className?: string }) {
 
 export function DifficultyBadgeNew({
   difficulty,
+  size = "md",
   className,
 }: {
   difficulty: string;
+  /** `sm` is the compact dock/stub variant. */
+  size?: "sm" | "md";
   className?: string;
 }) {
   const level =
     difficulty.toLowerCase() === "easy" ? 1 : difficulty.toLowerCase() === "medium" ? 2 : 3;
+  const sm = size === "sm";
   return (
     <span
       className={cn(
-        "inline-flex h-6 items-center gap-1.5 rounded-sm bg-transparent px-2 text-xs font-medium leading-4 text-text-secondary",
+        "inline-flex shrink-0 items-center rounded-sm border border-hairline font-medium text-text-secondary",
+        sm ? "h-5 gap-1 bg-well px-1.5 text-[11px] leading-4" : "h-6 gap-1.5 bg-transparent px-2 text-xs leading-4",
         className
       )}
     >
@@ -53,7 +58,8 @@ export function DifficultyBadgeNew({
           <span
             key={i}
             className={cn(
-              "h-1.5 w-1 rounded-full",
+              "rounded-full",
+              sm ? "h-1 w-1" : "h-1.5 w-1.5",
               i <= level ? "bg-text-secondary" : "bg-hairline-strong"
             )}
           />
@@ -100,13 +106,13 @@ export function StreakChip({
     <span
       title={`${count}-day squad streak`}
       className={cn(
-        "inline-flex h-7 items-center gap-1.5 rounded-full bg-primary-tint px-2.5 text-sm font-medium leading-5 text-primary",
+        "inline-flex h-6 shrink-0 items-center gap-1 rounded-full border border-primary/30 bg-primary-tint px-2 font-mono text-xs font-medium leading-none text-primary tnum",
         className
       )}
     >
       <Flame
-        className="h-4 w-4"
-        strokeWidth={1.5}
+        className="h-3.5 w-3.5"
+        strokeWidth={1.75}
         fill={alive ? "currentColor" : "none"}
       />
       {count}

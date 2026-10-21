@@ -3,9 +3,10 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Swords, Dumbbell, Users, Newspaper } from "lucide-react";
+import { Swords, Code, Users, MessageSquareText } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isNavActive } from "./Sidebar";
 
 interface Tab {
   name: string;
@@ -16,16 +17,15 @@ interface Tab {
 
 const TABS: Tab[] = [
   { name: "Arena", href: "/home", icon: Swords, aliases: ["/"] },
-  { name: "Practice", href: "/practice", icon: Dumbbell, aliases: [] },
+  { name: "Practice", href: "/practice", icon: Code, aliases: [] },
   { name: "Squad", href: "/squad", icon: Users, aliases: [] },
-  { name: "Feed", href: "/feed", icon: Newspaper, aliases: [] },
+  { name: "Feed", href: "/feed", icon: MessageSquareText, aliases: [] },
 ];
 
 export function MobileTabBar() {
   const pathname = usePathname();
 
-  const isActive = (tab: Tab) =>
-    pathname === tab.href || tab.aliases.includes(pathname || "");
+  const isActive = (tab: Tab) => isNavActive(pathname, tab.href, tab.aliases);
 
   return (
     <nav className="mobile-tabbar" aria-label="Primary">

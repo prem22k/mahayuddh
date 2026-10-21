@@ -7,6 +7,7 @@ import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { NowSolvingBar } from "./NowSolvingBar";
 import { MobileTabBar } from "./MobileTabBar";
+import { MobileDrawer } from "./MobileDrawer";
 import { SearchModal } from "../modals/SearchModal";
 import { LeetCodeAutoSync } from "@/components/providers/LeetCodeAutoSync";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -91,25 +92,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             role="dialog"
             aria-modal="true"
             aria-label="Navigation"
-            className="relative z-10 h-full w-64 max-w-[80vw] border-r border-hairline bg-surface"
+            className="relative z-10 h-full w-[280px] max-w-[85vw] border-r border-hairline bg-surface shadow-overlay"
           >
-            <Sidebar
-              onSearchOpen={() => {
-                setIsMobileMenuOpen(false);
-                setIsSearchOpen(true);
-              }}
-            />
+            <MobileDrawer onClose={() => setIsMobileMenuOpen(false)} />
           </div>
         </div>
       )}
 
       <div className="shell-content">
+        <Header
+          onMenuToggle={() => setIsMobileMenuOpen(true)}
+          onSearchOpen={() => setIsSearchOpen(true)}
+        />
         <div className="shell-content-inner">
-          <Header
-            onMenuToggle={() => setIsMobileMenuOpen(true)}
-            onSearchOpen={() => setIsSearchOpen(true)}
-          />
-          <main className="pb-8 pt-6">{children}</main>
+          <main className="pb-8 pt-6 md:pt-8">{children}</main>
         </div>
       </div>
 
