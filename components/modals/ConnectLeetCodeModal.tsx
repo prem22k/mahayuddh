@@ -1,25 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
-import {
-  X,
-  Link2,
-  Sparkles,
-  Zap,
-  Key,
-  HelpCircle,
-  Check,
-  Copy,
-  ArrowRight,
-  ExternalLink,
-  Bookmark,
-} from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { X, Zap, CircleHelp, Check, Copy, ArrowRight, ExternalLink, Bookmark } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { syncUserProfileStats } from "@/lib/data/profiles";
 import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 import { ModalShell } from "@/components/ui/ModalShell";
-import { Spinner } from "@/components/ui/Spinner";
+import { Button } from "@/components/ui/Button";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { FormAlert } from "@/components/ui/FormAlert";
 
 interface ConnectLeetCodeModalProps {
@@ -40,6 +29,13 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [removingSession, setRemovingSession] = useState(false);
+
+  // The modal stays mounted while closed, so the handle captured at mount can
+  // predate the profile load. Fill it in on open if the field is still empty.
+  const linkedHandle = profile?.leetcode_username || "";
+  useEffect(() => {
+    if (isOpen && linkedHandle) setUsername((u) => u || linkedHandle);
+  }, [isOpen, linkedHandle]);
 
   if (!isOpen) return null;
 
@@ -202,154 +198,130 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
     }
   };
 
+  const tabs = [
+    { value: "handle", label: "Handle" },
+    { value: "bookmarklet", label: "1-click sync" },
+    { value: "session", label: "Session" },
+  ] as const;
+  const inputCls =
+    "h-11 w-full rounded-md border border-hairline bg-well px-3 font-mono text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:h-10";
+  const labelCls = "mb-1.5 block text-xs font-medium text-text-secondary";
+  const cardCls = "space-y-2.5 rounded-lg border border-hairline bg-well p-4";
+  const inlineLink = "text-text-primary underline decoration-hairline-strong underline-offset-2 hover:decoration-text-primary";
+
   return (
     <ModalShell
       label="Sync LeetCode status"
       onClose={onClose}
       zIndexClass="z-[350]"
-      panelClassName="shadow-overlay p-6 max-h-[90vh] overflow-y-auto"
+      variant="sheet"
+      maxWidthClass="max-w-[520px]"
+      panelClassName="max-h-[90vh] overflow-y-auto p-5 max-md:pt-8 md:p-6"
     >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-primary-tint border border-primary/30 flex items-center justify-center text-primary">
-              <Link2 className="w-4 h-4" />
-            </div>
-            <h2 className="text-xl font-bold text-text-primary">Sync LeetCode Status</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1 text-text-secondary hover:text-text-primary rounded-lg transition-colors cursor-pointer"
-            aria-label="Close"
-          >
-            <X className="w-4 h-4" />
-          </button>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="font-display text-xl font-semibold tracking-tight text-text-primary">
+            Sync LeetCode status
+          </h2>
+          <p className="mt-1 text-xs leading-5 text-text-secondary">
+            Optional. Mahayuddh works fully without LeetCode; connecting adds contest stats and
+            verified solves.
+          </p>
         </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="-mr-2 -mt-1 inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface-overlay hover:text-text-primary md:h-9 md:w-9"
+          aria-label="Close"
+        >
+          <X className="h-4 w-4" strokeWidth={1.5} />
+        </button>
+      </div>
 
-        {/* Tab Switcher */}
-        <p className="text-[11px] text-text-secondary leading-relaxed mb-3">
-          Optional enhancement — Mahayuddh works fully without LeetCode. Connecting adds contest stats + solve evidence badges.{" "}
-          <button type="button" onClick={handleRemoveSession} disabled={removingSession} className="text-primary hover:underline font-semibold cursor-pointer">
-            {removingSession ? "Removing…" : "Remove stored session"}
-          </button>
-        </p>
-        <div className="grid grid-cols-3 gap-1 p-1 bg-well rounded-2xl border border-hairline my-4">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("handle");
-              setError(null);
-            }}
-            className={cn(
-              "py-2 text-[11px] font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1",
-              activeTab === "handle"
-                ? "bg-primary text-on-primary hover:bg-primary-hover shadow-sm"
-                : "text-text-tertiary hover:text-text-primary"
-            )}
-          >
-            <Sparkles className="w-3 h-3" />
-            <span>Handle (Fast)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("bookmarklet");
-              setError(null);
-            }}
-            className={cn(
-              "py-2 text-[11px] font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1",
-              activeTab === "bookmarklet"
-                ? "bg-verified text-on-primary shadow-sm font-bold"
-                : "text-text-tertiary hover:text-text-primary"
-            )}
-          >
-            <Zap className="w-3 h-3" />
-            <span>1-Click Sync</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("session");
-              setError(null);
-            }}
-            className={cn(
-              "py-2 text-[11px] font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1",
-              activeTab === "session"
-                ? "bg-surface-overlay text-text-primary shadow-sm"
-                : "text-text-tertiary hover:text-text-primary"
-            )}
-          >
-            <Key className="w-3 h-3" />
-            <span>Session</span>
-          </button>
-        </div>
+      <SegmentedControl
+        label="How to connect"
+        value={activeTab}
+        onChange={(v) => {
+          setActiveTab(v);
+          setError(null);
+        }}
+        options={tabs}
+        className="mt-4 border border-hairline max-md:h-auto"
+      />
+
+      <div className="mt-4 space-y-4">
+        {error && <FormAlert tone="error">{error}</FormAlert>}
+        {success && <FormAlert tone="success">{success}</FormAlert>}
 
         {/* ── Tab 1: Instant Handle Connect ── */}
         {activeTab === "handle" && (
           <form onSubmit={handleInstantSync} className="space-y-4">
-            <p className="text-xs text-text-tertiary leading-relaxed">
-              Sync your <strong className="text-text-primary">contest rating, global rank, daily streak, and last 100 accepted problems</strong> automatically.
+            <p className="text-xs leading-5 text-text-secondary">
+              Syncs your <span className="text-text-primary">contest rating, global rank, daily streak, and last 100 accepted problems</span>.
             </p>
 
             <div>
-              <label className="block text-[11px] font-semibold text-text-tertiary uppercase tracking-wider mb-1.5 pl-1">
-                LeetCode Username
+              <label htmlFor="lc-handle" className={labelCls}>
+                LeetCode username
               </label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g. your_handle"
-                className="w-full bg-well border border-hairline rounded-xl p-2.5 text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-primary/60 font-mono"
-                required
-                autoFocus
-              />
+              <div className="relative">
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-xs text-text-tertiary"
+                >
+                  leetcode.com/
+                </span>
+                <input
+                  id="lc-handle"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="your_handle"
+                  className={cn(inputCls, "pl-[112px]")}
+                  required
+                  autoFocus
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
             </div>
 
-            {error && <FormAlert tone="error">{error}</FormAlert>}
-            {success && <FormAlert tone="success">{success}</FormAlert>}
-
-            <button
+            <Button
               type="submit"
-              disabled={submitting || !username.trim()}
-              className="w-full py-2.5 rounded-xl bg-primary text-on-primary hover:bg-primary-hover font-bold text-xs shadow-lifted transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+              variant="primary"
+              size="full"
+              loading={submitting}
+              disabled={!username.trim()}
+              className="h-11 md:h-10"
             >
-              {submitting ? (
-                <>
-                  <Spinner size="sm" tone="inverse" />
-                  <span>Syncing LeetCode Stats...</span>
-                </>
-              ) : (
-                <>
-                  <span>Connect & Sync Stats</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </>
-              )}
-            </button>
+              Connect and sync stats
+              <ArrowRight className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+            </Button>
           </form>
         )}
 
         {/* ── Tab 2: 1-Click Browser Sync (Zero-Friction) ── */}
         {activeTab === "bookmarklet" && (
-          <div className="space-y-4">
-            <div className="p-3.5 rounded-2xl bg-verified-tint border border-verified/20 text-xs text-verified space-y-1">
-              <div className="font-bold flex items-center gap-1.5">
-                <Zap className="w-4 h-4" />
-                <span>Zero Passwords • 1-Click Full History Sync</span>
-              </div>
-              <p className="text-[11px] text-text-secondary">
-                Syncs all 500+ of your past solved questions into your roadmaps directly from your logged-in browser tab.
+          <div className="space-y-3">
+            <div className="rounded-lg border border-hairline bg-surface p-3.5">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-text-primary">
+                <Zap className="h-3.5 w-3.5 text-text-secondary" strokeWidth={1.5} aria-hidden />
+                No passwords · full history sync
+              </p>
+              <p className="mt-1 text-[11px] leading-4 text-text-secondary">
+                Imports every problem you&apos;ve solved into your sheets, straight from a
+                browser tab where you&apos;re signed in to LeetCode.
               </p>
             </div>
 
             {/* Method A: Drag Bookmarklet */}
-            <div className="p-4 rounded-2xl bg-surface-overlay border border-hairline space-y-2.5">
-              <div className="text-xs font-bold text-text-primary flex items-center gap-1.5">
-                <Bookmark className="w-3.5 h-3.5 text-primary" />
-                <span>Option 1: Drag to Bookmarks Bar</span>
-              </div>
-              <p className="text-[11px] text-text-secondary">
-                Drag this button to your browser bookmarks bar once. Then click it while viewing LeetCode!
+            <div className={cardCls}>
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-text-primary">
+                <Bookmark className="h-3.5 w-3.5 text-text-secondary" strokeWidth={1.5} aria-hidden />
+                Option 1: drag to your bookmarks bar
+              </p>
+              <p className="text-[11px] leading-4 text-text-secondary">
+                Drag this button to your bookmarks bar once. Then click it while you&apos;re on LeetCode.
               </p>
               <div className="pt-1">
                 {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
@@ -359,45 +331,54 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
                     e.preventDefault();
                     alert("Drag this button to your browser bookmarks bar (Ctrl+Shift+B)!");
                   }}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-on-primary text-xs font-bold shadow-lifted cursor-grab active:cursor-grabbing"
+                  className="inline-flex h-10 cursor-grab items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-on-primary transition-colors hover:bg-primary-hover active:cursor-grabbing"
                   title="Drag me to your bookmarks toolbar!"
                 >
-                  <Zap className="w-3.5 h-3.5 fill-current" />
-                  <span>⚡ Sync to Mahayuddh</span>
+                  <Zap className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+                  <span>Sync to Mahayuddh</span>
                 </a>
               </div>
             </div>
 
             {/* Method B: Console Snippet */}
-            <div className="p-4 rounded-2xl bg-surface-overlay border border-hairline space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="text-xs font-bold text-text-primary flex items-center gap-1.5">
-                  <ExternalLink className="w-3.5 h-3.5 text-text-secondary" />
-                  <span>Option 2: 1-Click Console Snippet</span>
-                </div>
+            <div className={cardCls}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-text-primary">
+                  <ExternalLink className="h-3.5 w-3.5 text-text-secondary" strokeWidth={1.5} aria-hidden />
+                  Option 2: console snippet
+                </p>
                 <button
                   type="button"
                   onClick={handleCopySnippet}
-                  className="px-2.5 py-1 rounded-lg bg-surface-overlay hover:bg-surface-raised text-[11px] font-bold text-text-primary flex items-center gap-1 transition-all cursor-pointer"
+                  className="inline-flex h-11 cursor-pointer items-center gap-1.5 rounded-md border border-hairline px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:h-8"
                 >
                   {copiedSnippet ? (
                     <>
-                      <Check className="w-3 h-3 text-verified" />
-                      <span className="text-verified">Copied!</span>
+                      <Check className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                      <span>Copied</span>
                     </>
                   ) : (
                     <>
-                      <Copy className="w-3 h-3" />
-                      <span>Copy Script</span>
+                      <Copy className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
+                      <span>Copy script</span>
                     </>
                   )}
                 </button>
               </div>
 
-              <ol className="text-[11px] text-text-tertiary list-decimal pl-4 space-y-1">
-                <li>Copy the script above.</li>
-                <li>Open <a href="https://leetcode.com" target="_blank" rel="noreferrer" className="text-primary underline">leetcode.com</a> in another tab.</li>
-                <li>Press <kbd className="px-1 bg-surface-overlay rounded font-mono text-[10px]">F12</kbd> → Click <strong className="text-text-secondary">Console</strong> → Paste & Press <kbd className="px-1 bg-surface-overlay rounded font-mono text-[10px]">Enter</kbd>.</li>
+              <ol className="list-decimal space-y-1 pl-4 text-[11px] leading-4 text-text-tertiary">
+                <li>Copy the script.</li>
+                <li>
+                  Open{" "}
+                  <a href="https://leetcode.com" target="_blank" rel="noreferrer" className={inlineLink}>
+                    leetcode.com
+                  </a>{" "}
+                  in another tab.
+                </li>
+                <li>
+                  Press <kbd className="kbd">F12</kbd>, open <span className="text-text-secondary">Console</span>,
+                  paste, and press <kbd className="kbd">Enter</kbd>.
+                </li>
               </ol>
             </div>
           </div>
@@ -406,67 +387,89 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
         {/* ── Tab 3: Session Cookie Sync ── */}
         {activeTab === "session" && (
           <form onSubmit={handleSessionSync} className="space-y-4">
-            <p className="text-xs text-text-secondary leading-relaxed">
-              Paste your <span className="text-text-secondary font-mono">LEETCODE_SESSION</span> cookie from browser DevTools:
+            <p className="text-xs leading-5 text-text-secondary">
+              Paste your <span className="font-mono text-text-primary">LEETCODE_SESSION</span> cookie
+              from your browser&apos;s DevTools to import your full history.
             </p>
 
             <div>
-              <div className="flex items-center justify-between mb-1 pl-1">
-                <label className="text-[11px] font-semibold text-text-tertiary uppercase tracking-wider">
-                  Session Cookie
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <label htmlFor="lc-session" className="text-xs font-medium text-text-secondary">
+                  Session cookie
                 </label>
                 <button
                   type="button"
                   onClick={() => setShowCookieGuide(!showCookieGuide)}
-                  className="text-[11px] text-primary hover:underline flex items-center gap-1 cursor-pointer font-medium"
+                  aria-expanded={showCookieGuide}
+                  className="inline-flex min-h-[44px] cursor-pointer items-center gap-1 text-[11px] font-medium text-text-secondary underline decoration-hairline-strong underline-offset-2 hover:text-text-primary md:min-h-0"
                 >
-                  <HelpCircle className="w-3 h-3" />
-                  <span>How to find cookie</span>
+                  <CircleHelp className="h-3 w-3" strokeWidth={1.5} aria-hidden />
+                  <span>How to find it</span>
                 </button>
               </div>
 
               {showCookieGuide && (
-                <div className="mb-2.5 p-3 rounded-xl bg-surface-overlay border border-hairline text-[11px] text-text-secondary space-y-1.5">
-                  <div className="font-bold text-text-primary">How to get your session cookie:</div>
-                  <ol className="list-decimal pl-4 space-y-1 text-text-tertiary">
-                    <li>Open <a href="https://leetcode.com" target="_blank" rel="noreferrer" className="text-primary underline">leetcode.com</a> and login.</li>
-                    <li>Press <kbd className="px-1 bg-surface-overlay rounded font-mono">F12</kbd> → <strong className="text-text-secondary">Application</strong> → <strong className="text-text-secondary">Cookies</strong>.</li>
-                    <li>Copy value of <code className="text-primary font-mono">LEETCODE_SESSION</code>.</li>
+                <div className="mb-2.5 space-y-1.5 rounded-lg border border-hairline bg-well p-3 text-[11px] leading-4 text-text-secondary">
+                  <p className="font-semibold text-text-primary">How to get your session cookie</p>
+                  <ol className="list-decimal space-y-1 pl-4 text-text-tertiary">
+                    <li>
+                      Open{" "}
+                      <a href="https://leetcode.com" target="_blank" rel="noreferrer" className={inlineLink}>
+                        leetcode.com
+                      </a>{" "}
+                      and sign in.
+                    </li>
+                    <li>
+                      Press <kbd className="kbd">F12</kbd>, then <span className="text-text-secondary">Application</span> →{" "}
+                      <span className="text-text-secondary">Cookies</span>.
+                    </li>
+                    <li>
+                      Copy the value of <code className="font-mono text-text-primary">LEETCODE_SESSION</code>.
+                    </li>
                   </ol>
                 </div>
               )}
 
               <input
+                id="lc-session"
                 type="text"
                 value={sessionCookie}
                 onChange={(e) => setSessionCookie(e.target.value)}
                 placeholder="eyJhbGciOi..."
-                className="w-full bg-well border border-hairline rounded-xl p-2.5 text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-primary/60 font-mono"
+                className={inputCls}
+                autoComplete="off"
+                spellCheck={false}
               />
             </div>
 
-            {error && <FormAlert tone="error">{error}</FormAlert>}
-            {success && <FormAlert tone="success">{success}</FormAlert>}
-
-            <button
+            <Button
               type="submit"
-              disabled={submitting || !sessionCookie.trim()}
-              className="w-full py-2.5 rounded-xl bg-primary text-on-primary hover:bg-primary-hover font-bold text-xs shadow-lifted transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+              variant="primary"
+              size="full"
+              loading={submitting}
+              disabled={!sessionCookie.trim()}
+              className="h-11 md:h-10"
             >
-              {submitting ? (
-                <>
-                  <Spinner size="sm" tone="inverse" />
-                  <span>Importing Solved History...</span>
-                </>
-              ) : (
-                <>
-                  <span>Import History via Cookie</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </>
-              )}
-            </button>
+              Import history via cookie
+              <ArrowRight className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+            </Button>
           </form>
         )}
+      </div>
+
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-hairline pt-4">
+        <p className="text-[11px] leading-4 text-text-tertiary">
+          Stored a session for history import? You can remove it any time.
+        </p>
+        <button
+          type="button"
+          onClick={handleRemoveSession}
+          disabled={removingSession}
+          className="inline-flex min-h-[44px] cursor-pointer items-center text-xs font-medium text-text-secondary underline decoration-hairline-strong underline-offset-2 transition-colors hover:text-error disabled:cursor-wait md:min-h-0"
+        >
+          {removingSession ? "Removing…" : "Remove stored session"}
+        </button>
+      </div>
     </ModalShell>
   );
 }
