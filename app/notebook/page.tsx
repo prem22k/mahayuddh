@@ -1,17 +1,20 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { Plus, Copy, Check, Trash2, Pencil, Search } from "lucide-react";
+import { Plus, Copy, Check, Search, GitFork } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { MyImpact } from "@/components/impact/MyImpact";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { Button } from "@/components/ui/Button";
 import { PatternChip } from "@/components/ui/Badge";
-import { UnderlineTabs, FilterChips } from "@/components/ui/ProblemRow";
-import { EmptyState, ErrorCard, Skeleton } from "@/components/ui/States";
+import { Avatar } from "@/components/ui/Avatar";
+import { EmptyState, ErrorCard } from "@/components/ui/States";
+import { NoteReader, type NoteProblem } from "@/components/notebook/NoteReader";
+import { VisibilityTag, shortAgo, visibilityLabel } from "@/components/notebook/noteMeta";
 import { getSharedResources } from "@/lib/data/vault";
+import { getCatalogBySlugs } from "@/lib/data/problems";
 import {
   getMyNotes,
   getSharedWithMe,
@@ -23,64 +26,57 @@ import {
   copyVaultToNotebook,
 } from "@/lib/data/notebook";
 import { dataErrorMessage } from "@/lib/data/errors";
+import { titleFromSlug } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { NotebookNoteSummary, SharedResource, NoteVisibility } from "@/types/database";
 
 type Tab = "mine" | "vault" | "shared" | "impact";
 
-/** Minimal markdown rendering for note bodies: paragraphs, bullets, code fences. */
-function NoteBody({ md }: { md: string }) {
-  const parts = md.split("```");
+/** Stitch filter chip: bordered pill, indigo dot for pattern filters, 44px hit area on mobile. */
+function FilterChip({
+  label,
+  active,
+  dot,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  dot?: boolean;
+  onClick: () => void;
+}) {
   return (
-    <div className="space-y-4">
-      {parts.map((part, i) => {
-        if (i % 2 === 1) {
-          const lines = part.replace(/^\w+\n/, "").replace(/\n$/, "");
-          return (
-            <pre
-              key={i}
-              className="overflow-x-auto rounded-md border border-hairline bg-well p-4 font-mono text-sm leading-6 text-text-primary"
-            >
-              <code>{lines}</code>
-            </pre>
-          );
-        }
-        const blocks = part.split(/\n{2,}/);
-        return (
-          <div key={i} className="space-y-3">
-            {blocks.map((block, j) => {
-              const lines = block.split("\n").filter((l) => l.trim());
-              if (lines.length === 0) return null;
-              if (lines.every((l) => /^[-*]\s+/.test(l))) {
-                return (
-                  <ul key={j} className="list-disc space-y-1.5 pl-5 text-[15px] leading-6 text-text-primary">
-                    {lines.map((l, k) => (
-                      <li key={k}>{l.replace(/^[-*]\s+/, "")}</li>
-                    ))}
-                  </ul>
-                );
-              }
-              if (lines.length === 1 && /^#{1,3}\s+/.test(lines[0])) {
-                return (
-                  <h3 key={j} className="font-sans text-lg font-semibold leading-7 text-text-primary">
-                    {lines[0].replace(/^#{1,3}\s+/, "")}
-                  </h3>
-                );
-              }
-              return (
-                <p key={j} className="whitespace-pre-wrap text-[15px] leading-6 text-text-primary">
-                  {block.trim()}
-                </p>
-              );
-            })}
-          </div>
-        );
-      })}
-    </div>
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className="group flex min-h-[44px] shrink-0 items-center md:min-h-0"
+    >
+      <span
+        className={cn(
+          "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs font-medium leading-4 transition-colors",
+          active
+            ? "border-hairline-strong bg-surface-overlay text-text-primary"
+            : "border-hairline bg-surface text-text-secondary group-hover:bg-surface-raised group-hover:text-text-primary"
+        )}
+      >
+        {dot && <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-pattern" />}
+        {label}
+      </span>
+    </button>
   );
 }
 
-function visibilityLabel(v: string) {
-  return v.charAt(0).toUpperCase() + v.slice(1);
+function CountChip({ n, active }: { n: number; active: boolean }) {
+  return (
+    <span
+      className={cn(
+        "rounded-xs px-1.5 font-mono text-[11px] leading-4 tnum",
+        active ? "bg-surface-raised text-text-secondary" : "bg-well text-text-tertiary"
+      )}
+    >
+      ({n})
+    </span>
+  );
 }
 
 export default function NotebookPage() {
@@ -110,7 +106,10 @@ export default function NotebookPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [bodyCache, setBodyCache] = useState<Record<string, string>>({});
   const [selectedLoading, setSelectedLoading] = useState(false);
-  const noteRef = useRef<HTMLDivElement>(null);
+  const [bodyRetry, setBodyRetry] = useState(0);
+  // Linked-problem number + title for notes that carry a problem_slug. Purely
+  // decorative lookups: a failed fetch falls back to the slug-derived title.
+  const [problems, setProblems] = useState<Record<string, NoteProblem>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -145,6 +144,28 @@ export default function NotebookPage() {
       setTab("vault");
     }
   }, []);
+
+  useEffect(() => {
+    const slugs = Array.from(
+      new Set([...notes, ...shared].map((n) => n.problem_slug).filter((s): s is string => !!s))
+    );
+    if (slugs.length === 0) return;
+    let cancelled = false;
+    getCatalogBySlugs(slugs)
+      .then((rows) => {
+        if (cancelled) return;
+        const map: Record<string, NoteProblem> = {};
+        for (const r of rows) map[r.title_slug] = { number: r.question_id || null, title: r.title };
+        setProblems(map);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [notes, shared]);
+
+  const problemFor = (slug: string | null): NoteProblem | null =>
+    slug ? (problems[slug.toLowerCase()] ?? { number: null, title: titleFromSlug(slug) }) : null;
 
   const openNew = () => {
     setEditing(null);
@@ -264,76 +285,161 @@ export default function NotebookPage() {
     return () => {
       cancelled = true;
     };
-  }, [selected, bodyCache]);
+  }, [selected, bodyCache, bodyRetry]);
 
   const selectNote = (id: string) => {
     setSelectedId(id);
+    // Below lg the reader expands inside the tapped card: keep its top in view.
     if (window.innerWidth < 1024) {
-      requestAnimationFrame(() => noteRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+      requestAnimationFrame(() =>
+        document.getElementById(`note-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })
+      );
     }
   };
 
   if (loading) return <PageLoader label="Loading notebook..." />;
 
-  const tabLabels = [
-    `My notes (${notes.length})`,
-    "Vault",
-    `Shared with me (${shared.length})`,
-    "Impact",
-  ] as const;
-  const tabIds: Tab[] = ["mine", "vault", "shared", "impact"];
-  const activeLabel = tabLabels[tabIds.indexOf(tab)];
+  const tabs: { id: Tab; label: React.ReactNode; count?: number }[] = [
+    { id: "mine", label: "My notes", count: notes.length },
+    { id: "vault", label: "Vault" },
+    {
+      id: "shared",
+      label: (
+        <>
+          <span className="md:hidden">Shared</span>
+          <span className="hidden md:inline">Shared with me</span>
+        </>
+      ),
+      count: shared.length,
+    },
+    { id: "impact", label: "Impact" },
+  ];
+
+  const newNoteButton = (
+    <Button
+      variant="primary"
+      onClick={() => {
+        openNew();
+        setShowEditor(true);
+      }}
+      className="min-h-[44px] shrink-0 font-semibold md:min-h-0"
+    >
+      <Plus className="h-4 w-4" strokeWidth={1.5} />
+      New note
+    </Button>
+  );
+
+  const searchField = (
+    <label className="relative block min-w-0 flex-1 lg:w-72 lg:flex-none">
+      <Search
+        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary"
+        strokeWidth={1.5}
+      />
+      <span className="sr-only">Search your notes</span>
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search your notes"
+        className="h-10 w-full rounded-md border border-hairline bg-well pl-9 pr-3 text-sm leading-5 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
+      />
+    </label>
+  );
+
+  const noteReaderProps = (n: NotebookNoteSummary) => ({
+    note: n,
+    body: bodyCache[n.id],
+    loading: selectedLoading,
+    problem: problemFor(n.problem_slug),
+    isOwner: user?.id === n.owner_id,
+    onEdit: () => {
+      openEdit(n);
+      setShowEditor(true);
+    },
+    onDelete: async () => {
+      if (window.confirm("Delete this note?")) {
+        await deleteNote(n.id);
+        setSelectedId(null);
+        setBodyCache({});
+        await load();
+      }
+    },
+    onRetryBody: () => setBodyRetry((r) => r + 1),
+    shareName,
+    onShareNameChange: setShareName,
+    onShare: () => handleShare(n.id),
+    formError,
+  });
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="type-display-md text-text-primary">Notebook</h1>
-          <p className="mt-1 text-sm leading-6 text-text-secondary">
-            Private by default. Sharing is intentional and reversible.
-          </p>
+    <div className="flex flex-col gap-4">
+      {/* Heading row: title + count and tabs on the left, search + the one
+          gold action on the right (desktop); search row below tabs on mobile. */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between lg:gap-6 lg:border-b lg:border-hairline">
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className="flex items-center gap-3">
+            <h1 className="type-display-md text-text-primary">Notebook</h1>
+            <span className="rounded-xs border border-hairline bg-surface-raised px-2 py-0.5 font-mono text-xs font-medium leading-4 tracking-[0.06em] text-text-tertiary tnum">
+              {notes.length} {notes.length === 1 ? "note" : "notes"}
+            </span>
+          </div>
+          <div
+            role="tablist"
+            aria-label="Notebook sections"
+            className="-mx-4 flex gap-6 overflow-x-auto px-4 [box-shadow:inset_0_-1px_0_theme(colors.hairline)] [scrollbar-width:none] lg:mx-0 lg:overflow-visible lg:px-0 lg:[box-shadow:none]"
+          >
+            {tabs.map((t) => {
+              const active = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setTab(t.id)}
+                  className={cn(
+                    "flex h-11 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 text-sm font-medium leading-5 transition-colors",
+                    active
+                      ? "border-text-primary text-text-primary"
+                      : "border-transparent text-text-secondary hover:text-text-primary"
+                  )}
+                >
+                  {t.label}
+                  {t.count != null && <CountChip n={t.count} active={active} />}
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <Button
-          variant="primary"
-          onClick={() => {
-            openNew();
-            setShowEditor(true);
-          }}
-          className="min-h-[44px] self-start md:min-h-0 md:self-auto"
-        >
-          <Plus className="h-4 w-4" strokeWidth={1.5} />
-          New note
-        </Button>
+        <div className="flex items-center gap-2 lg:gap-3 lg:pb-3">
+          {tab === "mine" ? searchField : <span className="flex-1 lg:hidden" />}
+          {newNoteButton}
+        </div>
       </div>
-
-      <UnderlineTabs
-        tabs={tabLabels}
-        value={activeLabel}
-        onChange={(label) => setTab(tabIds[tabLabels.indexOf(label as (typeof tabLabels)[number])])}
-      />
 
       {loadError && <ErrorCard message={loadError} onRetry={load} />}
 
       {tab === "mine" && (
-        <div className="space-y-4">
-          <div className="flex flex-col gap-3">
-            <label className="relative block">
-              <Search
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary"
-                strokeWidth={1.5}
-              />
-              <span className="sr-only">Search your notes</span>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search your notes"
-                className="h-10 w-full rounded-md border border-hairline bg-well pl-9 pr-3 text-sm leading-5 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
-              />
-            </label>
-            {patternOptions.length > 1 && (
-              <FilterChips options={patternOptions} value={patternFilter} onChange={setPatternFilter} />
-            )}
-          </div>
+        <div className="flex flex-col gap-4">
+          {patternOptions.length > 1 && (
+            <div
+              role="group"
+              aria-label="Filter notes by pattern"
+              className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:flex-wrap md:px-0"
+            >
+              <span className="mr-1 hidden font-mono text-xs font-medium leading-4 text-text-tertiary md:inline">
+                Filter
+              </span>
+              {patternOptions.map((o) => (
+                <FilterChip
+                  key={o}
+                  label={o === "All" ? `All (${notes.length})` : o}
+                  active={patternFilter === o}
+                  dot={o !== "All"}
+                  onClick={() => setPatternFilter(o)}
+                />
+              ))}
+            </div>
+          )}
 
           {notes.length === 0 ? (
             <EmptyState
@@ -341,7 +447,7 @@ export default function NotebookPage() {
               body="Write what a problem taught you — or copy a squad template and make it yours."
               action={
                 <Button
-                  variant="primary"
+                  variant="secondary"
                   onClick={() => {
                     openNew();
                     setShowEditor(true);
@@ -368,142 +474,96 @@ export default function NotebookPage() {
               }
             />
           ) : (
-            <div className="grid gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
-              <ul className="space-y-2">
+            <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+              <ul className="flex flex-col gap-2">
                 {filteredNotes.map((n) => {
                   const active = n.id === selectedId;
+                  const problem = problemFor(n.problem_slug);
+                  const tag = (n.pattern_tags ?? [])[0];
                   return (
-                    <li key={n.id}>
-                      <button
-                        type="button"
-                        onClick={() => selectNote(n.id)}
-                        aria-current={active}
-                        className={`flex min-h-[44px] w-full items-start justify-between gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${
+                    <li key={n.id} id={`note-${n.id}`} className="scroll-mt-20">
+                      <div
+                        className={cn(
+                          "relative overflow-hidden rounded-xl border transition-colors",
                           active
-                            ? "border-hairline-strong bg-surface-overlay"
+                            ? "border-hairline-strong bg-surface-raised lg:bg-surface-overlay"
                             : "border-hairline bg-surface hover:bg-surface-raised"
-                        }`}
+                        )}
                       >
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium leading-5 text-text-primary">
-                            {n.title}
-                          </span>
-                          <span className="mt-1 flex flex-wrap items-center gap-2">
-                            {(n.pattern_tags ?? []).slice(0, 1).map((t) => (
-                              <PatternChip key={t} label={t} />
-                            ))}
-                            <span className="text-xs leading-4 text-text-tertiary">
-                              {visibilityLabel(n.visibility)}
+                        {active && (
+                          <span
+                            aria-hidden
+                            className="absolute inset-x-0 top-0 h-0.5 bg-pattern lg:inset-x-auto lg:inset-y-0 lg:left-0 lg:h-auto lg:w-[3px]"
+                          />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => selectNote(n.id)}
+                          aria-current={active}
+                          aria-expanded={active}
+                          className="block min-h-[44px] w-full px-3.5 pb-3 pt-3.5 text-left"
+                        >
+                          <span className="flex items-start justify-between gap-2">
+                            <span
+                              className={cn(
+                                "min-w-0 text-[15px] font-semibold leading-[22px] tracking-[-0.01em]",
+                                active ? "text-text-primary" : "text-text-secondary"
+                              )}
+                            >
+                              {n.title}
                             </span>
-                            {n.fork_from && (
-                              <span className="text-xs italic leading-4 text-text-tertiary">
-                                Forked from @{n.fork_from}
+                            {n.fork_from ? (
+                              <GitFork className="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" strokeWidth={1.5} aria-hidden />
+                            ) : (
+                              <span className="shrink-0 font-mono text-[11px] leading-5 text-text-tertiary lg:hidden">
+                                {shortAgo(n.updated_at)}
                               </span>
                             )}
                           </span>
-                        </span>
-                        <span className="shrink-0 font-mono text-xs text-text-tertiary">
-                          {new Date(n.updated_at).toLocaleDateString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </span>
-                      </button>
+                          {problem && (
+                            <span className="mt-1 block truncate text-xs leading-4 text-text-tertiary">
+                              {problem.number && <span className="font-mono tnum">No. {problem.number} · </span>}
+                              {problem.title}
+                            </span>
+                          )}
+                          <span className="mt-2.5 flex items-center justify-between gap-2 lg:mt-3 lg:border-t lg:border-hairline lg:pt-2">
+                            <span className="flex min-w-0 flex-wrap items-center gap-2">
+                              {tag && <PatternChip label={tag} />}
+                              {n.fork_from && (
+                                <span className="truncate font-mono text-[11px] leading-4 text-text-tertiary">
+                                  Forked from @{n.fork_from}
+                                </span>
+                              )}
+                              <VisibilityTag visibility={n.visibility} className="font-mono text-[11px]" />
+                            </span>
+                            <span
+                              className={cn(
+                                "shrink-0 font-mono text-[11px] leading-4 text-text-tertiary",
+                                !n.fork_from && "hidden lg:inline"
+                              )}
+                            >
+                              {shortAgo(n.updated_at)}
+                            </span>
+                          </span>
+                        </button>
+                        {active && (
+                          <div className="px-3.5 pb-3.5 lg:hidden">
+                            <NoteReader {...noteReaderProps(n)} idPrefix="note-inline" variant="inline" />
+                          </div>
+                        )}
+                      </div>
                     </li>
                   );
                 })}
               </ul>
 
-              <div ref={noteRef} className="card scroll-mt-20">
-                {!selected ? (
-                  <p className="text-sm leading-6 text-text-secondary">Select a note to read it.</p>
+              <div className="hidden lg:block">
+                {selected ? (
+                  <NoteReader {...noteReaderProps(selected)} idPrefix="note-pane" variant="pane" />
                 ) : (
-                  <article>
-                    <h2 className="type-title text-text-primary">{selected.title}</h2>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      {(selected.pattern_tags ?? []).map((t) => (
-                        <PatternChip key={t} label={t} />
-                      ))}
-                      <span className="text-xs leading-4 text-text-tertiary">
-                        {visibilityLabel(selected.visibility)}
-                      </span>
-                      {selected.problem_slug && (
-                        <Link
-                          href={`/practice/${selected.problem_slug}`}
-                          className="font-mono text-xs text-text-primary underline decoration-hairline-strong underline-offset-[3px] hover:decoration-text-primary"
-                        >
-                          No. {selected.problem_slug}
-                        </Link>
-                      )}
-                      <span className="text-xs leading-4 text-text-tertiary">
-                        Edited{" "}
-                        {new Date(selected.updated_at).toLocaleDateString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </span>
-                    </div>
-                    {selected.fork_from && (
-                      <p className="mt-2 text-xs italic leading-5 text-text-tertiary">
-                        Forked from @{selected.fork_from} — your copy, your edits.
-                      </p>
-                    )}
-                    <div className="my-4 h-px bg-hairline" />
-                    {selectedLoading && bodyCache[selected.id] === undefined ? (
-                      <div className="space-y-2">
-                        <Skeleton className="h-4 w-full" />
-                        <Skeleton className="h-4 w-11/12" />
-                        <Skeleton className="h-32 w-full" />
-                      </div>
-                    ) : (
-                      <NoteBody md={bodyCache[selected.id] ?? ""} />
-                    )}
-                    <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-hairline pt-4">
-                      <Button
-                        variant="secondary"
-                        onClick={() => {
-                          openEdit(selected);
-                          setShowEditor(true);
-                        }}
-                      >
-                        <Pencil className="h-4 w-4" strokeWidth={1.5} />
-                        Edit
-                      </Button>
-                      {user?.id === selected.owner_id && (
-                        <span className="flex min-h-[44px] items-center gap-2 md:min-h-0">
-                          <label className="sr-only" htmlFor="note-share-user">
-                            Share 1:1 with
-                          </label>
-                          <input
-                            id="note-share-user"
-                            value={shareName}
-                            onChange={(e) => setShareName(e.target.value)}
-                            placeholder="Share 1:1 with @username"
-                            className="h-10 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
-                          />
-                          <Button variant="ghost" onClick={() => handleShare(selected.id)}>
-                            Share
-                          </Button>
-                        </span>
-                      )}
-                      <Button
-                        variant="ghost"
-                        aria-label="Delete note"
-                        onClick={async () => {
-                          if (window.confirm("Delete this note?")) {
-                            await deleteNote(selected.id);
-                            setSelectedId(null);
-                            setBodyCache({});
-                            await load();
-                          }
-                        }}
-                        className="text-text-tertiary hover:text-error"
-                      >
-                        <Trash2 className="h-4 w-4" strokeWidth={1.5} />
-                      </Button>
-                    </div>
-                    {formError && <p className="mt-2 text-xs leading-4 text-error">{formError}</p>}
-                  </article>
+                  <div className="rounded-xl border border-hairline bg-surface p-6">
+                    <p className="text-sm leading-6 text-text-secondary">Select a note to read it.</p>
+                  </div>
                 )}
               </div>
             </div>
@@ -512,9 +572,25 @@ export default function NotebookPage() {
       )}
 
       {tab === "vault" && (
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           {vaultOptions.length > 1 && (
-            <FilterChips options={vaultOptions} value={vaultFilter} onChange={setVaultFilter} />
+            <div
+              role="group"
+              aria-label="Filter vault by category"
+              className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:flex-wrap md:px-0"
+            >
+              <span className="mr-1 hidden font-mono text-xs font-medium leading-4 text-text-tertiary md:inline">
+                Filter
+              </span>
+              {vaultOptions.map((o) => (
+                <FilterChip
+                  key={o}
+                  label={o === "All" ? `All (${vault.length})` : o}
+                  active={vaultFilter === o}
+                  onClick={() => setVaultFilter(o)}
+                />
+              ))}
+            </div>
           )}
           {vault.length === 0 ? (
             <EmptyState
@@ -532,20 +608,25 @@ export default function NotebookPage() {
               }
             />
           ) : (
-            <ul className="space-y-2">
+            <ul className="flex flex-col gap-2">
               {filteredVault.slice(0, 30).map((r) => (
                 <li
                   key={r.id}
-                  className="flex min-h-[44px] items-center justify-between gap-3 rounded-lg border border-hairline bg-surface px-4 py-3"
+                  className="flex min-h-[56px] flex-col gap-3 rounded-xl border border-hairline bg-surface px-3.5 py-3 transition-colors hover:bg-surface-raised sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-medium leading-5 text-text-primary">{r.title}</div>
-                    <div className="mt-0.5 text-xs leading-4 text-text-tertiary">
-                      {r.category} · by @{r.author_profile?.username || "squad"}
+                    <div className="truncate text-[15px] font-semibold leading-[22px] tracking-[-0.01em] text-text-primary">
+                      {r.title}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px] leading-4 text-text-tertiary">
+                      <span className="rounded-xs border border-hairline bg-well px-1.5 py-0.5 text-text-secondary">
+                        {r.category}
+                      </span>
+                      <span>by @{r.author_profile?.username || "squad"}</span>
                     </div>
                   </div>
-                  <Button
-                    variant="secondary"
+                  <button
+                    type="button"
                     onClick={async () => {
                       try {
                         await copyVaultToNotebook(r.id);
@@ -557,7 +638,7 @@ export default function NotebookPage() {
                       }
                     }}
                     title="Private editable copy with attribution"
-                    className="shrink-0"
+                    className="inline-flex h-9 min-h-[44px] shrink-0 items-center justify-center gap-1.5 self-start rounded-md border border-hairline bg-surface-raised px-3 text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-surface-overlay sm:self-auto md:min-h-0"
                   >
                     {copiedId === r.id ? (
                       <Check className="h-4 w-4 text-verified" strokeWidth={1.5} />
@@ -565,7 +646,7 @@ export default function NotebookPage() {
                       <Copy className="h-4 w-4" strokeWidth={1.5} />
                     )}
                     {copiedId === r.id ? "Copied" : "Copy to my notebook"}
-                  </Button>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -574,33 +655,50 @@ export default function NotebookPage() {
       )}
 
       {tab === "shared" && (
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           {shared.length === 0 ? (
             <EmptyState
               heading="Nothing shared with you yet"
               body="Squad notes and 1:1 shares appear here — with attribution to whoever taught you."
             />
           ) : (
-            <ul className="space-y-2">
-              {shared.map((n) => (
-                <li key={n.id} className="rounded-lg border border-hairline bg-surface px-4 py-3">
-                  <div className="text-sm font-medium leading-5 text-text-primary">{n.title}</div>
-                  <div className="mt-0.5 text-xs leading-4 text-text-tertiary">
-                    From @{n.owner?.username || "squad"} · {visibilityLabel(n.visibility)} · Read-only
-                    {n.problem_slug && (
-                      <span>
-                        {" · "}
+            <ul className="flex flex-col gap-2">
+              {shared.map((n) => {
+                const problem = problemFor(n.problem_slug);
+                const owner = n.owner?.username || "squad";
+                return (
+                  <li key={n.id} className="rounded-xl border border-hairline bg-surface px-3.5 py-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 text-[15px] font-semibold leading-[22px] tracking-[-0.01em] text-text-primary">
+                        {n.title}
+                      </div>
+                      <span className="shrink-0 font-mono text-[11px] leading-5 text-text-tertiary">
+                        {shortAgo(n.updated_at)}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs leading-4 text-text-tertiary">
+                      <span className="inline-flex items-center gap-1.5 text-text-secondary">
+                        <Avatar name={owner} src={n.owner?.avatar_url} size="sm" className="h-5 w-5 text-[9px]" />
+                        From @{owner}
+                      </span>
+                      {(n.pattern_tags ?? []).slice(0, 1).map((t) => (
+                        <PatternChip key={t} label={t} />
+                      ))}
+                      <VisibilityTag visibility={n.visibility} />
+                      <span>Read-only</span>
+                      {problem && n.problem_slug && (
                         <Link
                           href={`/practice/${n.problem_slug}`}
-                          className="font-mono text-text-primary underline decoration-hairline-strong underline-offset-[3px] hover:decoration-text-primary"
+                          className="inline-flex min-h-[44px] items-center font-mono text-text-primary underline decoration-hairline-strong underline-offset-[3px] hover:decoration-text-primary md:min-h-0"
                         >
-                          {n.problem_slug}
+                          {problem.number ? `No. ${problem.number} · ` : ""}
+                          {problem.title}
                         </Link>
-                      </span>
-                    )}
-                  </div>
-                </li>
-              ))}
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -610,9 +708,9 @@ export default function NotebookPage() {
           rather than another card, because it is a different question from
           "what have I written". */}
       {tab === "impact" && (
-        <section className="space-y-3">
+        <section className="flex flex-col gap-4">
           <div>
-            <h2 className="font-sans text-lg font-semibold leading-7 text-text-primary">Your impact</h2>
+            <h2 className="text-lg font-semibold leading-[26px] tracking-[-0.01em] text-text-primary">Your impact</h2>
             <p className="mt-0.5 text-sm leading-6 text-text-secondary">
               Who copied what you wrote, and whether they went on to solve it.
             </p>
@@ -626,7 +724,7 @@ export default function NotebookPage() {
           <form onSubmit={handleSave} className="space-y-4">
             <h3 className="type-title text-text-primary">{editing ? "Edit note" : "New note"}</h3>
             {editing?.fork_from && (
-              <p className="text-xs italic leading-5 text-text-tertiary">
+              <p className="text-xs leading-5 text-text-tertiary">
                 Forked from @{editing.fork_from} — your copy, your edits.
               </p>
             )}
@@ -662,24 +760,29 @@ export default function NotebookPage() {
                 className="w-full resize-y rounded-md border border-hairline bg-well p-3 font-mono text-sm leading-6 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
               />
             </div>
-            <div
-              role="group"
-              aria-label="Visibility"
-              className="flex h-9 w-fit items-center gap-1 rounded-md border border-hairline bg-well p-1"
-            >
-              {(["private", "squad", "public"] as NoteVisibility[]).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  aria-pressed={visibility === v}
-                  onClick={() => setVisibility(v)}
-                  className={`flex h-full min-h-[44px] items-center rounded-sm px-3 text-sm font-medium leading-5 transition-colors md:min-h-0 ${
-                    visibility === v ? "bg-surface-overlay text-text-primary" : "text-text-secondary"
-                  }`}
-                >
-                  {visibilityLabel(v)}
-                </button>
-              ))}
+            <div className="space-y-1.5">
+              <div
+                role="group"
+                aria-label="Visibility"
+                className="flex h-9 w-fit items-center gap-1 rounded-md border border-hairline bg-well p-1"
+              >
+                {(["private", "squad", "public"] as NoteVisibility[]).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    aria-pressed={visibility === v}
+                    onClick={() => setVisibility(v)}
+                    className={`flex h-full min-h-[44px] items-center rounded-sm px-3 text-sm font-medium leading-5 transition-colors md:min-h-0 ${
+                      visibility === v ? "bg-surface-overlay text-text-primary" : "text-text-secondary"
+                    }`}
+                  >
+                    {visibilityLabel(v)}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs leading-4 text-text-tertiary">
+                Private by default. Sharing is intentional and reversible.
+              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button type="submit" variant="primary" loading={saving}>

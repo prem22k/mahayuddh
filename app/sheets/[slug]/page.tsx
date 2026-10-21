@@ -5,10 +5,12 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import {
   Search,
-  Check,
-  Clock,
   ChevronDown,
+  ChevronRight,
   MoreHorizontal,
+  Route,
+  Users,
+  ArrowUpRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -18,14 +20,15 @@ import {
   batchSetProblemStatuses,
 } from "@/lib/data/sheets";
 import { parseProblemStatusEvent, applyStatusChange } from "@/lib/problemStatusEvent";
-import { DifficultyBadgeNew } from "@/components/ui/Badge";
+import { DifficultyBadgeNew, PatternChip } from "@/components/ui/Badge";
 import { ProblemLink } from "@/components/ui/ProblemLink";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { EmptyState, Skeleton } from "@/components/ui/States";
-import { FilterChips } from "@/components/ui/ProblemRow";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { ProblemStatusCell } from "@/components/matrix/ProblemStatusCell";
+import { MatrixCell, MatrixLegendSwatch } from "@/components/matrix/MatrixCell";
+import { SplitBar } from "@/components/matrix/SplitBar";
 import { logProblemEvent } from "@/lib/data/problemEvents";
 import { getVerifiedSolvers } from "@/lib/data/squadActivity";
 import { getActiveSquadId, getSquadMemberIds } from "@/lib/data/squads";
@@ -281,6 +284,11 @@ function SheetContent() {
   };
 
   const jumpToRow = (problemSlug: string) => {
+    // A collapsed group has no rows to scroll to: open it first.
+    const category = problems.find((p) => p.title_slug === problemSlug)?.category;
+    if (category && collapsedCategories[category]) {
+      setCollapsedCategories((prev) => ({ ...prev, [category]: false }));
+    }
     setHighlightedSlug(problemSlug);
     if (highlightTimer.current) clearTimeout(highlightTimer.current);
     highlightTimer.current = setTimeout(() => setHighlightedSlug(null), 2000);
@@ -294,9 +302,18 @@ function SheetContent() {
   const topicSet = (slug: string): string[] =>
     catalogBySlug.get(slug)?.topics ?? [];
 
+  // "No. 121" is the LeetCode number when the catalog has it, else the
+  // sheet position — the same field the search box matches.
+  const numberOf = (p: ListProblem): string =>
+    catalogBySlug.get(p.title_slug)?.question_id || String(p.order_index);
+
+  const isVerifiedSolve = (slug: string) =>
+    statuses[slug] === "solved" && Boolean(viewerVerified[slug]);
+
   // Metrics computation across entire sheet
   const totalCount = problems.length;
   const solvedCount = problems.filter((p) => statuses[p.title_slug] === "solved").length;
+  const verifiedCount = problems.filter((p) => isVerifiedSolve(p.title_slug)).length;
   const percentage = totalCount > 0 ? Math.round((solvedCount / totalCount) * 100) : 0;
 
   // Breakdown by difficulty
@@ -327,7 +344,8 @@ function SheetContent() {
     const matchesSearch =
       problem.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       problem.title_slug.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      problem.order_index.toString().includes(searchQuery);
+      problem.order_index.toString().includes(searchQuery) ||
+      numberOf(problem).includes(searchQuery);
 
     return matchesCat && matchesTopic && matchesSearch;
   });
@@ -343,13 +361,31 @@ function SheetContent() {
     }))
     .filter((group) => group.problems.length > 0);
 
+  // A category gets a pattern-hub link only when the catalog tags one of its
+  // problems with exactly that topic — so the link never lands on an empty hub.
+  const hubTopicFor = (category: string, rows: ListProblem[]): string | null => {
+    const want = category.toLowerCase();
+    for (const p of rows) {
+      const hit = topicSet(p.title_slug).find((t) => t.toLowerCase() === want);
+      if (hit) return hit;
+    }
+    return null;
+  };
+
   if (loading) {
     return (
-      <div className="space-y-6" aria-hidden>
-        <Skeleton className="h-10 w-2/3" />
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-40 w-full" />
-        <Skeleton className="h-40 w-full" />
+      <div className="space-y-8" aria-hidden>
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="w-full max-w-md space-y-2">
+            <Skeleton className="h-5 w-36" />
+            <Skeleton className="h-9 w-2/3" />
+            <Skeleton className="h-5 w-full" />
+          </div>
+          <Skeleton className="h-24 w-full md:w-80" />
+        </div>
+        <Skeleton className="h-80 w-full rounded-lg" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-64 w-full rounded-lg" />
       </div>
     );
   }
@@ -360,157 +396,247 @@ function SheetContent() {
     setSelectedCategory("All");
     setSearchQuery("");
   };
+  const shownGroups = showAllCategories ? problemsByCategory : problemsByCategory.slice(0, 8);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 md:space-y-8">
       {/* Heading + progress summary */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <section className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between md:gap-6">
         <div className="min-w-0">
+          {list && (
+            <span className="mb-2.5 inline-flex items-center gap-2 rounded-xs border border-hairline bg-surface px-2 py-0.5">
+              <Route className="h-3.5 w-3.5 text-pattern" strokeWidth={1.5} aria-hidden />
+              <span className="font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-text-tertiary">
+                {list.is_curated ? "Curated roadmap" : "Custom sheet"}
+              </span>
+            </span>
+          )}
           <h1 className="type-display-md text-text-primary">{title}</h1>
-          <p className="mt-1 max-w-xl text-[15px] leading-6 text-text-secondary">
+          <p className="mt-1 max-w-xl text-sm leading-snug text-text-secondary md:text-[15px] md:leading-6">
             {list?.description || "A structured path through the problems that cover the core patterns."}
           </p>
         </div>
-        <div className="shrink-0 lg:w-64">
-          <p className="font-mono text-sm text-text-primary tnum">
-            {solvedCount} of {totalCount}
-          </p>
-          <div
-            className="mt-2 h-1 overflow-hidden rounded-full bg-surface-overlay"
-            role="progressbar"
-            aria-valuenow={percentage}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label={`${title} progress`}
-          >
-            <div
-              className="h-full rounded-full bg-text-primary transition-all duration-200"
-              style={{ width: `${Math.max(percentage, 2)}%` }}
-            />
+        <div className="w-full shrink-0 rounded-lg border border-hairline bg-surface p-3.5 md:w-80 md:p-4">
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <span className="flex items-baseline gap-2">
+              <span className="font-display text-[28px] font-semibold leading-none tracking-[-0.02em] text-text-primary tnum">
+                {solvedCount}
+                <span className="hidden md:inline"> of {totalCount}</span>
+              </span>
+              <span className="text-sm text-text-secondary md:hidden">of {totalCount} solved</span>
+            </span>
+            <span className="font-mono text-xs font-medium text-text-secondary tnum">
+              {percentage}% complete
+            </span>
           </div>
-          <p className="mt-1.5 font-mono text-xs text-text-tertiary tnum">
-            Easy {easySolved}/{easyProblems.length} · Medium {mediumSolved}/{mediumProblems.length} · Hard {hardSolved}/{hardProblems.length}
-          </p>
+          <SplitBar
+            total={totalCount}
+            verified={verifiedCount}
+            selfReported={solvedCount - verifiedCount}
+            label={`${title} progress`}
+            className="mb-2.5 h-2"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-hairline pt-2 font-mono text-[11px] text-text-tertiary md:border-0 md:pt-0">
+            <DifficultyTally pips={1} label="Easy" solved={easySolved} total={easyProblems.length} />
+            <DifficultyTally pips={2} label="Med" solved={mediumSolved} total={mediumProblems.length} />
+            <DifficultyTally pips={3} label="Hard" solved={hardSolved} total={hardProblems.length} />
+          </div>
+          {solvedCount > 0 && (
+            <p className="mt-2 flex items-center gap-3 font-mono text-[11px] text-text-tertiary tnum">
+              <span className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-verified" aria-hidden />
+                {verifiedCount} verified
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-text-secondary" aria-hidden />
+                {solvedCount - verifiedCount} self-reported
+              </span>
+            </p>
+          )}
         </div>
-      </div>
+      </section>
 
       {/* Matrix overview */}
-      <section aria-label="Progress by category" className="card space-y-4">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-          <MatrixLegendSwatch label="Verified" kind="verified" />
-          <MatrixLegendSwatch label="Self-reported" kind="solved" />
-          <MatrixLegendSwatch label="Attempted" kind="attempted" />
-          <MatrixLegendSwatch label="To do" kind="todo" />
+      <section
+        aria-label="Progress by category"
+        className="rounded-lg border border-hairline bg-surface p-3.5 md:p-6"
+      >
+        <div className="mb-3.5 flex items-start justify-between gap-4 md:mb-6 md:items-center md:border-b md:border-hairline md:pb-4">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold leading-6 tracking-[-0.01em] text-text-primary md:text-lg md:leading-[26px]">
+              Category Matrix
+            </h2>
+            <p className="mt-0.5 text-[11px] leading-4 text-text-secondary md:text-xs">
+              <span className="md:hidden">Tap a cell to jump to its problem.</span>
+              <span className="hidden md:inline">
+                Click any cell to jump to its problem. Hover for details
+                {showSquad ? " and squad solvers." : "."}
+              </span>
+            </p>
+          </div>
+          <span className="shrink-0 font-mono text-[11px] text-text-tertiary tnum md:text-xs">
+            {showAllCategories || problemsByCategory.length <= 8
+              ? `${problemsByCategory.length} categories`
+              : `Showing 8 of ${problemsByCategory.length}`}
+          </span>
         </div>
-        <div className="space-y-3">
-          {(showAllCategories ? problemsByCategory : problemsByCategory.slice(0, 8)).map((group) => {
-            const groupSolved = group.problems.filter((p) => statuses[p.title_slug] === "solved").length;
-            const active = selectedCategory === group.category;
-            return (
-              <div
-                key={group.category}
-                className="grid grid-cols-1 gap-2 md:grid-cols-[200px_minmax(0,1fr)] md:items-start"
-              >
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategory(active ? "All" : group.category)}
-                  aria-pressed={active}
-                  title={active ? "Show all categories" : `Filter to ${group.category}`}
-                  className={cn(
-                    "flex min-h-[44px] items-baseline gap-2 rounded-md px-2 py-1 text-left transition-colors md:min-h-0",
-                    active ? "bg-surface-overlay" : "hover:bg-surface-raised"
-                  )}
+
+        {problemsByCategory.length === 0 ? (
+          <p className="py-6 text-center text-sm leading-6 text-text-tertiary">
+            No problems match these filters.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2.5 md:gap-3">
+            {shownGroups.map((group) => {
+              const groupSolved = group.problems.filter((p) => statuses[p.title_slug] === "solved").length;
+              const complete = groupSolved === group.problems.length;
+              const active = selectedCategory === group.category;
+              return (
+                <div
+                  key={group.category}
+                  className="flex flex-col gap-1.5 md:grid md:grid-cols-[minmax(0,3fr)_minmax(0,9fr)] md:items-center md:gap-4 md:py-1"
                 >
-                  <span className="truncate text-sm font-medium leading-5 text-text-primary">
-                    {group.category}
-                  </span>
-                  <span className="shrink-0 font-mono text-xs text-text-tertiary tnum">
-                    {groupSolved}/{group.problems.length}
-                  </span>
-                </button>
-                <div className="flex flex-wrap gap-1.5">
-                  {group.problems.map((p) => (
-                    <MatrixCell
-                      key={p.title_slug}
-                      title={p.title}
-                      status={statuses[p.title_slug] || "unsolved"}
-                      verified={Boolean(viewerVerified[p.title_slug])}
-                      squadCount={showSquad ? squadSolvers[p.title_slug] : undefined}
-                      squadVerifiedCount={showSquad ? squadVerified[p.title_slug] : undefined}
-                      onOpen={() => jumpToRow(p.title_slug)}
-                    />
-                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory(active ? "All" : group.category)}
+                    aria-pressed={active}
+                    title={active ? "Show all categories" : `Filter to ${group.category}`}
+                    className={cn(
+                      "-mx-2 flex min-h-[44px] items-center justify-between gap-2 rounded-md px-2 text-left transition-colors md:min-h-9",
+                      active ? "bg-surface-overlay" : "hover:bg-surface-raised"
+                    )}
+                  >
+                    <span className="truncate text-xs font-medium leading-4 text-text-primary md:text-sm md:leading-5">
+                      {group.category}
+                    </span>
+                    <span
+                      className={cn(
+                        "shrink-0 font-mono text-[11px] tnum md:text-xs",
+                        active ? "text-text-primary" : complete ? "text-text-primary" : "text-text-secondary"
+                      )}
+                    >
+                      {groupSolved}/{group.problems.length}
+                    </span>
+                  </button>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {group.problems.map((p) => (
+                      <MatrixCell
+                        key={p.title_slug}
+                        title={p.title}
+                        number={`No. ${numberOf(p)}`}
+                        difficulty={p.difficulty}
+                        status={statuses[p.title_slug] || "unsolved"}
+                        verified={Boolean(viewerVerified[p.title_slug])}
+                        squadCount={showSquad ? squadSolvers[p.title_slug] : undefined}
+                        squadVerifiedCount={showSquad ? squadVerified[p.title_slug] : undefined}
+                        onOpen={() => jumpToRow(p.title_slug)}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-        {problemsByCategory.length > 8 && (
-          <button
-            type="button"
-            onClick={() => setShowAllCategories((v) => !v)}
-            className="inline-flex h-10 min-h-[44px] items-center justify-center rounded-md px-3 text-sm font-medium leading-5 text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0"
-          >
-            {showAllCategories ? "Show less" : `Show all ${problemsByCategory.length}`}
-          </button>
+              );
+            })}
+          </div>
         )}
+
+        {problemsByCategory.length > 8 && (
+          <div className="mt-3 md:mt-4 md:flex md:justify-center md:border-t md:border-hairline md:pt-3">
+            <button
+              type="button"
+              onClick={() => setShowAllCategories((v) => !v)}
+              aria-expanded={showAllCategories}
+              className="flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-md border border-hairline bg-surface-raised/80 px-3 text-xs font-medium leading-4 text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-8 md:w-auto md:border-transparent md:bg-transparent md:text-[13px]"
+            >
+              <ChevronDown
+                className={cn("h-4 w-4 transition-transform duration-200", showAllCategories && "rotate-180")}
+                strokeWidth={1.5}
+              />
+              {showAllCategories ? "Show fewer categories" : `+ Show all ${problemsByCategory.length} categories`}
+            </button>
+          </div>
+        )}
+
+        {/* Legend */}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-hairline pt-3 font-mono text-[11px] text-text-tertiary md:mt-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 md:gap-x-5">
+            <MatrixLegendSwatch label="Verified" kind="verified" />
+            <MatrixLegendSwatch label="Self-reported" kind="solved" />
+            <MatrixLegendSwatch label="Attempted" kind="attempted" />
+            <MatrixLegendSwatch label="To do" kind="todo" />
+          </div>
+          {showSquad && !squadError && (
+            <span className="flex items-center gap-1.5 text-text-secondary">
+              <Users className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
+              Squad solves tagged on cells
+            </span>
+          )}
+        </div>
       </section>
 
       {/* Toolbar */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" strokeWidth={1.5} />
-          <input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search this sheet"
-            aria-label="Search this sheet"
-            className="h-10 min-h-[44px] w-full rounded-md border border-hairline bg-well pl-9 pr-3 text-[15px] leading-6 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none md:min-h-0 lg:w-60"
-          />
+      <section className="flex flex-col gap-2.5 md:flex-row md:flex-wrap md:items-center md:justify-between md:gap-4">
+        <div className="flex flex-col gap-2.5 md:flex-row md:flex-wrap md:items-center md:gap-3">
+          <div className="relative md:w-[280px]">
+            <Search
+              className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary"
+              strokeWidth={1.5}
+              aria-hidden
+            />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search this sheet"
+              aria-label="Search this sheet"
+              className="h-10 min-h-[44px] w-full rounded-md border border-hairline bg-well pl-9 pr-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none md:h-9 md:min-h-0 md:text-[13px] md:placeholder:text-text-disabled"
+            />
+          </div>
+          <StatusFilterControl value={statusFilter} onChange={setStatusFilter} />
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FilterChips
-            options={STATUS_FILTERS}
-            value={statusFilter}
-            onChange={(v) => setStatusFilter(v as StatusFilter)}
-          />
-          <button
-            type="button"
-            role="switch"
-            aria-checked={showSquad}
-            onClick={() => setShowSquad((v) => !v)}
-            className="flex h-9 min-h-[44px] items-center gap-2 rounded-md px-2 transition-colors hover:bg-surface-raised md:min-h-0"
+        <button
+          type="button"
+          role="switch"
+          aria-checked={showSquad}
+          onClick={() => setShowSquad((v) => !v)}
+          className="flex min-h-[44px] items-center gap-2.5 self-start rounded-md px-1 transition-colors hover:bg-surface-raised md:min-h-9 md:self-auto md:px-2"
+        >
+          <span className="text-[13px] font-medium leading-5 text-text-secondary">Show squad</span>
+          <span
+            className={cn(
+              "flex h-5 w-9 items-center rounded-full p-0.5 transition-colors",
+              showSquad ? "justify-end bg-text-primary" : "border border-hairline-strong bg-well"
+            )}
           >
             <span
               className={cn(
-                "flex h-5 w-9 items-center rounded-full border border-hairline bg-well p-0.5 transition-colors",
-                showSquad && "justify-end border-hairline-strong bg-surface-overlay"
+                "h-4 w-4 rounded-full shadow-sm",
+                showSquad ? "bg-canvas" : "h-3.5 w-3.5 bg-text-secondary"
               )}
-            >
-              <span className="h-3.5 w-3.5 rounded-full bg-text-primary" />
-            </span>
-            <span className="text-sm font-medium leading-5 text-text-secondary">Show squad</span>
-          </button>
+            />
+          </span>
+        </button>
+      </section>
+      {(selectedCategory !== "All" || squadError) && (
+        <div className="-mt-2 space-y-1 md:-mt-4">
+          {selectedCategory !== "All" && (
+            <p className="text-xs leading-4 text-text-tertiary">
+              Showing {selectedCategory} ·{" "}
+              <button
+                type="button"
+                onClick={() => setSelectedCategory("All")}
+                className="font-medium text-text-primary underline decoration-hairline-strong underline-offset-[3px] hover:decoration-text-primary"
+              >
+                Clear
+              </button>
+            </p>
+          )}
+          {squadError && (
+            <p role="status" className="text-xs leading-4 text-text-tertiary">{squadError}</p>
+          )}
         </div>
-      </div>
-      {selectedCategory !== "All" && (
-        <p className="text-xs leading-4 text-text-tertiary">
-          Showing {selectedCategory} ·{" "}
-          <button
-            type="button"
-            onClick={() => setSelectedCategory("All")}
-            className="font-medium text-text-primary underline decoration-hairline-strong underline-offset-[3px] hover:decoration-text-primary"
-          >
-            Clear
-          </button>
-        </p>
-      )}
-      {squadError && (
-        <p role="status" className="text-xs leading-4 text-text-tertiary">{squadError}</p>
       )}
 
       {/* Grouped problem list */}
-      <div className="space-y-4">
+      <div className="flex flex-col gap-3 md:gap-4">
         {problemsByCategory.length === 0 ? (
           <EmptyState
             heading="No problems match these filters"
@@ -529,146 +655,216 @@ function SheetContent() {
           problemsByCategory.map((group) => {
             const isCollapsed = Boolean(collapsedCategories[group.category]);
             const groupSolved = group.problems.filter((p) => statuses[p.title_slug] === "solved").length;
+            const groupVerified = group.problems.filter((p) => isVerifiedSolve(p.title_slug)).length;
             const groupTotal = group.problems.length;
+            const groupPct = groupTotal > 0 ? Math.round((groupSolved / groupTotal) * 100) : 0;
+            const hubTopic = hubTopicFor(group.category, group.problems);
 
             return (
               <section
                 key={group.category}
                 aria-label={group.category}
-                className="overflow-hidden rounded-xl border border-hairline bg-surface"
+                className={cn(
+                  "rounded-lg border border-hairline bg-surface transition-colors",
+                  isCollapsed && "hover:border-hairline-strong"
+                )}
               >
-                <div className="flex items-center justify-between gap-2 border-b border-hairline bg-surface-raised/40 px-4 py-2">
-                  <button
-                    type="button"
-                    onClick={() => toggleCategoryCollapse(group.category)}
-                    aria-expanded={!isCollapsed}
-                    className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2 text-left md:min-h-0"
-                  >
-                    <ChevronDown
-                      className={cn(
-                        "h-4 w-4 shrink-0 text-text-tertiary transition-transform duration-200",
-                        isCollapsed && "-rotate-90"
-                      )}
-                      strokeWidth={1.5}
-                    />
-                    <span className="truncate text-sm font-medium leading-5 text-text-primary">
-                      {group.category}
-                    </span>
+                <div
+                  className={cn(
+                    "flex items-center justify-between gap-2 rounded-t-lg px-3 md:px-5",
+                    isCollapsed
+                      ? "rounded-b-lg py-1.5 md:py-2"
+                      : "border-b border-hairline bg-surface-raised/40 py-1.5 md:py-2.5"
+                  )}
+                >
+                  <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
+                    <button
+                      type="button"
+                      onClick={() => toggleCategoryCollapse(group.category)}
+                      aria-expanded={!isCollapsed}
+                      className="flex min-h-[44px] min-w-0 items-center gap-2 text-left md:gap-3"
+                    >
+                      <ChevronRight
+                        className={cn(
+                          "h-5 w-5 shrink-0 transition-transform duration-200",
+                          isCollapsed ? "text-text-tertiary" : "rotate-90 text-text-secondary"
+                        )}
+                        strokeWidth={1.5}
+                      />
+                      <span
+                        className={cn(
+                          "truncate font-display font-semibold text-text-primary",
+                          isCollapsed ? "text-sm md:text-base" : "text-sm md:text-[17px]"
+                        )}
+                      >
+                        {group.category}
+                      </span>
+                    </button>
+                    {hubTopic && (
+                      <PatternChip
+                        label="Pattern hub"
+                        href={`/patterns/${encodeURIComponent(hubTopic)}`}
+                        className="h-5 shrink-0 rounded-xs px-2 font-mono text-[10px] md:text-[11px]"
+                      />
+                    )}
                     <span className="shrink-0 font-mono text-xs text-text-tertiary tnum">
                       {groupSolved} of {groupTotal}
+                      <span className="hidden md:inline"> solved</span>
                     </span>
-                  </button>
+                  </div>
 
-                  {/* Bulk actions live behind the overflow menu: bulk
-                      self-marking weakens proof, so it never gets top billing. */}
-                  <details className="relative shrink-0">
-                    <summary className="flex h-9 min-h-[44px] w-9 cursor-pointer list-none items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary md:min-h-0 [&::-webkit-details-marker]:hidden">
-                      <MoreHorizontal className="h-4 w-4" strokeWidth={1.5} />
-                      <span className="sr-only">Section actions</span>
-                    </summary>
-                    <div className="popover-panel absolute right-0 top-full z-20 mt-1 min-w-[160px] p-1">
-                      <button
-                        type="button"
-                        onClick={() => handleBatchToggleTopic(group.category, "solved")}
-                        className="flex min-h-[44px] w-full items-center rounded-sm px-3 text-left text-sm font-medium leading-5 text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary md:min-h-0"
-                      >
-                        Mark solved
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleBatchToggleTopic(group.category, "unsolved")}
-                        className="flex min-h-[44px] w-full items-center rounded-sm px-3 text-left text-sm font-medium leading-5 text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary md:min-h-0"
-                      >
-                        Reset
-                      </button>
-                    </div>
-                  </details>
+                  <div className="flex shrink-0 items-center gap-2 md:gap-3">
+                    <SplitBar
+                      total={groupTotal}
+                      verified={groupVerified}
+                      selfReported={groupSolved - groupVerified}
+                      label={`${group.category} progress`}
+                      className="hidden h-1.5 w-24 sm:flex"
+                    />
+                    <span className="hidden w-9 text-right font-mono text-xs text-text-secondary tnum sm:inline">
+                      {groupPct}%
+                    </span>
+                    {/* Bulk actions live behind the overflow menu: bulk
+                        self-marking weakens proof, so it never gets top billing. */}
+                    <details className="relative shrink-0">
+                      <summary className="flex h-9 min-h-[44px] w-9 cursor-pointer list-none items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface-overlay hover:text-text-primary md:min-h-0 [&::-webkit-details-marker]:hidden">
+                        <MoreHorizontal className="h-4 w-4" strokeWidth={1.5} />
+                        <span className="sr-only">Section actions</span>
+                      </summary>
+                      <div className="popover-panel absolute right-0 top-full z-20 mt-1 min-w-[160px] p-1">
+                        <button
+                          type="button"
+                          onClick={() => handleBatchToggleTopic(group.category, "solved")}
+                          className="flex min-h-[44px] w-full items-center rounded-sm px-3 text-left text-sm font-medium leading-5 text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary md:min-h-9"
+                        >
+                          Mark solved
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleBatchToggleTopic(group.category, "unsolved")}
+                          className="flex min-h-[44px] w-full items-center rounded-sm px-3 text-left text-sm font-medium leading-5 text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary md:min-h-9"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    </details>
+                  </div>
                 </div>
 
                 {!isCollapsed && (
                   <ul className="divide-y divide-hairline">
                     {group.problems.map((problem) => {
                       const currentStatus = statuses[problem.title_slug] || "unsolved";
+                      const verified = Boolean(viewerVerified[problem.title_slug]);
                       const isCurrentActive = activeProblem?.slug === problem.title_slug;
                       const highlighted = highlightedSlug === problem.title_slug;
+                      const squadCount = showSquad ? squadSolvers[problem.title_slug] : undefined;
+                      const actionLabel = isCurrentActive
+                        ? "Solving"
+                        : currentStatus === "solved"
+                          ? "Practice"
+                          : currentStatus === "attempted"
+                            ? "Resume"
+                            : "Start battle";
 
                       return (
                         <li
                           key={problem.id}
                           id={`sheet-row-${problem.title_slug}`}
                           className={cn(
-                            "group grid scroll-mt-24 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 transition-colors",
-                            highlighted ? "bg-surface-overlay" : "hover:bg-surface-raised"
+                            "group flex scroll-mt-24 items-center gap-2.5 px-3 py-1.5 transition-colors last:rounded-b-lg md:gap-3.5 md:px-5 md:py-2",
+                            highlighted ? "bg-surface-overlay" : "hover:bg-surface-raised/60"
                           )}
                         >
                           <ProblemStatusCell
                             status={currentStatus}
-                            verified={Boolean(viewerVerified[problem.title_slug])}
+                            verified={verified}
                             onToggle={(next) => handleToggle(problem.title_slug, next)}
                             size="sm"
                             slug={problem.title_slug}
                           />
 
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1 md:flex md:items-center md:gap-3.5">
+                            {/* Meta line on mobile; flows inline before the title on desktop. */}
+                            <div className="flex min-w-0 items-center gap-2 overflow-hidden md:contents">
+                              <span className="shrink-0 font-mono text-xs text-text-tertiary tnum md:w-16">
+                                No. {numberOf(problem)}
+                              </span>
+                              <DifficultyBadgeNew difficulty={problem.difficulty} size="sm" className="md:hidden" />
+                              <RowStatusNote status={currentStatus} verified={verified} />
+                              {squadCount != null && (
+                                <span className="truncate text-[11px] leading-4 text-text-tertiary md:hidden">
+                                  · {squadCount} solved
+                                </span>
+                              )}
+                            </div>
                             <Link
                               href={`/practice/${problem.title_slug}`}
                               className={cn(
-                                "block truncate text-sm font-medium leading-5 transition-colors",
-                                isCurrentActive ? "text-text-primary" : "text-text-primary hover:underline"
+                                "block min-w-0 truncate text-sm font-medium leading-5 transition-colors md:text-[15px] md:leading-6",
+                                currentStatus === "unsolved" && !isCurrentActive
+                                  ? "text-text-primary md:text-text-secondary md:group-hover:text-text-primary"
+                                  : "text-text-primary",
+                                "hover:underline"
                               )}
                             >
                               {problem.title}
                             </Link>
-                            <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                              <span className="font-mono text-xs text-text-tertiary tnum">
-                                No. {problem.order_index}
-                              </span>
-                              <DifficultyBadgeNew difficulty={problem.difficulty} />
-                              {currentStatus === "solved" &&
-                                (viewerVerified[problem.title_slug] ? (
-                                  <span className="inline-flex h-6 items-center gap-1 rounded-sm bg-verified-tint px-2 text-xs font-medium leading-4 text-verified">
-                                    <Check className="h-3 w-3" strokeWidth={2} />
-                                    Verified
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex h-6 items-center rounded-sm border border-hairline-strong px-2 text-xs font-medium leading-4 text-text-secondary">
-                                    Self-reported
-                                  </span>
-                                ))}
-                              {showSquad && squadSolvers[problem.title_slug] != null && (
-                                <span className="text-xs leading-4 text-text-tertiary">
-                                  {squadSolvers[problem.title_slug]} solved
-                                  {squadVerified[problem.title_slug] != null &&
-                                    ` · ${squadVerified[problem.title_slug]} verified`}
-                                </span>
-                              )}
-                            </div>
+                            <DifficultyBadgeNew difficulty={problem.difficulty} className="hidden md:inline-flex" />
                           </div>
 
-                          <div className="flex shrink-0 items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleStartSolving(problem)}
-                              className={cn(
-                                "hidden h-10 min-h-[44px] items-center rounded-md px-3 text-sm font-medium leading-5 transition-colors md:min-h-0",
-                                "text-text-secondary hover:bg-surface-overlay hover:text-text-primary focus-visible:inline-flex md:group-hover:inline-flex md:group-focus-within:inline-flex",
-                                isCurrentActive && "md:inline-flex"
-                              )}
-                            >
-                              {isCurrentActive ? "Solving" : "Start"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleStartSolving(problem)}
-                              className="inline-flex h-10 min-h-[44px] items-center rounded-md px-3 text-sm font-medium leading-5 text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary md:hidden"
-                            >
-                              {isCurrentActive ? "Solving" : "Start"}
-                            </button>
-                            <ProblemLink
-                              slug={problem.title_slug}
-                              title={`Open ${problem.title} on LeetCode`}
-                              className="rounded-md p-2 text-text-tertiary transition-colors hover:bg-surface-overlay hover:text-text-primary"
-                            />
+                          <div className="flex shrink-0 items-center gap-1 md:gap-5">
+                            {squadCount != null && (
+                              <span className="hidden items-center gap-1.5 text-xs font-medium leading-4 text-text-secondary md:flex">
+                                <Users className="h-[15px] w-[15px] text-text-tertiary" strokeWidth={1.5} aria-hidden />
+                                {squadCount} solved
+                                {squadVerified[problem.title_slug] != null && (
+                                  <span className="text-text-tertiary">
+                                    · {squadVerified[problem.title_slug]} verified
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleStartSolving(problem)}
+                                aria-label={`${actionLabel}: ${problem.title}`}
+                                className={cn(
+                                  "inline-flex h-8 min-h-[44px] items-center gap-1 rounded-xs border px-2.5 text-xs font-medium leading-4 transition-[color,border-color,background-color,opacity] md:min-h-8 md:px-3",
+                                  // Mobile keeps the row for the title: solved rows open via the chevron.
+                                  currentStatus === "solved" && !isCurrentActive && "hidden md:inline-flex",
+                                  isCurrentActive
+                                    ? "border-hairline-strong bg-surface-overlay text-text-primary"
+                                    : "border-hairline bg-surface-raised text-text-secondary hover:border-hairline-strong hover:text-text-primary",
+                                  currentStatus === "unsolved" &&
+                                    !isCurrentActive &&
+                                    "md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+                                )}
+                              >
+                                {actionLabel === "Start battle" ? (
+                                  <>
+                                    <span className="md:hidden">Start</span>
+                                    <span className="hidden md:inline">Start battle</span>
+                                    <ArrowUpRight className="hidden h-3.5 w-3.5 md:block" strokeWidth={1.5} aria-hidden />
+                                  </>
+                                ) : (
+                                  actionLabel
+                                )}
+                              </button>
+                              <ProblemLink
+                                slug={problem.title_slug}
+                                title={`Open ${problem.title} on LeetCode`}
+                                className="hidden rounded-md p-2 text-text-tertiary transition-colors hover:bg-surface-overlay hover:text-text-primary md:inline-flex"
+                              />
+                              <Link
+                                href={`/practice/${problem.title_slug}`}
+                                aria-label={`Open ${problem.title}`}
+                                className="flex h-11 w-8 items-center justify-center rounded-md text-text-tertiary transition-colors hover:text-text-primary md:hidden"
+                              >
+                                <ChevronRight className="h-4 w-4" strokeWidth={1.5} />
+                              </Link>
+                            </div>
                           </div>
                         </li>
                       );
@@ -684,113 +880,81 @@ function SheetContent() {
   );
 }
 
-function MatrixLegendSwatch({
+function DifficultyTally({
+  pips,
   label,
-  kind,
+  solved,
+  total,
 }: {
+  pips: 1 | 2 | 3;
   label: string;
-  kind: "verified" | "solved" | "attempted" | "todo";
+  solved: number;
+  total: number;
 }) {
   return (
-    <span className="flex items-center gap-1.5 text-xs leading-4 text-text-tertiary">
-      <span
-        className={cn(
-          "flex h-4 w-4 items-center justify-center rounded-[4px] border",
-          kind === "verified" && "border-verified/30 bg-verified-tint text-verified",
-          kind === "solved" && "border-hairline-strong text-text-secondary",
-          kind === "attempted" && "border-hairline-strong bg-surface-overlay text-text-secondary",
-          kind === "todo" && "border-hairline bg-well"
-        )}
-        aria-hidden
-      >
-        {kind === "verified" || kind === "solved" ? (
-          <Check className="h-2.5 w-2.5" strokeWidth={2} />
-        ) : kind === "attempted" ? (
-          <Clock className="h-2.5 w-2.5" strokeWidth={2} />
-        ) : null}
+    <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap tnum">
+      <span className="flex items-center gap-0.5" aria-hidden>
+        {[1, 2, 3].map((i) => (
+          <span
+            key={i}
+            className={cn("h-1 w-1 rounded-full", i <= pips ? "bg-text-secondary" : "bg-hairline-strong")}
+          />
+        ))}
       </span>
-      {label}
+      {label} <span className="text-text-secondary">{solved}/{total}</span>
     </span>
   );
 }
 
-function MatrixCell({
-  title,
-  status,
-  verified,
-  squadCount,
-  squadVerifiedCount,
-  onOpen,
-}: {
-  title: string;
-  status: TriState;
-  verified?: boolean;
-  squadCount?: number;
-  squadVerifiedCount?: number;
-  onOpen: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const isVerified = status === "solved" && verified === true;
+/** Mobile meta-line tag; desktop reads the same state from the glyph. */
+function RowStatusNote({ status, verified }: { status: TriState; verified: boolean }) {
+  if (status === "unsolved") return null;
   return (
     <span
-      className="relative inline-flex"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
-      <button
-        type="button"
-        onClick={onOpen}
-        title={`${title} · ${statusLabel(status, verified)}`}
-        aria-label={`${title} · ${statusLabel(status, verified)}`}
-        className={cn(
-          "relative flex h-8 w-8 items-center justify-center rounded-sm border transition-colors",
-          isVerified &&
-            "border-verified/30 bg-verified-tint text-verified hover:bg-verified/25",
-          status === "solved" &&
-            !isVerified &&
-            "border-hairline-strong text-text-secondary hover:bg-surface-raised hover:text-text-primary",
-          status === "attempted" &&
-            "border-hairline-strong bg-surface-overlay text-text-secondary hover:text-text-primary",
-          status === "unsolved" && "border-hairline bg-well hover:border-hairline-strong"
-        )}
-      >
-        {status === "solved" ? (
-          <Check className="h-3.5 w-3.5" strokeWidth={1.5} />
-        ) : status === "attempted" ? (
-          <span className="relative flex h-3.5 w-3.5 items-center justify-center rounded-full border border-current" aria-hidden>
-            <span className="absolute inset-0 overflow-hidden rounded-full" aria-hidden>
-              <span className="block h-full w-1/2 bg-current opacity-40" />
-            </span>
-          </span>
-        ) : null}
-        {squadCount != null && squadCount > 0 && (
-          <span className="absolute -right-1.5 -top-1.5 rounded-full border border-hairline bg-surface-overlay px-1 font-mono text-[10px] leading-3 text-text-secondary tnum">
-            {squadCount}
-          </span>
-        )}
-      </button>
-      {open && (
-        <span className="popover-panel pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-48 -translate-x-1/2 p-2 text-left">
-          <span className="block truncate text-xs font-medium leading-4 text-text-primary">
-            {title}
-          </span>
-          <span className="mt-0.5 block text-xs leading-4 text-text-tertiary">
-            {statusLabel(status, verified)}
-            {squadCount != null &&
-              ` · ${squadCount} solved${
-                squadVerifiedCount != null ? ` (${squadVerifiedCount} verified)` : ""
-              }`}
-          </span>
-        </span>
+      className={cn(
+        "min-w-0 truncate text-[10px] leading-4 md:hidden",
+        status === "solved" && verified ? "text-verified" : status === "solved" ? "text-text-tertiary" : "text-text-secondary"
       )}
+    >
+      {status === "solved" ? (verified ? "Verified" : "Self-reported") : "Attempted"}
     </span>
   );
 }
 
-function statusLabel(status: TriState, verified?: boolean): string {
-  if (status === "solved") return verified ? "Verified via LeetCode" : "Self-reported solve";
-  if (status === "attempted") return "Attempted";
-  return "To do";
+function StatusFilterControl({
+  value,
+  onChange,
+}: {
+  value: StatusFilter;
+  onChange: (v: StatusFilter) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Filter by status"
+      className="flex flex-wrap items-center gap-1.5 md:flex-nowrap md:gap-0 md:rounded-md md:border md:border-hairline md:bg-surface md:p-0.5"
+    >
+      {STATUS_FILTERS.map((o) => {
+        const active = value === o;
+        return (
+          <button
+            key={o}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(o)}
+            className={cn(
+              "flex h-8 min-h-[44px] items-center rounded-full border px-3 text-xs font-medium leading-4 transition-colors md:h-7 md:min-h-0 md:rounded-xs md:border-0 md:text-[13px]",
+              active
+                ? "border-hairline-strong bg-surface-overlay text-text-primary md:shadow-sm"
+                : "border-hairline text-text-secondary hover:text-text-primary"
+            )}
+          >
+            {o}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function SheetPage() {

@@ -12,7 +12,12 @@ import {
 } from "@/lib/data/leaderboard";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { PageLoader } from "@/components/ui/PageLoader";
-import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { FilterChips } from "@/components/ui/ProblemRow";
+import { Avatar } from "@/components/ui/Avatar";
+import { Button } from "@/components/ui/Button";
+import { boardListCls, boardRankCls, boardRowCls } from "@/components/leaderboard/rowStyles";
+
+const SEGMENT_LABELS = LEADERBOARD_SEGMENTS.map((sg) => sg.label);
 
 /**
  * Global leaderboard segments (§34).
@@ -66,16 +71,17 @@ export function GlobalLeaderboard() {
 
   return (
     <div className="space-y-4 select-none">
-      <SegmentedControl
-        label="Leaderboard segment"
-        value={segment}
-        size="sm"
-        wrap
-        onChange={(v) => {
-          setSegment(v);
+      <FilterChips
+        options={SEGMENT_LABELS}
+        value={meta?.label ?? ""}
+        onChange={(label) => {
+          const next = LEADERBOARD_SEGMENTS.find((sg) => sg.label === label);
+          if (!next) return;
+          setSegment(next.id);
           setPage(0);
         }}
-        options={LEADERBOARD_SEGMENTS.map((sg) => ({ value: sg.id, label: sg.label, title: sg.ranks }))}
+        scroll
+        label="Leaderboard segment"
       />
 
       {segment === "pattern" && (
@@ -88,20 +94,17 @@ export function GlobalLeaderboard() {
             }}
             aria-label="Pattern to rank by, for example Graphs"
             placeholder="Pattern, e.g. Graphs"
-            className="px-3 py-1.5 min-h-11 rounded-full bg-well border border-hairline text-xs text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong"
+            className="h-10 min-h-[44px] min-w-0 flex-1 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:min-h-0 md:max-w-xs"
           />
-          <button
-            onClick={() => void load()}
-            className="px-3 py-1.5 min-h-11 rounded-full bg-surface-overlay text-text-secondary hover:text-text-primary cursor-pointer flex items-center"
-          >
+          <Button variant="secondary" onClick={() => void load()} className="min-h-[44px] md:min-h-0">
             Apply
-          </button>
+          </Button>
         </div>
       )}
 
       {/* The ranking basis is stated, always. */}
       {meta && (
-        <p className="text-[11px] text-text-tertiary">
+        <p className="text-xs leading-5 text-text-tertiary">
           {meta.ranks}.
           {isLifetimeView(segment) &&
             " Lifetime totals — this one is honest about being a long-run tally, which is why it is not the default view."}
@@ -109,75 +112,67 @@ export function GlobalLeaderboard() {
       )}
 
       {error && (
-        <div role="alert" className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-error/10 border border-error/30">
-          <span className="text-xs text-error">{error}</span>
-          <button
-            onClick={() => void load()}
-            className="px-3 py-1 rounded-full bg-error/15 text-error text-[11px] font-bold cursor-pointer"
-          >
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-error/30 bg-error-tint px-4 py-3">
+          <span className="text-sm text-error">{error}</span>
+          <Button variant="secondary" onClick={() => void load()}>
             Retry
-          </button>
+          </Button>
         </div>
       )}
 
       {loading ? (
         <PageLoader label="Loading..." className="h-32" />
       ) : rows.length === 0 ? (
-        <div className="p-10 text-center rounded-xl bg-surface border border-hairline">
-          <p className="text-xs text-text-secondary">
+        <div className="rounded-lg border border-hairline bg-surface p-10 text-center">
+          <p className="text-sm leading-6 text-text-secondary">
             {segment === "pattern"
               ? "Nobody has logged a solve on that pattern yet. Try a broader pattern name."
               : "Nobody has anything recorded in this view yet. It fills up as people log activity — nothing here is back-filled."}
           </p>
         </div>
       ) : (
-        <div className="space-y-1.5">
-          {rows.map((r, i) => (
-            <div
-              key={r.user_id}
-              className="flex items-center gap-3 p-3 rounded-2xl bg-surface border border-hairline"
-            >
-              <span className="w-6 text-right font-mono text-xs text-text-disabled">
-                {page * PAGE + i + 1}
-              </span>
-              <div className="w-8 h-8 rounded-full bg-surface-overlay border border-hairline flex items-center justify-center font-bold text-[11px] text-text-primary shrink-0 overflow-hidden">
-                {r.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={r.avatar_url} alt={r.username} className="w-full h-full object-cover" />
-                ) : (
-                  r.username.charAt(0).toUpperCase()
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <Link
-                  href={profileHref(r.username)}
-                  className="inline-block text-xs font-bold text-text-primary hover:text-primary transition-colors py-2.5 -my-1"
-                >
-                  @{r.username}
-                </Link>
-                <p className="text-[10px] text-text-tertiary">{r.segment_label}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+        <ol className={boardListCls}>
+          {rows.map((r, i) => {
+            const rank = page * PAGE + i + 1;
+            return (
+              <li key={r.user_id} aria-label={`${r.username}, rank ${rank}`} className={boardRowCls()}>
+                <span className={boardRankCls(rank)}>{rank}</span>
+                <Avatar name={r.username} src={r.avatar_url} size="md" />
+                <div className="flex min-w-0 flex-1 flex-col md:flex-row md:items-center md:justify-between md:gap-4">
+                  <Link
+                    href={profileHref(r.username)}
+                    className="truncate text-sm font-semibold text-text-primary transition-colors hover:text-primary"
+                  >
+                    @{r.username}
+                  </Link>
+                  <p className="truncate font-mono text-xs leading-4 text-text-tertiary md:shrink-0 md:tracking-[0.06em]">
+                    {r.segment_label}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
       )}
 
       {rows.length >= PAGE && (
         <div className="flex items-center justify-between gap-2 pt-1">
-          <button
+          <Button
+            variant="ghost"
             onClick={() => setPage((p) => Math.max(0, p - 1))}
             disabled={page === 0}
-            className="px-3 py-1.5 rounded-full bg-surface-overlay text-text-secondary hover:text-text-primary disabled:opacity-40 cursor-pointer"
+            className="min-h-[44px] border border-hairline md:min-h-0"
           >
             ← Previous
-          </button>
-          <span className="text-[10px] text-text-disabled">Page {page + 1}</span>
-          <button
+          </Button>
+          <span className="font-mono text-xs text-text-tertiary tnum">Page {page + 1}</span>
+          <Button
+            variant="ghost"
             onClick={() => setPage((p) => p + 1)}
-            className="px-3 py-1.5 rounded-full bg-surface-overlay text-text-secondary hover:text-text-primary cursor-pointer"
+            className="min-h-[44px] border border-hairline md:min-h-0"
           >
             Next →
-          </button>
+          </Button>
         </div>
       )}
     </div>

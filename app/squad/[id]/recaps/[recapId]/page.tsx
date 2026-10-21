@@ -2,13 +2,22 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { Activity, ArrowLeft, Lock, ShieldAlert } from "lucide-react";
 import { safeNext } from "@/lib/safeNext";
 import { getPublicRecap } from "@/lib/data/recapPublic";
-import { formatDuration, titleFromSlug } from "@/lib/format";
 import { recapShareText } from "@/lib/recap";
 import { ShareRow } from "@/components/ui/ShareRow";
 import { PostKit } from "@/components/ui/PostKit";
 import { TrackVisit } from "@/components/ui/TrackVisit";
+import { ArtifactFrame, MemberOnly, VisitorCta } from "@/components/recap/ArtifactChrome";
+import {
+  DidNotHappenList,
+  HappenedList,
+  ImprovementPass,
+  RecapNumbers,
+  SectionLabel,
+} from "@/components/recap/RecapBlocks";
+import { formatDay, formatRange, isoWeek, serialOf } from "@/components/recap/recapFormat";
 
 export const dynamic = "force-dynamic";
 
@@ -60,117 +69,137 @@ export default async function PublicRecapPage({
   // safeNext so auth lands back on this recap. Login already honors ?next=.
   const nextParam = encodeURIComponent(safeNext(path) ?? "/home");
   const shareText = recapShareText({ squadName, body, url: "" }).trim();
-  const metrics = [
-    { label: "Solves", value: body.solves },
-    { label: "Challenges sent", value: body.challengesSent },
-    { label: "Beaten", value: body.challengesCompleted },
-    { label: "Approaches", value: body.approachesWritten },
-    { label: "Stuck asks", value: body.stuckRequests },
-  ];
+  const artifact = { kind: "recap" as const, id: recapId, squadId };
+
+  // Everything below is read off the stored row: the window, the freeze date
+  // and the identifiers. Week number and serial are labels, not measurements.
+  const weekStart = body.window?.weekStart ?? recap.week_start;
+  const weekEnd = body.window?.weekEnd ?? recap.week_end;
+  const week = isoWeek(weekStart);
+  const serial = serialOf(recap.id);
+  const frozenOn = formatDay(body.generatedAt ?? recap.created_at, { year: true });
   const improvement = body.biggestImprovement;
 
   return (
-    <div className="min-h-screen bg-canvas text-text-primary">
-      <div className="mx-auto w-full max-w-reading space-y-8 px-4 py-14">
-        <Suspense fallback={null}>
-          <TrackVisit artifact={`recap:${recapId}`} />
-        </Suspense>
+    <ArtifactFrame
+      crumb={`Recap · ${formatRange(weekStart, weekEnd)}`}
+      signInHref={`/login?next=${nextParam}`}
+      className="max-w-reading space-y-10"
+    >
+      <Suspense fallback={null}>
+        <TrackVisit artifact={`recap:${recapId}`} />
+      </Suspense>
 
-        <header className="space-y-2">
-          <p className="text-sm text-text-secondary">
-            {squadName} · {body.window?.weekStart ?? recap.week_start}
-          </p>
-          <h1 className="type-display-md text-text-primary">{body.headline}</h1>
-          <p className="font-mono text-xs text-text-tertiary tnum">
-            {body.window?.weekStart ?? recap.week_start} →{" "}
-            {body.window?.weekEnd ?? recap.week_end}
-          </p>
-        </header>
-
-        {improvement && (
-          <section className="card space-y-2">
-            <p className="text-sm text-text-secondary">
-              {improvement.username ? `@${improvement.username}` : "Biggest improvement"} ·{" "}
-              {titleFromSlug(improvement.slug)}
-            </p>
-            <p className="type-mono-display text-text-primary">
-              <span className="text-text-tertiary line-through">
-                {formatDuration(improvement.fromSec)}
-              </span>{" "}
-              → {formatDuration(improvement.toSec)}
-            </p>
-          </section>
-        )}
-
-        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-          {metrics.map((m) => (
-            <div
-              key={m.label}
-              className="rounded-xl border border-hairline bg-surface p-3 text-center"
-            >
-              <div className="font-display text-[28px] font-semibold leading-[31px] text-text-primary tnum">
-                {m.value}
-              </div>
-              <div className="mt-0.5 text-xs text-text-tertiary">{m.label}</div>
-            </div>
-          ))}
-        </dl>
-
-        {body.entries?.length > 0 && (
-          <section className="space-y-2">
-            <h2 className="text-lg font-semibold leading-[26px] text-text-primary">
-              What happened
-            </h2>
-            <ul className="space-y-1.5">
-              {body.entries.map((e) => (
-                <li key={e.label} className="flex items-baseline gap-3 text-sm leading-6">
-                  <span className="w-24 shrink-0 text-xs text-text-tertiary">{e.label}</span>
-                  <span className="text-text-secondary">{e.detail}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {body.empty?.length > 0 && (
-          <section className="space-y-1 border-t border-hairline pt-4">
-            <h2 className="text-lg font-semibold leading-[26px] text-text-primary">
-              What didn&apos;t happen
-            </h2>
-            <ul className="space-y-0.5">
-              {body.empty.map((line: string) => (
-                <li key={line} className="text-sm leading-6 text-text-secondary">
-                  · {line}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        <div className="flex flex-wrap items-center gap-2 pt-2">
-          <ShareRow
-            path={path}
-            artifact={{ kind: "recap", id: recapId, squadId }}
-            text={shareText}
-            label="Share recap"
-          />
-          <PostKit
-            imageHref={`${path}/opengraph-image`}
-            path={path}
-            artifact={{ kind: "recap", id: recapId, squadId }}
-            text={shareText}
-          />
+      <header className="space-y-3">
+        <MemberOnly>
           <Link
-            href={`/login?mode=signup&next=${nextParam}`}
-            className="inline-flex min-h-[44px] h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium leading-5 text-on-primary transition-colors hover:bg-primary-hover md:min-h-0"
+            href={`/squad/${squadId}/recaps`}
+            className="mb-3 inline-flex min-h-[44px] items-center gap-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary md:min-h-0"
           >
-            Start your squad
+            <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
+            Weekly recaps
           </Link>
+        </MemberOnly>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm">
+            <span className="font-medium text-text-primary">{squadName}</span>
+            <span aria-hidden className="text-text-tertiary">
+              ·
+            </span>
+            <span className="font-mono text-xs text-text-tertiary tnum">
+              {formatRange(weekStart, weekEnd, { long: true, year: true })}
+            </span>
+          </p>
+          <span className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-xs border border-hairline bg-surface-raised px-2.5 font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-text-tertiary tnum">
+            <Lock className="h-3 w-3" strokeWidth={1.5} aria-hidden />
+            Frozen{week ? ` · W${week.week}` : ""}
+          </span>
         </div>
-        <p className="text-sm leading-6 text-text-secondary">
-          Practice with your own people.
+        <h1 className="font-display text-[28px] font-semibold leading-[1.1] tracking-[-0.02em] text-text-primary md:text-[40px]">
+          {body.headline}
+        </h1>
+        <p className="text-[15px] leading-6 text-text-secondary md:text-base md:leading-7">
+          Frozen {frozenOn}. Nothing gets back-filled: these are the numbers the squad saw when
+          the week closed.
         </p>
-      </div>
-    </div>
+      </header>
+
+      {improvement && (
+        <section className="space-y-2">
+          <SectionLabel>Week&apos;s biggest improvement</SectionLabel>
+          <ImprovementPass
+            username={improvement.username}
+            slug={improvement.slug}
+            fromSec={improvement.fromSec}
+            toSec={improvement.toSec}
+            fields={[
+              { label: "Serial", value: serial },
+              { label: "Squad", value: squadName },
+              { label: "Week", value: week ? `W${week.week} · ${week.year}` : weekStart },
+              { label: "Frozen", value: frozenOn },
+            ]}
+          />
+        </section>
+      )}
+
+      <section className="space-y-2">
+        <SectionLabel>The week in numbers</SectionLabel>
+        <RecapNumbers body={body} />
+      </section>
+
+      {body.entries?.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="flex items-center gap-2 text-lg font-semibold leading-[26px] tracking-[-0.01em] text-text-primary">
+            <Activity className="h-4 w-4 text-text-tertiary" strokeWidth={1.5} aria-hidden />
+            What happened
+          </h2>
+          <HappenedList entries={body.entries} />
+        </section>
+      )}
+
+      {body.empty?.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="flex items-center gap-2 text-lg font-semibold leading-[26px] tracking-[-0.01em] text-text-primary">
+            <ShieldAlert className="h-4 w-4 text-text-tertiary" strokeWidth={1.5} aria-hidden />
+            What didn&apos;t happen
+          </h2>
+          <DidNotHappenList lines={body.empty} />
+        </section>
+      )}
+
+      <section className="space-y-2">
+        <SectionLabel>Share this recap</SectionLabel>
+        <div className="space-y-4 rounded-xl border border-hairline bg-surface p-4 md:p-5">
+          <ShareRow expanded path={path} artifact={artifact} text={shareText} />
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hairline pt-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <PostKit
+                imageHref={`${path}/opengraph-image`}
+                path={path}
+                artifact={artifact}
+                text={shareText}
+              />
+              {/* The phone share sheet, where there is one. */}
+              <div className="md:hidden">
+                <ShareRow compact path={path} artifact={artifact} text={shareText} label="Share recap" />
+              </div>
+            </div>
+            <span className="hidden font-mono text-xs text-text-tertiary tnum md:inline">Serial {serial}</span>
+          </div>
+        </div>
+      </section>
+
+      <VisitorCta
+        href={`/login?mode=signup&next=${nextParam}`}
+        body="Timed solves, verified proof, and a weekly recap like this one, for your own squad."
+      />
+
+      <footer className="space-y-1.5 border-t border-hairline pt-6 text-center">
+        <p className="text-xs text-text-tertiary">Mahayuddh · Practice DSA with your people</p>
+        <p className="font-mono text-[11px] text-text-tertiary tnum">
+          Frozen record {serial} · {frozenOn}
+        </p>
+      </footer>
+    </ArtifactFrame>
   );
 }

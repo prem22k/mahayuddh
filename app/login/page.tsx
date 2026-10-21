@@ -5,11 +5,20 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { MailCheck } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/Button";
 import { AvatarStack } from "@/components/ui/Avatar";
+import {
+  AuthAlert,
+  AuthCard,
+  AuthFrame,
+  PasswordToggle,
+  authInputCls,
+  authLabelCls,
+} from "@/components/auth/AuthChrome";
 import { track, consumeSource, peekSource } from "@/lib/analytics";
 import { safeNext } from "@/lib/safeNext";
 import { cn } from "@/lib/utils";
@@ -62,8 +71,11 @@ function LoginForm() {
     return m ? m[1].toUpperCase() : null;
   }, [nextPath]);
 
-  // Invite arrivals land on Join (02 spec default); everyone else on Sign in.
-  const [mode, setMode] = useState<"signin" | "signup">(inviteCode ? "signup" : "signin");
+  // Invite arrivals land on Join (02 spec default), as does every "Start solo"
+  // / "Join" link that says ?mode=signup; everyone else on Sign in.
+  const [mode, setMode] = useState<"signin" | "signup">(
+    inviteCode || searchParams.get("mode") === "signup" ? "signup" : "signin"
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -80,7 +92,43 @@ function LoginForm() {
   // Join/Sign-in segmented control or its defaults.
   const [authView, setAuthView] = useState<"form" | "reset">("form");
   const [resetSent, setResetSent] = useState(false);
+  // Signup that needs email confirmation: the card swaps to "check your inbox".
+  const [confirmEmail, setConfirmEmail] = useState<string | null>(null);
   const [, forceTick] = useState(0);
+
+  // The invited squad's public card — the same one /squad/join/[code] shows a
+  // logged-out visitor (name, member count, first few members). Deliberately
+  // fetched WITHOUT ?ref=: the invite page already counted this open, and a
+  // second count would double every referral that converts. A failed lookup
+  // just leaves the banner on the bare code.
+  const [invite, setInvite] = useState<{
+    name: string;
+    memberCount: number;
+    members: { name: string; src: string | null }[];
+  } | null>(null);
+  useEffect(() => {
+    if (!inviteCode) return;
+    let cancelled = false;
+    fetch(`/api/squads/preview/${inviteCode}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (cancelled || !json?.squad?.name) return;
+        type Sample = { profile?: { username?: string; avatar_url?: string | null } | { username?: string; avatar_url?: string | null }[] };
+        const members = ((json.sample_members ?? []) as Sample[])
+          .map((m) => (Array.isArray(m.profile) ? m.profile[0] : m.profile))
+          .filter((p): p is { username: string; avatar_url?: string | null } => !!p?.username)
+          .map((p) => ({ name: p.username, src: p.avatar_url ?? null }));
+        setInvite({
+          name: String(json.squad.name),
+          memberCount: Number(json.member_count) || 0,
+          members,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteCode]);
 
   /**
    * Login abuse friction (control 17).
@@ -427,7 +475,7 @@ function LoginForm() {
             window.location.replace(nextPath);
             return;
           } else {
-            setSuccessMsg("Account created! Check your email to confirm your account. Your squad profile and LeetCode stats sync on first sign-in.");
+            setConfirmEmail(emailAddr);
             setLoading(false);
           }
         } else {
@@ -455,329 +503,410 @@ function LoginForm() {
   const joining = mode === "signup";
   const trimmedSquad = squadName.trim();
   const primaryLabel =
-    mode === "signin" ? "Sign in" : inviteCode ? "Join squad" : trimmedSquad ? `Start ${trimmedSquad}` : "Join";
+    mode === "signin"
+      ? "Sign in"
+      : inviteCode
+        ? invite
+          ? `Join ${invite.name}`
+          : "Join squad"
+        : trimmedSquad
+          ? `Start ${trimmedSquad}`
+          : "Start practicing";
 
-  const inputCls =
-    "w-full min-h-[44px] rounded-md border border-hairline bg-well px-3 py-2.5 text-sm text-text-primary placeholder:text-text-disabled transition-colors hover:border-hairline-strong focus:border-hairline-strong focus:outline-none";
-  const labelCls = "mb-1.5 block pl-1 text-sm font-medium text-text-secondary";
+  const clearForMode = (next: "signin" | "signup") => {
+    setMode(next);
+    setConfirmEmail(null);
+  };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-canvas p-4 text-text-primary select-none">
-      <div className="relative z-10 w-full max-w-[440px]">
-        <div className="mb-6 text-center">
-          <p className="font-display text-3xl font-semibold tracking-tight">Mahayuddh</p>
-          <p className="mt-2 text-sm leading-6 text-text-secondary">
+    <AuthFrame
+      intro={
+        <>
+          {/* One heading, two looks: the frame's mobile headline, the desktop tagline. */}
+          <h1 className="font-display text-2xl font-semibold leading-tight tracking-tight text-text-primary md:font-sans md:text-[15px] md:font-normal md:leading-6 md:tracking-normal md:text-text-secondary">
             Practice DSA with your people.
+          </h1>
+          <p className="mt-1 text-xs leading-5 text-text-secondary md:hidden">
+            One problem a day, timed and verified together.
           </p>
           {source && (
             <p className="mt-2 font-mono text-xs text-text-tertiary">arrived from {source}</p>
           )}
-        </div>
-
-        {inviteCode && joining && (
-          <div className="mb-4 rounded-xl border border-hairline bg-surface p-4">
-            <div className="flex items-center gap-3">
-              <AvatarStack people={[{ name: "R" }, { name: "K" }, { name: "S" }]} />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-text-primary">
-                  You were invited to join
-                </p>
-                <p className="font-mono text-xs text-text-tertiary">Code {inviteCode}</p>
-              </div>
+        </>
+      }
+    >
+      {inviteCode && joining && (
+        <div className="mb-4 rounded-lg border border-hairline bg-surface-raised p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] md:p-3.5">
+          <div className="flex items-center gap-3">
+            {invite && invite.members.length > 0 && (
+              <AvatarStack people={invite.members} className="shrink-0" />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold text-text-primary md:text-[13px]">
+                You were invited to{" "}
+                {invite ? <span className="text-primary">{invite.name}</span> : "join a squad"}
+              </p>
+              <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] leading-4 text-text-secondary md:text-xs">
+                {invite && (
+                  <>
+                    <span className="tnum">
+                      {invite.memberCount} member{invite.memberCount === 1 ? "" : "s"}
+                    </span>
+                    <span aria-hidden className="text-text-disabled">
+                      ·
+                    </span>
+                  </>
+                )}
+                <span className="font-mono tnum">Code {inviteCode}</span>
+              </p>
             </div>
-            <p className="mt-2 text-xs leading-5 text-text-secondary">
-              Create your account and you land straight on the invite, ready to join.
-            </p>
           </div>
-        )}
+          <p className="mt-2 text-xs leading-5 text-text-secondary">
+            Create your account and you land straight on the invite, ready to join.
+          </p>
+        </div>
+      )}
 
-        {authView === "reset" ? (
-          <div className="rounded-xl border border-hairline bg-surface p-6 sm:p-8">
-            <h1 className="font-display text-xl font-semibold">Reset your password</h1>
-            <p className="mt-1 text-sm leading-6 text-text-secondary">
-              One link by email. It expires soon and works once.
-            </p>
-            <div aria-live="polite" aria-atomic="true" className="mt-4">
-              {errorMsg && (
-                <div className="rounded-md border border-error/30 bg-error-tint px-3 py-2.5 text-xs leading-5 text-error">
-                  {errorMsg}
-                </div>
-              )}
-              {successMsg && (
-                <div className="rounded-md border border-verified/30 bg-verified-tint px-3 py-2.5 text-xs leading-5 text-verified">
-                  {successMsg}
-                </div>
-              )}
+      <div aria-live="polite" aria-atomic="true">
+        {errorMsg && (
+          <AuthAlert tone="error">
+            {errorMsg}
+            {/already|sign in/i.test(errorMsg) && mode === "signup" && authView === "form" && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={() => clearForMode("signin")}
+                  className="font-medium underline underline-offset-2 hover:text-text-primary"
+                >
+                  Sign in instead
+                </button>
+              </>
+            )}
+          </AuthAlert>
+        )}
+        {successMsg && <AuthAlert tone="success">{successMsg}</AuthAlert>}
+      </div>
+
+      {authView === "reset" ? (
+        <AuthCard>
+          <h2 className="font-display text-xl font-semibold leading-7 tracking-tight">
+            Reset your password
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-text-secondary">
+            One link by email. It expires soon and works once.
+          </p>
+          {!resetSent && (
+            <form onSubmit={handleResetRequest} className="mt-5 space-y-4">
+              <div>
+                <label htmlFor="reset-email" className={authLabelCls}>
+                  Email
+                </label>
+                <input
+                  id="reset-email"
+                  name="reset-email"
+                  autoComplete="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@squad.dev"
+                  className={authInputCls}
+                  required
+                />
+              </div>
+              <div className="pt-2">
+                <Button type="submit" variant="primary" size="full" loading={loading} className="h-11 md:h-10">
+                  {!loading && "Send reset link"}
+                </Button>
+              </div>
+            </form>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setAuthView("form");
+              setErrorMsg(null);
+              setSuccessMsg(null);
+            }}
+            className="mt-4 min-h-[44px] w-full text-center text-xs font-medium text-text-secondary underline underline-offset-4 transition-colors hover:text-text-primary"
+          >
+            Back to sign in
+          </button>
+        </AuthCard>
+      ) : (
+        <>
+          <AuthCard>
+            <div className="mb-4 md:mb-6">
+              <SegmentedControl
+                label="Sign in or join"
+                className="max-md:h-auto"
+                value={mode}
+                onChange={(v) => {
+                  clearForMode(v);
+                  setErrorMsg(null);
+                }}
+                options={[
+                  { value: "signin", label: "Sign in" },
+                  { value: "signup", label: "Join" },
+                ]}
+              />
             </div>
-            {!resetSent && (
-              <form onSubmit={handleResetRequest} className="mt-4 space-y-4">
+
+            {confirmEmail ? (
+              <div role="status" className="space-y-4 py-4 text-center">
+                <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-verified/30 bg-verified-tint text-verified">
+                  <MailCheck className="h-6 w-6" strokeWidth={1.5} aria-hidden />
+                </span>
                 <div>
-                  <label htmlFor="reset-email" className={labelCls}>
+                  <h2 className="font-display text-xl font-semibold tracking-tight">Check your inbox</h2>
+                  <p className="mt-1 text-sm leading-6 text-text-secondary">
+                    Account created. We sent a confirmation link to
+                  </p>
+                  <p className="mt-0.5 break-all font-mono text-sm font-medium text-primary">
+                    {confirmEmail}
+                  </p>
+                </div>
+                <p className="rounded-md border border-hairline bg-well p-3 text-left text-xs leading-relaxed text-text-tertiary">
+                  Open it to confirm your account. Your squad profile and LeetCode stats sync on
+                  first sign-in.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setConfirmEmail(null)}
+                  className="min-h-[44px] text-xs font-medium text-text-secondary transition-colors hover:text-text-primary hover:underline"
+                >
+                  Use a different email
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {joining && (
+                  <>
+                    <div>
+                      <label htmlFor="username" className={authLabelCls}>
+                        Your name
+                      </label>
+                      <input
+                        id="username"
+                        name="username"
+                        autoComplete="username"
+                        type="text"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        placeholder="Meera Rao"
+                        className={authInputCls}
+                        required
+                      />
+                    </div>
+
+                    <fieldset className="m-0 border-0 p-0">
+                      <legend className={cn(authLabelCls, "p-0")}>What are you practicing for?</legend>
+                      <div className="flex flex-wrap gap-1.5">
+                        {OBJECTIVES.map((o) => (
+                          <button
+                            key={o.value}
+                            type="button"
+                            onClick={() => setObjective(objective === o.value ? "" : o.value)}
+                            aria-pressed={objective === o.value}
+                            className={cn(
+                              "inline-flex h-11 cursor-pointer items-center rounded-full border px-3 text-xs font-medium transition-colors md:h-8",
+                              objective === o.value
+                                ? "border-hairline-strong bg-surface-overlay text-text-primary"
+                                : "border-hairline bg-transparent text-text-secondary hover:bg-surface-raised hover:text-text-primary"
+                            )}
+                          >
+                            {o.label}
+                          </button>
+                        ))}
+                      </div>
+                    </fieldset>
+
+                    <div>
+                      {inviteCode ? (
+                        <>
+                          <p className={authLabelCls}>Squad</p>
+                          <div className="flex h-11 items-center justify-between gap-2 rounded-md border border-hairline bg-well pl-3 md:h-10">
+                            <span className="flex min-w-0 items-center gap-2 text-xs font-medium text-text-primary">
+                              <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-verified" />
+                              <span className="truncate">
+                                Joining{" "}
+                                {invite ? (
+                                  <span className="font-semibold">{invite.name}</span>
+                                ) : (
+                                  <>
+                                    with code <span className="font-mono tnum">{inviteCode}</span>
+                                  </>
+                                )}
+                              </span>
+                            </span>
+                            <Link
+                              href="/login"
+                              className="inline-flex min-h-[44px] items-center px-3 text-xs font-medium text-text-secondary transition-colors hover:text-text-primary hover:underline md:min-h-0"
+                            >
+                              Change
+                            </Link>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <label htmlFor="squadName" className={authLabelCls}>
+                            Start a squad <span className="font-normal text-text-tertiary">(optional)</span>
+                          </label>
+                          <input
+                            id="squadName"
+                            name="squadName"
+                            type="text"
+                            value={squadName}
+                            onChange={(e) => setSquadName(e.target.value)}
+                            placeholder="e.g. Night Owls"
+                            className={authInputCls}
+                          />
+                          <p className="mt-1 text-[11px] leading-4 text-text-tertiary">
+                            Skip it to practice solo. You can start or join one later.
+                          </p>
+                        </>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="mb-1.5 flex items-center justify-between gap-2">
+                        <label htmlFor="leetcodeUsername" className="block text-xs font-medium text-text-secondary">
+                          LeetCode username <span className="font-normal text-text-tertiary">(optional)</span>
+                        </label>
+                        <span className="flex shrink-0 items-center gap-1 font-mono text-[11px] text-verified">
+                          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-verified" />
+                          auto-sync
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <span
+                          aria-hidden
+                          className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 font-mono text-xs text-text-tertiary"
+                        >
+                          @
+                        </span>
+                        <input
+                          id="leetcodeUsername"
+                          name="leetcodeUsername"
+                          autoComplete="off"
+                          type="text"
+                          value={leetcodeUsername}
+                          onChange={(e) => setLeetcodeUsername(e.target.value)}
+                          placeholder="meera_codes"
+                          className={cn(authInputCls, "pl-7 font-mono")}
+                        />
+                      </div>
+                      <p className="mt-1 text-[11px] leading-4 text-text-tertiary">
+                        Everything works without it. Connecting lets us verify your solves.
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                <div>
+                  <label htmlFor="email" className={authLabelCls}>
                     Email
                   </label>
                   <input
-                    id="reset-email"
-                    name="reset-email"
+                    id="email"
+                    name="email"
                     autoComplete="email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@squad.dev"
-                    className={inputCls}
+                    className={authInputCls}
                     required
                   />
                 </div>
-                <Button type="submit" variant="primary" size="full" loading={loading} className="min-h-[44px]">
-                  {!loading && "Send reset link"}
-                </Button>
+
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <label htmlFor="password" className="block text-xs font-medium text-text-secondary">
+                      Password
+                    </label>
+                    {mode === "signin" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthView("reset");
+                          setErrorMsg(null);
+                          setSuccessMsg(null);
+                          setResetSent(false);
+                        }}
+                        className="-my-3 inline-flex min-h-[44px] items-center text-xs font-medium text-text-secondary transition-colors hover:text-text-primary hover:underline md:my-0 md:min-h-0"
+                      >
+                        Forgot password?
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="password"
+                      name="password"
+                      autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="At least 8 characters"
+                      className={cn(authInputCls, "pr-11")}
+                      required
+                      minLength={8}
+                    />
+                    <PasswordToggle shown={showPassword} onToggle={() => setShowPassword((s) => !s)} />
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="full"
+                    loading={loading}
+                    className="h-11 md:h-10"
+                  >
+                    {!loading && primaryLabel}
+                  </Button>
+                </div>
               </form>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                setAuthView("form");
-                setErrorMsg(null);
-                setSuccessMsg(null);
-              }}
-              className="mt-4 min-h-[44px] w-full text-center text-xs font-medium text-text-primary underline underline-offset-4"
-            >
-              Back to sign in
-            </button>
-          </div>
-        ) : (
-        <>
-        <div className="rounded-xl border border-hairline bg-surface p-6 sm:p-8">
-          <SegmentedControl
-            label="Sign in or join"
-            value={mode}
-            onChange={(v) => {
-              setMode(v);
-              setErrorMsg(null);
-            }}
-            options={[
-              { value: "signin", label: "Sign in" },
-              { value: "signup", label: "Join" },
-            ]}
-          />
+          </AuthCard>
 
-          <div aria-live="polite" aria-atomic="true" className="mt-4">
-            {errorMsg && (
-              <div className="rounded-md border border-error/30 bg-error-tint px-3 py-2.5 text-xs leading-5 text-error">
-                {errorMsg}
-                {/already|sign in/i.test(errorMsg) && mode === "signup" && (
-                  <>
-                    {" "}
-                    <button
-                      type="button"
-                      onClick={() => setMode("signin")}
-                      className="font-medium underline underline-offset-2"
-                    >
-                      Sign in instead
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-            {successMsg && (
-              <div className="rounded-md border border-verified/30 bg-verified-tint px-3 py-2.5 text-xs leading-5 text-verified">
-                {successMsg}
-              </div>
-            )}
-          </div>
-
-          <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-            {joining && (
+          <p className="mt-6 text-center text-xs leading-5 text-text-secondary">
+            {mode === "signin" ? (
               <>
-                <div>
-                  <label htmlFor="username" className={labelCls}>
-                    Your name
-                  </label>
-                  <input
-                    id="username"
-                    name="username"
-                    autoComplete="username"
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Meera Rao"
-                    className={inputCls}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <fieldset className="m-0 border-0 p-0">
-                    <legend className={labelCls}>What are you practicing for?</legend>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {OBJECTIVES.map((o) => (
-                        <button
-                          key={o.value}
-                          type="button"
-                          onClick={() => setObjective(objective === o.value ? "" : o.value)}
-                          aria-pressed={objective === o.value}
-                          className={cn(
-                            "min-h-[44px] rounded-md border px-2 py-2 text-xs font-medium transition-colors cursor-pointer",
-                            objective === o.value
-                              ? "border-hairline-strong bg-surface-overlay text-text-primary"
-                              : "border-hairline bg-transparent text-text-secondary hover:text-text-primary"
-                          )}
-                        >
-                          {o.label}
-                        </button>
-                      ))}
-                    </div>
-                  </fieldset>
-                </div>
-
-                <div>
-                  <label htmlFor="squadName" className={labelCls}>
-                    {inviteCode ? "Squad" : "Start a squad (optional)"}
-                  </label>
-                  {inviteCode ? (
-                    <div className="flex min-h-[44px] items-center justify-between gap-2 rounded-md border border-hairline bg-well px-3">
-                      <span className="text-sm text-text-primary">Joining with code {inviteCode}</span>
-                      <Link
-                        href="/login"
-                        className="min-h-[44px] inline-flex items-center text-xs font-medium text-text-secondary hover:text-text-primary"
-                      >
-                        Change
-                      </Link>
-                    </div>
-                  ) : (
-                    <input
-                      id="squadName"
-                      name="squadName"
-                      type="text"
-                      value={squadName}
-                      onChange={(e) => setSquadName(e.target.value)}
-                      placeholder="e.g. Night Owls"
-                      className={inputCls}
-                    />
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="leetcodeUsername" className={labelCls}>
-                    LeetCode username (optional)
-                  </label>
-                  <input
-                    id="leetcodeUsername"
-                    name="leetcodeUsername"
-                    autoComplete="off"
-                    type="text"
-                    value={leetcodeUsername}
-                    onChange={(e) => setLeetcodeUsername(e.target.value)}
-                    placeholder="meera_codes"
-                    className={cn(inputCls, "font-mono")}
-                  />
-                  <span className="mt-1.5 block pl-1 text-xs leading-5 text-text-tertiary">
-                    Everything works without it. Connecting lets us verify your solves.
-                  </span>
-                </div>
-              </>
-            )}
-
-            <div>
-              <label htmlFor="email" className={labelCls}>
-                Email
-              </label>
-              <input
-                id="email"
-                name="email"
-                autoComplete="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@squad.dev"
-                className={inputCls}
-                required
-              />
-            </div>
-
-            <div>
-              <div className="flex items-baseline justify-between">
-                <label htmlFor="password" className={labelCls}>
-                  Password
-                </label>
-                {mode === "signin" && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthView("reset");
-                      setErrorMsg(null);
-                      setSuccessMsg(null);
-                      setResetSent(false);
-                    }}
-                    className="min-h-[44px] pr-1 text-xs text-text-secondary underline underline-offset-4 hover:text-text-primary"
-                  >
-                    Forgot password?
-                  </button>
-                )}
-              </div>
-              <div className="relative">
-                <input
-                  id="password"
-                  name="password"
-                  autoComplete={mode === "signin" ? "current-password" : "new-password"}
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 8 characters"
-                  className={cn(inputCls, "pr-16")}
-                  required
-                  minLength={8}
-                />
+                New here?{" "}
                 <button
                   type="button"
-                  onClick={() => setShowPassword((s) => !s)}
-                  aria-pressed={showPassword}
-                  className="absolute right-1 top-1/2 min-h-[44px] min-w-[44px] -translate-y-1/2 rounded-md px-2 text-xs font-medium text-text-secondary hover:text-text-primary"
+                  onClick={() => clearForMode("signup")}
+                  className="min-h-[44px] font-medium text-text-primary underline underline-offset-4 transition-colors hover:text-primary"
                 >
-                  {showPassword ? "Hide" : "Show"}
+                  Join
                 </button>
-              </div>
-            </div>
-
-            <Button
-              type="submit"
-              variant="primary"
-              size="full"
-              loading={loading}
-              className="min-h-[44px]"
-            >
-              {!loading && primaryLabel}
-            </Button>
-          </form>
-        </div>
-
-        <p className="mt-4 text-center text-xs leading-5 text-text-tertiary">
-          {mode === "signin" ? (
-            <>
-              New here?{" "}
-              <button
-                type="button"
-                onClick={() => setMode("signup")}
-                className="min-h-[44px] font-medium text-text-primary underline underline-offset-4"
-              >
-                Join
-              </button>
-            </>
-          ) : (
-            <>
-              Already have an account?{" "}
-              <button
-                type="button"
-                onClick={() => setMode("signin")}
-                className="min-h-[44px] font-medium text-text-primary underline underline-offset-4"
-              >
-                Sign in
-              </button>
-            </>
-          )}
-        </p>
+              </>
+            ) : (
+              <>
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => clearForMode("signin")}
+                  className="min-h-[44px] font-medium text-text-primary underline underline-offset-4 transition-colors hover:text-primary"
+                >
+                  Sign in
+                </button>
+              </>
+            )}
+          </p>
         </>
-        )}
-      </div>
-    </div>
+      )}
+
+      <p className="mt-6 text-center font-mono text-[11px] leading-4 text-text-tertiary md:mt-12">
+        <span>No LeetCode password stored</span>
+        <span aria-hidden className="mx-2 hidden sm:inline">
+          ·
+        </span>
+        <span className="block sm:inline">Works without LeetCode</span>
+      </p>
+    </AuthFrame>
   );
 }

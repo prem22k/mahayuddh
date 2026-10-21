@@ -1,8 +1,17 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import Link from "next/link";
-import { ExternalLink, ChevronRight } from "lucide-react";
+import {
+  ArrowLeftRight,
+  ExternalLink,
+  LifeBuoy,
+  Medal,
+  PenLine,
+  Play,
+  RotateCcw,
+  Swords,
+  TrendingUp,
+} from "lucide-react";
 import {
   getSquadMembers,
   getSquadName,
@@ -30,18 +39,33 @@ import { getProblemHistory, cacheDailyBattle } from "@/lib/data/dailyBattles";
 import { pickDailyBattle, formatDuration, ProblemHistory } from "@/lib/dailyBattle";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving, useSolvingTimer } from "@/components/providers/SolvingProvider";
-import { Pass, PassSerial } from "@/components/pass/Pass";
+import { Pass } from "@/components/pass/Pass";
 import { Button } from "@/components/ui/Button";
-import {
-  VerifiedBadge,
-  SelfReportedBadge,
-  DifficultyBadgeNew,
-  PatternChip,
-  StreakChip,
-} from "@/components/ui/Badge";
-import { AvatarStack } from "@/components/ui/Avatar";
-import { ProblemRow } from "@/components/ui/ProblemRow";
+import { VerifiedBadge, SelfReportedBadge } from "@/components/ui/Badge";
 import { Skeleton, ErrorCard } from "@/components/ui/States";
+import {
+  ARENA_PASS_CLASS,
+  ARENA_STUB_CLASS,
+  ArenaStub,
+  InProgressChip,
+  PassBadges,
+  PassTitle,
+  PassUnavailable,
+  UnavailableStub,
+  SquadSolvedLine,
+  WhyThisOne,
+} from "@/components/arena/ArenaPass";
+import { UpNextCard } from "@/components/arena/UpNextCard";
+import { SquadFeed } from "@/components/arena/SquadFeed";
+import {
+  ChallengeLoop,
+  GoalLoop,
+  RailHeading,
+  RailNote,
+  ReviewLoop,
+  StreakLoop,
+  SyncRow,
+} from "@/components/arena/WaitingOnYou";
 import { parseProblemStatusEvent, applyStatusChange } from "@/lib/problemStatusEvent";
 import { CustomList, ListProblem, TriState, FeedEvent } from "@/types/database";
 
@@ -61,14 +85,21 @@ function relDayLabel(iso: string): string {
   return `${days} days ago`;
 }
 
-function syncLabel(iso: string | null): string {
-  if (!iso) return "Not synced yet";
+/** "4m ago" for the rail's sync line; null when the account never synced. */
+function syncAgo(iso: string | null): string | null {
+  if (!iso) return null;
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (mins < 1) return "Synced just now";
-  if (mins < 60) return `Synced ${mins}m ago`;
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `Synced ${hrs}h ago`;
-  return `Synced ${Math.floor(hrs / 24)}d ago`;
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+/** True when the member logged a solve on the newest (today's) grid column. */
+function solvedTodayIn(grid: Record<string, boolean[]>, id: string): boolean {
+  const row = grid[id];
+  return row && row.length > 0 ? row[row.length - 1] === true : false;
 }
 
 export default function ArenaPage() {
@@ -109,10 +140,9 @@ export default function ArenaPage() {
   const [history, setHistory] = useState<Map<string, ProblemHistory> | null>(null);
   const [activity, setActivity] = useState<{ attempted: number; total: number } | null>(null);
   const [feed, setFeed] = useState<FeedEvent[]>([]);
-  const [reviewCount, setReviewCount] = useState(0);
+  const [reviewReasons, setReviewReasons] = useState<string[]>([]);
   const [goal, setGoal] = useState<GoalProgress | null>(null);
   const [lastSolveSec, setLastSolveSec] = useState<number | null>(null);
-  const [showReasons, setShowReasons] = useState(false);
 
   useEffect(() => {
     async function loadArenaData() {
@@ -135,7 +165,9 @@ export default function ArenaPage() {
         setTopics(await getCatalogTopicsSummary(userMap));
         if (user) {
           getIncomingSuggestionCount(user.id).then(setIncomingCount).catch(() => setIncomingCount(0));
-          getOpenReviews().then((r) => setReviewCount(r.length)).catch(() => setReviewCount(0));
+          getOpenReviews()
+            .then((r) => setReviewReasons(r.map((x) => x.reason)))
+            .catch(() => setReviewReasons([]));
         }
         if (profile?.active_squad_id) {
           getActiveGoalPattern(profile.active_squad_id)
@@ -239,7 +271,9 @@ export default function ArenaPage() {
 
   // Squad activity from problem_events: fastest times, solves, streak, grid.
   useEffect(() => {
-    const slug = (computed?.problem.title_slug ?? "coin-change-ii").toLowerCase();
+    // No pick (the problem list failed or is empty): the rail still needs the
+    // squad, streak and grid, so only the pick-specific reads are skipped.
+    const slug = computed?.problem.title_slug?.toLowerCase() ?? null;
     if (!squadId || squadMemberIds.length === 0) {
       setSquadMembers([]);
       setSquadName(null);
@@ -254,8 +288,8 @@ export default function ArenaPage() {
     Promise.all([
       getSquadMembers(squadId),
       getSquadName(squadId).catch(() => null),
-      getTodaySlugTimes(slug, squadMemberIds),
-      getSolvedToday(slug, squadMemberIds),
+      slug ? getTodaySlugTimes(slug, squadMemberIds) : Promise.resolve({} as Record<string, TodaySlugTime>),
+      slug ? getSolvedToday(slug, squadMemberIds) : Promise.resolve(new Set<string>()),
       getSquadStreak(squadMemberIds),
       getMemberWeekGrid(squadMemberIds, 7),
     ])
@@ -283,9 +317,8 @@ export default function ArenaPage() {
   // pick and never a Hard wall for a new user. Falls back to the easiest
   // overall when everything is solved, and to Two Sum before lists load.
   const upNextList = useMemo(() => {
-    const withoutPick = problems.filter(
-      (p) => p.title_slug.toLowerCase() !== (computed?.problem.title_slug ?? "coin-change-ii").toLowerCase()
-    );
+    const pick = computed?.problem.title_slug?.toLowerCase() ?? null;
+    const withoutPick = problems.filter((p) => p.title_slug.toLowerCase() !== pick);
     const unsolved = withoutPick.filter(
       (p) => statusMap[p.title_slug.toLowerCase()] !== "solved"
     );
@@ -365,15 +398,14 @@ export default function ArenaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [computed?.problem.title_slug, user?.id]);
 
-  // Resolved battle facts. Spec content is the fallback; real rows win.
-  const pickSlug = (computed?.problem.title_slug ?? "coin-change-ii").toLowerCase();
-  const pickTitle = computed?.problem.title ?? "Coin Change II";
-  const pickDifficulty = computed?.problem.difficulty ?? "Medium";
-  const pickPattern = computed?.problem.category ?? goalPattern ?? "Dynamic programming";
-  const pickNo =
-    computed?.problem.order_index != null ? String(computed.problem.order_index) : "518";
-  const reasons = computed?.why && computed.why.length > 0 ? computed.why : ["Unsolved in NeetCode 150", "Matches your squad goal pattern"];
-  const reasonCount = reasons.length;
+  // Resolved battle facts. Only real rows: with no pick the Pass renders an
+  // honest error/empty card instead (see pickUnavailable below).
+  const pickSlug = computed?.problem.title_slug?.toLowerCase() ?? "";
+  const pickTitle = computed?.problem.title ?? "";
+  const pickDifficulty = computed?.problem.difficulty ?? "";
+  const pickPattern = computed?.problem.category ?? "";
+  const pickNo = computed?.problem.order_index != null ? String(computed.problem.order_index) : "";
+  const reasons = computed?.why ?? [];
 
   const solvedToday = pickSlug ? statusMap[pickSlug] === "solved" : false;
 
@@ -392,7 +424,7 @@ export default function ArenaPage() {
       .catch(() => setLastSolveSec(null));
   }, [solvedToday, pickSlug]);
 
-  const isRunningThis = activeProblem?.slug?.toLowerCase() === pickSlug;
+  const isRunningThis = !!pickSlug && activeProblem?.slug?.toLowerCase() === pickSlug;
 
   const hasSquad = squadId !== null && squadMemberIds.length > 0;
   const memberById = useMemo(
@@ -412,49 +444,29 @@ export default function ArenaPage() {
   const fastestHandle = fastestEntry
     ? `@${memberById.get(fastestEntry.id)?.username ?? "teammate"}`
     : "";
-  const fastestLine =
+  const fastest =
     fastestEntry && fastestTimeLabel
-      ? `fastest ${fastestTimeLabel} by ${fastestHandle}`
-      : solvedCount > 0
-        ? `${solvedCount} solved today`
-        : "No solves yet today";
-  const solvedNames = squadMembers
-    .filter((m) => solvedTodayIds.has(m.id))
-    .map((m) => m.username);
-  const socialNames = !hasSquad
-    ? "Practicing solo — invite your squad to start the streak"
-    : solvedNames.length === 0
-      ? "No one in your squad has solved this yet"
-      : solvedNames.length === 1
-        ? `${solvedNames[0]} solved it`
-        : solvedNames.length === 2
-          ? `${solvedNames[0]} and ${solvedNames[1]} solved it`
-          : `${solvedNames[0]}, ${solvedNames[1]} and ${solvedNames.length - 2} more solved it`;
-  const avatarPeople = squadMembers
+      ? {
+          time: fastestTimeLabel,
+          handle: fastestHandle,
+          verified: todayTimes[fastestEntry.id]?.verified ?? false,
+        }
+      : null;
+  const solvers = squadMembers.filter((m) => solvedTodayIds.has(m.id));
+  // Avatars: today's solvers of the pick; the squad when nobody has yet.
+  const avatarPeople = (solvers.length > 0 ? solvers : squadMembers)
     .slice(0, 3)
     .map((m) => ({ name: m.username, src: m.avatar_url }));
-  const unsolvedLabels = squadMembers
-    .filter((m) => !solvedTodayIds.has(m.id))
-    .map((m) => (user && m.id === user.id ? "you" : m.username.split(" ")[0]));
-  const streakSub = activityError
-    ? "Couldn't load today's solves"
-    : !hasSquad
-      ? "Solo practice — no squad streak yet"
-      : squadStreak == null
-        ? "Loading streak…"
-        : unsolvedLabels.length === 0
-          ? `${solvedCount} of ${squadMemberIds.length} solved today · everyone solved`
-          : `${solvedCount} of ${squadMemberIds.length} solved today · ${unsolvedLabels.slice(0, 2).join(" and ")} haven't`;
-  const weekAllSolved = useMemo(
-    () =>
-      squadMemberIds.length === 0
-        ? []
-        : Array.from({ length: 7 }, (_, i) =>
-            squadMemberIds.every((id) => weekGrid[id]?.[i] ?? false)
-          ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [weekGrid, memberKey]
-  );
+  // Streak card reads the streak's own signal (any solve today, squad-local
+  // day) from the week grid, not today's pick.
+  const callerSolvedToday = user ? solvedTodayIn(weekGrid, user.id) : false;
+  const streakMembers = squadMembers.map((m) => ({
+    id: m.id,
+    name: m.username,
+    solved: solvedTodayIn(weekGrid, m.id),
+  }));
+  const streakAlive =
+    hasSquad && streakMembers.length > 0 && streakMembers.every((m) => m.solved);
   const rankedToday = useMemo(
     () =>
       Object.entries(todayTimes)
@@ -480,11 +492,9 @@ export default function ArenaPage() {
   const challengeTime = lastSolveSec != null ? formatDuration(lastSolveSec) : null;
   const revengeLabel =
     failedAttempt?.durationSec != null ? formatDuration(failedAttempt.durationSec) : null;
-  const revengeLine = !failedAttempt
-    ? null
-    : revengeLabel
-      ? `Revenge available · you stopped at ${revengeLabel}${failedAttempt.when ? ` · ${relDayLabel(failedAttempt.when)}` : ""}`
-      : `Revenge available${failedAttempt.when ? ` · last attempt ${relDayLabel(failedAttempt.when)}` : ""}`;
+  const revenge = failedAttempt
+    ? { time: revengeLabel, when: failedAttempt.when ? relDayLabel(failedAttempt.when) : null }
+    : null;
   const challengeDue =
     incomingChallenge?.dueAt != null
       ? new Date(incomingChallenge.dueAt).toLocaleDateString(undefined, { weekday: "short" })
@@ -496,11 +506,19 @@ export default function ArenaPage() {
   });
   const stubNow = new Date();
   const stubDate = `${String(stubNow.getDate()).padStart(2, "0")} ${stubNow.toLocaleDateString(undefined, { month: "short" }).toUpperCase()} ${stubNow.getFullYear()}`;
-  const stubSquad = squadName ? squadName.toUpperCase() : hasSquad ? "SQUAD" : "SOLO";
+  const reviewCount = reviewReasons.length;
+  // One per rail card that is actually waiting on the caller.
+  const openLoops = !incomingLoaded
+    ? null
+    : (incomingChallenge ? 1 : 0) +
+      (hasSquad && squadStreak != null && !callerSolvedToday ? 1 : 0) +
+      (goal && goal.remaining > 0 ? 1 : 0) +
+      (reviewCount > 0 ? 1 : 0);
 
   const handleStart = () => {
+    if (!computed) return;
     startSolving({
-      id: computed?.problem.order_index ?? 518,
+      id: computed.problem.order_index,
       title: pickTitle,
       slug: pickSlug,
       difficulty: pickDifficulty,
@@ -511,437 +529,396 @@ export default function ArenaPage() {
 
   if (loading) {
     return (
-      <div className="space-y-8 select-none">
+      <div className="flex flex-col gap-6 select-none md:gap-8">
         <div>
           <Skeleton className="h-9 w-40" />
           <Skeleton className="mt-2 h-5 w-72" />
         </div>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
-          <div className="space-y-6">
-            <div className="pass">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
+          <div className="space-y-8 lg:col-span-8">
+            <div className={`pass ${ARENA_PASS_CLASS}`}>
               <div className="pass-body space-y-4">
-                <Skeleton className="h-8 w-2/3" />
+                <Skeleton className="h-6 w-64" />
+                <Skeleton className="h-9 w-2/3" />
                 <Skeleton className="h-5 w-1/2" />
-                <Skeleton className="h-5 w-3/4" />
-                <Skeleton className="h-12 w-56" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-12 w-48" />
               </div>
-              <div className="pass-stub">
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-4 w-16" />
+              <div className="pass-stub justify-between p-4">
+                <div className="space-y-3">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-8 w-20" />
+                  <Skeleton className="h-8 w-24" />
+                </div>
+                <Skeleton className="h-8 w-28" />
               </div>
             </div>
-            <Skeleton className="h-28 w-full" />
-            <Skeleton className="h-40 w-full" />
+            <Skeleton className="h-36 w-full rounded-lg" />
+            <Skeleton className="h-44 w-full rounded-lg" />
           </div>
-          <div className="space-y-3">
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
+          <div className="space-y-3 lg:col-span-4">
+            <Skeleton className="h-7 w-36" />
+            <Skeleton className="h-[68px] w-full rounded-lg" />
+            <Skeleton className="h-28 w-full rounded-lg" />
+            <Skeleton className="h-24 w-full rounded-lg" />
+            <Skeleton className="h-[68px] w-full rounded-lg" />
           </div>
         </div>
       </div>
     );
   }
 
+  const stub = (
+    <ArenaStub
+      serial={pickNo}
+      expiry={stubDate}
+      faction={hasSquad ? squadName : null}
+      squad={
+        hasSquad && squadMembers.length > 0
+          ? {
+              solved: solvedCount,
+              total: squadMemberIds.length,
+              people: squadMembers.map((m) => ({
+                name: m.username,
+                done: solvedTodayIds.has(m.id),
+              })),
+            }
+          : null
+      }
+    />
+  );
+
   return (
-    <div className="space-y-8 select-none">
-      <div>
-        <h1 className="type-display-md text-text-primary">Arena</h1>
-        <p className="mt-1 text-sm leading-6 text-text-secondary">
-          {todayLabel} · New pick at midnight
+    <div className="flex flex-col gap-6 select-none md:gap-8">
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="type-display-md text-text-primary">Arena</h1>
+          {hasSquad && squadName && (
+            <span className="flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-text-tertiary md:hidden">
+              <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <span className="truncate">{squadName}</span>
+            </span>
+          )}
+        </div>
+        <p className="text-[13px] leading-5 text-text-secondary md:text-[15px] md:leading-6">
+          {todayLabel} · <span className="max-md:text-text-tertiary">New pick at midnight</span>
         </p>
       </div>
 
-      {loadError && (
+      {/* With no pick the Pass itself carries the error; otherwise a later
+          step of the load failed and the banner stays. */}
+      {loadError && computed && (
         <ErrorCard message={loadError} onRetry={handleRetryLoad} />
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
-        {/* Focal column */}
-        <div className="min-w-0 space-y-6">
-          {solvedToday ? (
+      {/* Phone/tablet order: pass, waiting on you, up next, squad. Desktop: a
+          focal column with the rail beside it. */}
+      <div className="flex flex-col gap-6 lg:grid lg:grid-cols-12 lg:items-start lg:gap-8">
+        <div className="contents lg:col-span-8 lg:flex lg:min-w-0 lg:flex-col lg:gap-8">
+          {!computed ? (
             <Pass
+              className={`order-1 ${ARENA_PASS_CLASS}`}
+              stubClassName={ARENA_STUB_CLASS}
               body={
-                <div className="space-y-4">
-                  <h2 className="type-display-md text-text-primary">{pickTitle}</h2>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <DifficultyBadgeNew difficulty={pickDifficulty} />
-                    <PatternChip label={pickPattern} href={`/patterns/${encodeURIComponent(pickPattern)}`} />
-                    <span className="font-mono text-sm text-text-tertiary tnum">No. {pickNo}</span>
+                loadError ? (
+                  <PassUnavailable
+                    title="Today's pick couldn't load"
+                    body="The problem list didn't come through, so there's nothing to pick from yet. Check your connection and retry."
+                    action={
+                      <Button variant="secondary" className="h-11 border border-hairline" onClick={handleRetryLoad}>
+                        <RotateCcw className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+                        Retry
+                      </Button>
+                    }
+                  />
+                ) : (
+                  <PassUnavailable
+                    title="No pick today"
+                    body="Your sheets have no problems to pick from yet."
+                    action={
+                      <Button
+                        variant="secondary"
+                        className="h-11 border border-hairline"
+                        onClick={() => {
+                          window.location.href = "/practice";
+                        }}
+                      >
+                        Open Practice
+                      </Button>
+                    }
+                  />
+                )
+              }
+              stub={<UnavailableStub expiry={stubDate} />}
+            />
+          ) : solvedToday ? (
+            <Pass
+              className={`order-1 ${ARENA_PASS_CLASS}`}
+              stubClassName={ARENA_STUB_CLASS}
+              body={
+                <div className="flex flex-col gap-5 md:gap-6">
+                  <div className="flex flex-col gap-3">
+                    <PassBadges
+                      difficulty={pickDifficulty}
+                      pattern={pickPattern}
+                      no={pickNo}
+                      leading={callerVerified ? <VerifiedBadge /> : <SelfReportedBadge />}
+                    />
+                    <PassTitle>{pickTitle}</PassTitle>
+                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                      <span className="type-mono-display text-text-primary tnum max-md:text-[40px] max-md:leading-10">
+                        {heroTime}
+                      </span>
+                      <span
+                        className={
+                          callerRank > 0
+                            ? "inline-flex items-center gap-1 text-xs font-medium text-verified"
+                            : "text-xs font-medium text-text-secondary"
+                        }
+                      >
+                        {callerRank > 0 && <TrendingUp className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />}
+                        {rankLine}
+                      </span>
+                    </div>
                   </div>
-                  <div className="type-mono-display text-text-primary tnum">
-                    {heroTime}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {callerVerified ? <VerifiedBadge /> : <SelfReportedBadge />}
-                    <span className="text-sm leading-6 text-text-secondary">
-                      {rankLine}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <div className="flex flex-wrap items-center gap-2 md:gap-3">
                     <Button
                       variant="secondary"
-                      className="min-h-[44px]"
+                      className="h-11 border border-hairline"
                       onClick={() => {
                         window.location.href = `/practice/${pickSlug}#explain`;
                       }}
                     >
+                      <PenLine className="h-4 w-4" strokeWidth={1.75} aria-hidden />
                       Explain your approach
                     </Button>
                     <Button
                       variant="secondary"
-                      className="min-h-[44px]"
+                      className="h-11 border border-hairline"
                       onClick={() => {
                         window.location.href = `/challenges?problem=${pickSlug}&title=${encodeURIComponent(pickTitle)}`;
                       }}
                     >
+                      <Medal className="h-4 w-4" strokeWidth={1.75} aria-hidden />
                       {challengeTime ? `Challenge a teammate to beat ${challengeTime}` : "Challenge a teammate"}
                     </Button>
                     <Button
                       variant="ghost"
-                      className="min-h-[44px]"
+                      className="h-11"
                       onClick={() => {
                         window.location.href = `/practice/${pickSlug}/compare`;
                       }}
                     >
+                      <ArrowLeftRight className="h-4 w-4" strokeWidth={1.75} aria-hidden />
                       Compare with your squad
                     </Button>
                   </div>
                 </div>
               }
-              stub={
-                <>
-                  <PassSerial>NO. {pickNo}</PassSerial>
-                  <PassSerial>{stubDate}</PassSerial>
-                  <PassSerial>{stubSquad}</PassSerial>
-                  <PassSerial>{hasSquad ? `${solvedCount} OF ${squadMemberIds.length} SOLVED` : "SOLO PRACTICE"}</PassSerial>
-                </>
+              stub={stub}
+            />
+          ) : isRunningThis ? (
+            <Pass
+              className={`order-1 ${ARENA_PASS_CLASS}`}
+              stubClassName={ARENA_STUB_CLASS}
+              body={
+                <div className="flex flex-col gap-5 md:gap-6">
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <InProgressChip clock={fmtClock(seconds)} />
+                      <span className="font-mono text-xs font-medium tracking-[0.06em] text-text-tertiary tnum">
+                        No. {pickNo}
+                      </span>
+                    </div>
+                    <PassTitle>{pickTitle}</PassTitle>
+                    {fastest && (
+                      <p className="rounded-md border border-hairline bg-well p-3 font-mono text-xs font-medium tracking-[0.06em] text-text-tertiary">
+                        Benchmark to beat:{" "}
+                        <span className={fastest.verified ? "text-verified" : "text-text-primary"}>
+                          {fastest.time}
+                        </span>{" "}
+                        ({fastest.handle})
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      className="w-full font-semibold md:w-auto"
+                      onClick={() => {
+                        window.location.href = `/practice/${pickSlug}`;
+                      }}
+                    >
+                      <Play className="h-4 w-4" strokeWidth={2} aria-hidden />
+                      Resume
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      className="h-12 w-full border border-hairline md:w-auto"
+                      onClick={() => {
+                        window.location.href = "/stuck";
+                      }}
+                    >
+                      <LifeBuoy className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+                      Stuck?
+                    </Button>
+                  </div>
+                </div>
               }
+              stub={stub}
             />
           ) : (
             <Pass
+              className={`order-1 ${ARENA_PASS_CLASS}`}
+              stubClassName={ARENA_STUB_CLASS}
               body={
-                <div className="space-y-4">
-                  <h2 className="type-display-md text-text-primary">{pickTitle}</h2>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <DifficultyBadgeNew difficulty={pickDifficulty} />
-                    <PatternChip label={pickPattern} href={`/patterns/${encodeURIComponent(pickPattern)}`} />
-                    <span className="font-mono text-sm text-text-tertiary tnum">No. {pickNo}</span>
+                <div className="flex flex-col gap-4 md:gap-6">
+                  <div className="flex flex-col gap-3">
+                    <PassBadges difficulty={pickDifficulty} pattern={pickPattern} no={pickNo} />
+                    <PassTitle>{pickTitle}</PassTitle>
+                    <WhyThisOne reasons={reasons} />
                   </div>
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => setShowReasons((v) => !v)}
-                      aria-expanded={showReasons}
-                      className="min-h-[44px] text-left text-sm leading-6 text-text-secondary"
+                  <SquadSolvedLine
+                    hasSquad={hasSquad}
+                    avatars={avatarPeople}
+                    solverNames={solvers.map((m) => m.username)}
+                    fastest={fastest}
+                  />
+                  <div className="flex flex-col gap-1 pt-1 md:flex-row md:items-center md:gap-3">
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      className="w-full font-semibold md:w-auto"
+                      onClick={handleStart}
                     >
-                      Why this one · {reasonCount} {reasonCount === 1 ? "reason" : "reasons"}
-                      {showReasons ? " · hide" : ""}
-                    </button>
-                    {showReasons && (
-                      <ul className="mt-1 space-y-1">
-                        {reasons.map((r) => (
-                          <li key={r} className="flex gap-2 text-sm leading-6 text-text-secondary">
-                            <span aria-hidden>·</span>
-                            <span>{r}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                      <Swords className="h-[18px] w-[18px]" strokeWidth={1.75} aria-hidden />
+                      Start battle
+                    </Button>
+                    <a
+                      href={`https://leetcode.com/problems/${pickSlug}/`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex h-11 items-center justify-center gap-1.5 rounded-md px-4 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:h-12 md:text-sm"
+                    >
+                      Open on LeetCode
+                      <ExternalLink className="h-4 w-4 max-md:h-3.5 max-md:w-3.5 max-md:text-text-tertiary" strokeWidth={1.5} aria-hidden />
+                    </a>
                   </div>
-                  <div className="flex items-center gap-3">
-                    {avatarPeople.length > 0 && <AvatarStack people={avatarPeople} />}
-                    <p className="text-sm leading-6 text-text-secondary">
-                      {socialNames} · {fastestLine}
-                    </p>
-                  </div>
-                  {isRunningThis ? (
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="font-mono text-sm text-text-primary tnum">
-                        In progress · {fmtClock(seconds)}
-                      </span>
-                      <Button
-                        variant="primary"
-                        size="lg"
-                        className="min-h-[44px]"
-                        onClick={() => {
-                          window.location.href = `/practice/${pickSlug}`;
-                        }}
-                      >
-                        Resume
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        className="min-h-[44px]"
-                        onClick={() => {
-                          window.location.href = "/stuck";
-                        }}
-                      >
-                        Stuck?
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button variant="primary" size="lg" className="min-h-[44px]" onClick={handleStart}>
-                        Start battle
-                      </Button>
-                      <a
-                        href={`https://leetcode.com/problems/${pickSlug}/`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex min-h-[44px] items-center gap-2 rounded-md px-3 text-sm font-medium leading-5 text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary"
-                      >
-                        Open on LeetCode
-                        <ExternalLink className="h-4 w-4" strokeWidth={1.5} />
-                      </a>
-                    </div>
-                  )}
                 </div>
               }
-              stub={
-                <>
-                  <PassSerial>NO. {pickNo}</PassSerial>
-                  <PassSerial>{stubDate}</PassSerial>
-                  <PassSerial>{stubSquad}</PassSerial>
-                  <PassSerial>{hasSquad ? `${solvedCount} OF ${squadMemberIds.length} SOLVED` : "SOLO PRACTICE"}</PassSerial>
-                </>
-              }
+              stub={stub}
             />
           )}
 
-          {/* Up next */}
-          <section className="card space-y-3" aria-label="Up next">
-            <h2 className="text-lg font-semibold leading-7 text-text-primary">Up next</h2>
-            <ProblemRow
-              href={`/practice/${upNextSlug}`}
-              title={upNextTitle}
-              number={upNextNo}
-              difficulty={upNextDifficulty}
-              pattern={upNextPattern}
-              status={failedAttempt ? "attempted" : "none"}
-              socialHint={failedAttempt ? "Revenge available" : undefined}
-              bestTime={revengeLabel ?? undefined}
-            />
-            <p className="text-sm leading-6 text-text-secondary">
-              {revengeLine ?? `Easiest unsolved starter${upNextList.length > 1 ? " — skip any time" : ""}.`}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="secondary"
-                className="min-h-[44px]"
-                onClick={() =>
-                  startSolving({
-                    id: upNext?.order_index ?? 1,
-                    title: upNextTitle,
-                    slug: upNextSlug,
-                    difficulty: upNextDifficulty,
-                    category: upNextPattern,
-                  })
-                }
-              >
-                {failedAttempt ? "Take revenge" : "Start battle"}
-              </Button>
-              {upNextList.length > 1 && (
-                <Button
-                  variant="ghost"
-                  className="min-h-[44px]"
-                  onClick={() => setUpNextIndex((i) => i + 1)}
-                >
-                  Not this
-                </Button>
-              )}
-            </div>
-          </section>
+          <UpNextCard
+            className="order-3"
+            slug={upNextSlug}
+            title={upNextTitle}
+            no={upNextNo}
+            difficulty={upNextDifficulty}
+            pattern={upNextPattern}
+            revenge={revenge}
+            hint={`Easiest unsolved starter${upNextList.length > 1 ? " — skip any time" : ""}.`}
+            canSkip={upNextList.length > 1}
+            onStart={() =>
+              startSolving({
+                id: upNext?.order_index ?? 1,
+                title: upNextTitle,
+                slug: upNextSlug,
+                difficulty: upNextDifficulty,
+                category: upNextPattern,
+              })
+            }
+            onSkip={() => setUpNextIndex((i) => i + 1)}
+          />
 
-          {/* From your squad */}
-          <section className="space-y-3" aria-label="From your squad">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold leading-7 text-text-primary">From your squad</h2>
-              <Link
-                href="/feed"
-                className="inline-flex min-h-[44px] items-center text-sm font-medium leading-5 text-text-secondary hover:text-text-primary"
-              >
-                See all in Feed
-              </Link>
-            </div>
-            <div className="card space-y-3">
-              {feed.length > 0 ? (
-                feed.slice(0, 3).map((e) => (
-                  <div key={e.id} className="flex items-center gap-3 text-sm leading-6">
-                    <span className="min-w-0 flex-1 truncate text-text-secondary">
-                      <span className="font-medium text-text-primary">
-                        @{e.actor_profile?.username ?? "someone"}
-                      </span>{" "}
-                      {e.event_type === "solve"
-                        ? `solved ${(e.metadata as { problem_slug?: string })?.problem_slug ?? "a problem"}`
-                        : e.event_type.replace(/_/g, " ")}
-                    </span>
-                    <span className="shrink-0 text-xs leading-4 text-text-tertiary">
-                      {e.created_at ? new Date(e.created_at).toLocaleDateString() : ""}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <>
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium leading-5 text-text-primary">Nothing here yet</p>
-                    <p className="text-sm leading-6 text-text-secondary">
-                      When your squad solves or explains, it shows up here.
-                    </p>
-                  </div>
-                </>
-              )}
-            </div>
-          </section>
+          <SquadFeed className="order-4" events={feed.slice(0, 3)} />
         </div>
 
         {/* Rail */}
-        <aside className="space-y-3" aria-label="Waiting on you">
-          <h2 className="text-lg font-semibold leading-7 text-text-primary">Waiting on you</h2>
+        <aside className="order-2 flex min-w-0 flex-col gap-2.5 lg:col-span-4 lg:gap-3" aria-label="Waiting on you">
+          <RailHeading openLoops={openLoops} />
 
-          {activityError && (
-            <ErrorCard message={activityError} onRetry={() => setActivityRefreshKey((k) => k + 1)} />
-          )}
-
-          {incomingChallenge ? (
-            <Link
-              href="/challenges"
-              className="card-interactive flex min-h-[44px] items-center gap-3 rounded-xl border border-hairline bg-surface px-4 py-3"
-            >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-overlay text-xs font-medium text-text-secondary">
-                {incomingChallenge.fromName.charAt(0).toUpperCase()}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium leading-5 text-text-primary">
-                  {incomingChallenge.fromName} challenged you
-                </span>
-                <span className="block truncate text-xs leading-4 text-text-tertiary">
-                  {incomingChallenge.problemTitle} · {incomingChallenge.difficulty}
-                  {incomingChallenge.beatSec != null && formatDuration(incomingChallenge.beatSec)
-                    ? ` · beat ${formatDuration(incomingChallenge.beatSec)}`
-                    : ""}
-                  {challengeDue ? ` · due ${challengeDue}` : ""}
-                  {incomingCount > 1 ? ` · ${incomingCount} waiting` : ""}
-                </span>
-              </span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-text-tertiary" strokeWidth={1.5} />
-            </Link>
-          ) : incomingLoaded ? (
-            <div className="card px-4 py-3">
-              <p className="text-sm leading-6 text-text-secondary">
-                No open challenges. Enjoy the calm.
-              </p>
-            </div>
-          ) : (
-            <Skeleton className="h-16 w-full" />
-          )}
-
-          <Link
-            href="/squad"
-            className="card-interactive block min-h-[44px] rounded-xl border border-hairline bg-surface px-4 py-3"
-          >
-            <span className="flex items-center gap-3">
-              {squadStreak ? (
-                <StreakChip
-                  count={squadStreak.days}
-                  alive={hasSquad && unsolvedLabels.length === 0}
-                />
-              ) : (
-                <span className="flex h-7 items-center text-xs leading-4 text-text-tertiary">…</span>
-              )}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium leading-5 text-text-primary">
-                  Squad streak · {squadStreak ? `${squadStreak.days} days` : "…"}
-                </span>
-                <span className="block truncate text-xs leading-4 text-text-tertiary">
-                  {streakSub}
-                </span>
-              </span>
-            </span>
-            {weekAllSolved.length > 0 && (
-              <span className="mt-2 flex items-center gap-1.5" aria-label="Days this week the whole squad solved">
-                {weekAllSolved.map((done, i) => (
-                  <span
-                    key={i}
-                    title={done ? "Whole squad solved" : "Not yet"}
-                    className={done ? "h-2 w-2 rounded-full bg-verified" : "h-2 w-2 rounded-full border border-hairline-strong"}
-                  />
-                ))}
-              </span>
+          <div className="flex flex-col gap-2 lg:gap-3">
+            {activityError && (
+              <ErrorCard message={activityError} onRetry={() => setActivityRefreshKey((k) => k + 1)} />
             )}
-          </Link>
 
-          <Link
-            href="/squad"
-            className="card-interactive block min-h-[44px] rounded-xl border border-hairline bg-surface px-4 py-3"
-          >
-            {goal ? (
-              <>
-                <span className="block truncate text-sm font-medium leading-5 text-text-primary">
-                  {goal.goal.title}
-                </span>
-                <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-well">
-                  <span
-                    className="block h-full rounded-full bg-pattern"
-                    style={{ width: `${Math.min(100, goal.pct)}%` }}
-                  />
-                </span>
-                <span className="mt-1.5 block text-xs leading-4 text-text-tertiary">
-                  {goal.done} of {goal.target}
-                  {goal.daysRemaining != null ? ` · ${goal.daysRemaining} days left` : ""}
-                  {` · ${goal.participants} of ${goal.memberCount} contributed`}
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="block truncate text-sm font-medium leading-5 text-text-primary">
-                  No active goal
-                </span>
-                <span className="mt-1.5 block text-xs leading-4 text-text-tertiary">
-                  Set one in the Squad hub to give the week a target.
-                </span>
-              </>
+            <ChallengeLoop
+              loaded={incomingLoaded}
+              waiting={incomingCount}
+              challenge={
+                incomingChallenge
+                  ? {
+                      fromName: incomingChallenge.fromName,
+                      fromAvatar: incomingChallenge.fromAvatar,
+                      problemTitle: incomingChallenge.problemTitle,
+                      difficulty: incomingChallenge.difficulty,
+                      beat:
+                        incomingChallenge.beatSec != null
+                          ? formatDuration(incomingChallenge.beatSec)
+                          : null,
+                      due: challengeDue,
+                    }
+                  : null
+              }
+            />
+
+            <StreakLoop
+              hasSquad={hasSquad}
+              days={squadStreak ? squadStreak.days : null}
+              alive={streakAlive}
+              error={activityError != null}
+              members={streakMembers}
+              callerId={user?.id ?? null}
+              callerSolved={callerSolvedToday}
+            />
+
+            <GoalLoop
+              goal={
+                goal
+                  ? {
+                      title: goal.goal.title,
+                      done: goal.done,
+                      target: goal.target,
+                      pct: goal.pct,
+                      daysRemaining: goal.daysRemaining,
+                      participants: goal.participants,
+                      memberCount: goal.memberCount,
+                    }
+                  : null
+              }
+            />
+
+            <ReviewLoop reasons={reviewReasons} />
+
+            <SyncRow syncedAgo={syncAgo(profile?.last_synced_at ?? null)} />
+
+            {!hasSquad && (
+              <RailNote
+                title="Practicing solo"
+                body="Invite your people to start the streak."
+                action={
+                  <Button variant="ghost" className="min-h-[44px] px-0 hover:bg-transparent" onClick={() => (window.location.href = "/squad")}>
+                    Invite
+                  </Button>
+                }
+              />
             )}
-          </Link>
-
-          <Link
-            href="/practice"
-            className="card-interactive flex min-h-[44px] items-center gap-3 rounded-xl border border-hairline bg-surface px-4 py-3"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium leading-5 text-text-primary">
-                {reviewCount > 0 ? `${reviewCount} problems due for review` : "Nothing due for review"}
-              </span>
-              <span className="block truncate text-xs leading-4 text-text-tertiary">
-                {reviewCount > 0 ? "Open Practice to clear them" : "You're caught up"}
-              </span>
-            </span>
-            <ChevronRight className="h-4 w-4 shrink-0 text-text-tertiary" strokeWidth={1.5} />
-          </Link>
-
-          <p className="px-1 text-xs leading-4 text-text-tertiary">{syncLabel(profile?.last_synced_at ?? null)}</p>
-          {!hasSquad && (
-            <div className="card space-y-2">
-              <p className="text-sm font-medium leading-5 text-text-primary">Practicing solo</p>
-              <p className="text-sm leading-6 text-text-secondary">Invite your people to start the streak.</p>
-              <Button variant="ghost" className="min-h-[44px]" onClick={() => (window.location.href = "/squad")}>
-                Invite
-              </Button>
-            </div>
-          )}
-          {!profile?.last_synced_at && (
-            <div className="card space-y-2">
-              <p className="text-sm leading-6 text-text-secondary">Connect LeetCode to verify your solves.</p>
-              <Button variant="ghost" className="min-h-[44px]" onClick={() => (window.location.href = "/squad")}>
-                Connect LeetCode
-              </Button>
-            </div>
-          )}
+            {!profile?.last_synced_at && (
+              <RailNote
+                body="Connect LeetCode to verify your solves."
+                action={
+                  <Button variant="ghost" className="min-h-[44px] px-0 hover:bg-transparent" onClick={() => (window.location.href = "/squad")}>
+                    Connect LeetCode
+                  </Button>
+                }
+              />
+            )}
+          </div>
         </aside>
       </div>
-
     </div>
   );
 }

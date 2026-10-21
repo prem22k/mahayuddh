@@ -2,12 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { WifiOff, RotateCw, ArrowLeft, Server } from "lucide-react";
+import { WifiOff, RefreshCw, ArrowLeft, Server, Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Wordmark } from "@/components/landing/Brand";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { cn } from "@/lib/utils";
 
 const RETRY_DELAYS = [5, 10, 20];
 
 export default function OfflinePage() {
+  // Same test AppShell uses: signed in, this renders inside the shell (which
+  // already carries the brand), so the page's own top bar would be a second one.
+  const { user } = useAuth();
   const backupUrl = process.env.NEXT_PUBLIC_BACKUP_URL;
   const [attempts, setAttempts] = useState(0);
   const [countdown, setCountdown] = useState(RETRY_DELAYS[0]);
@@ -59,65 +65,92 @@ export default function OfflinePage() {
   const showBackup = attempts >= 2 && !!backupUrl;
 
   return (
-    <div className="min-h-screen bg-canvas text-text-primary">
-      <header className="flex h-14 items-center px-4 md:px-10">
-        <Link href="/welcome" className="font-display text-lg font-semibold tracking-tight">
-          Mahayuddh
-        </Link>
-      </header>
-      <main className="mx-auto flex min-h-[70vh] w-full max-w-reading flex-col items-center justify-center px-4 text-center">
-        <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-hairline bg-surface text-text-secondary">
-          <WifiOff className="h-5 w-5" strokeWidth={1.5} />
-        </span>
-        <h1 className="mt-5 font-display text-2xl font-semibold leading-[29px] tracking-tight">
-          You&apos;re offline
-        </h1>
-        {primaryBack ? (
-          <p className="mt-2 max-w-sm text-sm leading-6 text-text-secondary">
-            The primary server is back. Reload to continue where you left off.
-          </p>
-        ) : (
-          <p className="mt-2 max-w-sm text-sm leading-6 text-text-secondary">
-            This page needs a connection. A battle timer that&apos;s already running keeps
-            counting on this device. Retrying the primary server in {countdown}s
-            (attempt {attempts + 1}).
-          </p>
-        )}
-        <div className="mt-6 flex w-full max-w-xs flex-col gap-2">
+    <div className={cn("flex flex-col bg-canvas text-text-primary", user ? "min-h-[70vh]" : "min-h-screen")}>
+      {!user && (
+        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between border-b border-hairline bg-canvas/80 px-4 backdrop-blur-sm sm:px-8">
+          <Wordmark />
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-2.5 py-1 font-mono text-xs font-medium text-text-tertiary">
+            <span
+              aria-hidden
+              className={cn("h-1.5 w-1.5 rounded-full", primaryBack ? "bg-verified" : "bg-text-disabled")}
+            />
+            {primaryBack ? "Server back" : "Offline"}
+          </span>
+        </header>
+      )}
+      <div className="flex flex-1 items-center justify-center px-4 py-12 sm:py-20">
+        <div className="mx-auto flex w-full max-w-[420px] flex-col items-center text-center">
+          <div className="relative mb-6">
+            <span className="flex h-16 w-16 items-center justify-center rounded-lg border border-hairline bg-surface text-text-secondary shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <WifiOff className="h-7 w-7" strokeWidth={1.5} aria-hidden />
+            </span>
+            <span aria-hidden className="absolute -right-1 -top-1 flex h-3 w-3">
+              {!primaryBack && (
+                <span className="absolute inline-flex h-full w-full rounded-full bg-error opacity-40 motion-safe:animate-ping" />
+              )}
+              <span
+                className={cn(
+                  "relative inline-flex h-3 w-3 rounded-full border-2 border-canvas",
+                  primaryBack ? "bg-verified" : "bg-error"
+                )}
+              />
+            </span>
+          </div>
+          <h1 className="mb-3 font-display text-2xl font-semibold leading-tight tracking-[-0.015em] text-text-primary sm:text-[26px]">
+            You&apos;re offline
+          </h1>
           {primaryBack ? (
-            <Button variant="primary" size="lg" className="w-full min-h-[44px]" onClick={() => window.location.reload()}>
-              <RotateCw className="h-4 w-4" strokeWidth={1.5} />
-              Back to the primary server
-            </Button>
+            <p className="mb-8 max-w-[360px] text-[15px] leading-6 text-text-secondary">
+              The primary server is back. Reload to continue where you left off.
+            </p>
           ) : (
-            <Button variant="primary" size="lg" className="w-full min-h-[44px]" onClick={() => window.location.reload()}>
-              <RotateCw className="h-4 w-4" strokeWidth={1.5} />
-              Try again
+            <p className="mb-8 max-w-[360px] text-[15px] leading-6 text-text-secondary">
+              This page needs a connection. A battle timer that&apos;s already running keeps
+              counting on this device.
+            </p>
+          )}
+          <div className="flex w-full flex-col items-stretch gap-3">
+            <Button variant="primary" size="lg" className="h-11 w-full" onClick={() => window.location.reload()}>
+              <RefreshCw className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+              {primaryBack ? "Back to the primary server" : "Try again"}
             </Button>
-          )}
-          {showBackup && (
-            <div className="flex flex-col gap-1">
-              <a
-                href={backupUrl}
-                className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-md bg-surface-overlay px-3 text-sm font-medium text-text-primary transition-colors hover:brightness-110"
-              >
-                <Server className="h-4 w-4" strokeWidth={1.5} />
-                Open backup server
-              </a>
-              <p className="text-xs leading-5 text-text-tertiary">
-                The backup needs about a minute to wake up, and you will need to sign in again.
-              </p>
-            </div>
-          )}
-          <Link
-            href="/home"
-            className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary"
-          >
-            <ArrowLeft className="h-4 w-4" strokeWidth={1.5} />
-            Back to Arena
-          </Link>
+            {showBackup && (
+              <div className="flex flex-col gap-1.5">
+                <a
+                  href={backupUrl}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-hairline bg-surface-overlay px-4 text-sm font-medium text-text-primary transition-colors hover:bg-[#272830]"
+                >
+                  <Server className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+                  Open backup server
+                </a>
+                <p className="text-xs leading-5 text-text-tertiary">
+                  The backup needs about a minute to wake up, and you will need to sign in again.
+                </p>
+              </div>
+            )}
+            <Link
+              href="/home"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-md px-4 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary"
+            >
+              <ArrowLeft className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+              Back to Arena
+            </Link>
+          </div>
+          <p className="mt-10 flex w-full items-center justify-center gap-2 border-t border-hairline pt-6 font-mono text-xs text-text-tertiary tnum">
+            {primaryBack ? (
+              <>
+                <Check className="h-3.5 w-3.5 text-verified" strokeWidth={1.5} aria-hidden />
+                Primary server is reachable
+              </>
+            ) : (
+              <>
+                <Server className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} aria-hidden />
+                Retrying the primary server in {countdown}s · attempt {attempts + 1}
+              </>
+            )}
+          </p>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

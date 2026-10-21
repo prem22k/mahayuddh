@@ -3,9 +3,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Play, Check, Link2, ExternalLink } from "lucide-react";
+import { Swords, Check, Link2, Users, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { difficultyBadgeClass } from "@/components/ui/DifficultyBadge";
+import { DifficultyBadgeNew, PatternChip } from "@/components/ui/Badge";
 import { copyText } from "@/lib/clipboard";
 import { track } from "@/lib/analytics";
 import { useSolving } from "@/components/providers/SolvingProvider";
@@ -25,6 +25,10 @@ function isFull(card: Card): card is BattleCardFull {
 function isPublic(card: Card): card is BattleCardPublic {
   return "hasSharedApproach" in card;
 }
+
+/** Quiet bordered action: the page's one gold button lives elsewhere. */
+const actionCls =
+  "inline-flex h-11 items-center gap-1.5 rounded-md border border-hairline bg-surface-raised px-3 text-xs font-medium leading-4 text-text-primary transition-colors hover:border-hairline-strong hover:bg-surface-overlay md:h-9";
 
 /**
  * BATTLE CARD (Step 16, Bible §7).
@@ -88,20 +92,20 @@ export function BattleCard({
 
   if (loading) {
     return (
-      <div className="rounded-xl border border-hairline bg-surface-overlay p-5">
-        <div className="h-3 w-24 rounded-full bg-surface-overlay animate-pulse" />
-        <div className="mt-3 h-6 w-48 rounded-full bg-surface-overlay animate-pulse" />
+      <div className="rounded-lg border border-hairline bg-surface p-4 md:p-5" aria-hidden>
+        <div className="skeleton h-3 w-24" />
+        <div className="skeleton mt-3 h-6 w-48" />
       </div>
     );
   }
 
   if (error || !card) {
     return (
-      <div role="alert" className="rounded-xl border border-error/30 bg-error-tint p-5 space-y-3">
-        <p className="text-xs text-error">{error ?? "Card unavailable."}</p>
+      <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-error/30 bg-error-tint p-4">
+        <p className="text-sm leading-6 text-error">{error ?? "Card unavailable."}</p>
         <button
           onClick={load}
-          className="px-4 py-1.5 rounded-full bg-error/15 hover:bg-error/25 border border-error/30 text-error text-xs font-bold cursor-pointer"
+          className="inline-flex h-11 items-center rounded-md border border-error/30 bg-error/10 px-3 text-xs font-medium text-error transition-colors hover:bg-error/20 md:h-9"
         >
           Retry
         </button>
@@ -123,52 +127,43 @@ export function BattleCard({
     typeof window !== "undefined" ? `${window.location.origin}/b/${battleId}` : `/b/${battleId}`;
 
   return (
-    <div className="rounded-xl border border-hairline bg-surface p-5 space-y-4">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+    <div className="relative flex flex-col gap-4 overflow-hidden rounded-lg border border-hairline bg-surface p-4 md:p-5">
+      <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-edge-highlight" aria-hidden />
+
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            {card.difficulty && (
-              <span
-                className={cn(
-                  "px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider",
-                  difficultyBadgeClass()
-                )}
-              >
-                {card.difficulty}
-              </span>
-            )}
-            {card.pattern && (
-              <span className="px-2 py-0.5 rounded-full bg-surface-overlay border border-hairline text-[10px] font-bold text-text-secondary">
-                {card.pattern}
-              </span>
-            )}
+          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-text-tertiary">
+            Battle card
+          </p>
+          <h3 className="mt-1 font-display text-lg font-semibold leading-[26px] tracking-[-0.01em] text-text-primary">
+            {card.title}
+          </h3>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {card.difficulty && <DifficultyBadgeNew difficulty={card.difficulty} size="sm" />}
+            {card.pattern && <PatternChip label={card.pattern} />}
             {card.isPersonalRecord && (
-              <span className="px-2 py-0.5 rounded-full bg-verified-tint border border-verified/30 text-[10px] font-bold text-verified">
+              <span className="inline-flex h-6 items-center gap-1 rounded-full border border-primary/40 bg-primary-tint px-2 text-xs font-semibold leading-4 text-primary">
+                <Trophy className="h-3 w-3" strokeWidth={1.75} aria-hidden />
                 Personal best
               </span>
             )}
           </div>
-          <h3 className="mt-1.5 text-xl font-semibold text-text-primary tracking-tight">
-            {card.title}
-          </h3>
         </div>
 
-        <div className="text-right shrink-0">
+        <div className="shrink-0 text-right">
           {failed ? (
             <>
-              <div className="text-2xl font-bold text-primary font-mono leading-none">Failed</div>
-              <div className="text-[11px] text-text-tertiary mt-0.5">Revenge available</div>
+              <div className="font-mono text-xl font-medium leading-7 text-error">Failed</div>
+              <div className="mt-0.5 text-xs font-medium leading-4 text-text-tertiary">Revenge available</div>
             </>
           ) : (
             <>
-              <div className="text-2xl font-bold text-text-primary font-mono leading-none">
-                {solvedLabel ?? "—"}
-              </div>
-              <div className="text-[11px] text-text-tertiary mt-0.5">
+              <div className="type-mono-lg text-text-primary">{solvedLabel ?? "—"}</div>
+              <div className="mt-0.5 text-xs font-medium leading-4 text-text-tertiary">
                 {prevLabel ? (
                   <>
                     Previous best{" "}
-                    <span className="font-mono text-text-secondary">{prevLabel}</span>
+                    <span className="font-mono text-text-secondary tnum">{prevLabel}</span>
                   </>
                 ) : (
                   "First timed solve"
@@ -180,7 +175,7 @@ export function BattleCard({
       </div>
 
       {/* Honest provenance: solved is not the same as understood (§44). */}
-      <div className="flex items-center gap-3 text-[11px] text-text-tertiary flex-wrap">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-hairline pt-3 text-xs font-medium leading-4 text-text-tertiary">
         <span>{card.stats.attempts} attempts</span>
         {card.stats.revisits > 0 && <span>· {card.stats.revisits} revisits</span>}
         {card.stats.challengesSent > 0 && <span>· {card.stats.challengesSent} challenged out</span>}
@@ -194,16 +189,16 @@ export function BattleCard({
       </div>
 
       {isFull(card) && card.approachExcerpt && (
-        <div className="rounded-2xl border border-hairline bg-black/20 p-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary mb-1">
+        <div className="rounded-md border border-hairline bg-well p-3">
+          <div className="mb-1 font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-text-tertiary">
             Your approach
           </div>
-          <p className="text-xs text-text-secondary leading-relaxed">{card.approachExcerpt}</p>
+          <p className="text-sm leading-6 text-text-secondary">{card.approachExcerpt}</p>
         </div>
       )}
 
       {/* ── Actions. Every one wired (Principle 9). ── */}
-      <div className="flex items-center gap-2 flex-wrap pt-1">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={() =>
             startSolving({
@@ -214,9 +209,9 @@ export function BattleCard({
               category: card.pattern ?? "Practice",
             })
           }
-          className="px-4 py-2 rounded-full bg-primary text-on-primary hover:bg-primary-hover font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+          className={actionCls}
         >
-          <Play className="w-3.5 h-3.5 fill-current" />
+          <Swords className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
           <span>{failed ? "Take revenge" : "Revisit"}</span>
         </button>
 
@@ -225,33 +220,24 @@ export function BattleCard({
             if (challenging) return;
             await openChallenge();
           }}
-          className="px-3 py-1.5 rounded-full bg-surface-overlay hover:bg-surface-raised border border-hairline text-text-primary text-[11px] font-bold transition-all cursor-pointer"
+          className={actionCls}
         >
           Challenge someone
         </button>
 
         {hasApproach && approachId ? (
-          <Link
-            href={`/approach/${approachId}`}
-            className="px-3 py-1.5 rounded-full bg-surface-overlay hover:bg-surface-raised border border-hairline text-text-primary text-[11px] font-bold transition-all"
-          >
+          <Link href={`/approach/${approachId}`} className={actionCls}>
             {isFull(card) ? "Read your approach" : "Read approach"}
           </Link>
         ) : (
-          <Link
-            href={`/practice/${card.problemSlug}#explain`}
-            className="px-3 py-1.5 rounded-full bg-surface-overlay hover:bg-surface-raised border border-hairline text-text-primary text-[11px] font-bold transition-all"
-          >
+          <Link href={`/practice/${card.problemSlug}#explain`} className={actionCls}>
             Add approach
           </Link>
         )}
 
         {onCompareAvailable && (
-          <Link
-            href={`/practice/${card.problemSlug}/compare`}
-            className="px-3 py-1.5 rounded-full bg-surface-overlay hover:bg-surface-raised border border-hairline text-text-primary text-[11px] font-bold transition-all flex items-center gap-1.5"
-          >
-            <ExternalLink className="w-3 h-3" />
+          <Link href={`/practice/${card.problemSlug}/compare`} className={actionCls}>
+            <Users className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
             Compare squad approaches
           </Link>
         )}
@@ -263,22 +249,27 @@ export function BattleCard({
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
           }}
-          className="ml-auto px-3 py-1.5 rounded-full bg-surface-overlay hover:bg-surface-raised border border-hairline text-text-primary text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5"
+          className="ml-auto inline-flex h-11 items-center gap-1.5 rounded-md px-3 text-xs font-medium leading-4 text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:h-9"
           title="Copy share link"
         >
-          {copied ? <Check className="w-3.5 h-3.5 text-verified" /> : <Link2 className="w-3.5 h-3.5" />}
+          {copied ? (
+            <Check className="h-3.5 w-3.5 text-verified" strokeWidth={1.5} />
+          ) : (
+            <Link2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+          )}
           <span>{copied ? "Link copied" : "Share"}</span>
         </button>
       </div>
 
       {/* Challenge picker. Squad members only — no global user search (§61). */}
       {squadMembers.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-hairline">
-          <span className="text-[11px] text-text-tertiary">Challenge</span>
+        <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-3">
+          <span className="text-xs font-medium leading-4 text-text-tertiary">Challenge</span>
           <select
             value={target}
             onChange={(e) => setTarget(e.target.value)}
-            className="bg-surface-overlay border border-hairline rounded-full px-3 py-1.5 text-[11px] text-text-primary cursor-pointer"
+            aria-label="Squad member to challenge"
+            className="h-11 rounded-md border border-hairline bg-well px-2.5 text-xs text-text-primary md:h-9"
           >
             {squadMembers.map((m) => (
               <option key={m.id} value={m.id}>
@@ -298,7 +289,7 @@ export function BattleCard({
               if (secs != null) params.set("time", String(secs));
               router.push(`/challenges?${params.toString()}`);
             }}
-            className="px-3 py-1.5 rounded-full bg-primary text-on-primary hover:bg-primary-hover text-[11px] font-bold transition-all cursor-pointer"
+            className={cn(actionCls, "border-primary/30 text-primary")}
           >
             Send challenge
           </button>

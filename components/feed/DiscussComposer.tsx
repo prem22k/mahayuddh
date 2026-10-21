@@ -5,6 +5,7 @@ import Link from "next/link";
 import { X } from "lucide-react";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { Button } from "@/components/ui/Button";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import {
   checkDiscussionDraft,
   draftMessage,
@@ -84,15 +85,25 @@ export function DiscussComposer({
 
   const inputCls =
     "w-full min-h-[44px] rounded-md border border-hairline bg-well px-3 py-2.5 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none";
-  const labelCls = "mb-1.5 block text-sm font-medium text-text-secondary";
+  const labelCls =
+    "mb-1.5 block text-sm font-medium text-text-primary max-md:font-mono max-md:text-xs max-md:uppercase max-md:tracking-[0.06em] max-md:text-text-tertiary";
 
   return (
-    <ModalShell label="Start a discussion" onClose={onClose} maxWidthClass="max-w-[560px]">
-      <form onSubmit={submit} className="space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-display text-2xl font-semibold tracking-tight">Start a discussion</h2>
-            <p className="mt-1 text-xs leading-5 text-text-secondary">
+    <ModalShell
+      label="Start a discussion"
+      onClose={onClose}
+      variant="sheet"
+      zIndexClass="z-[300]"
+      maxWidthClass="max-w-[560px]"
+      panelClassName="flex max-h-[92dvh] flex-col overflow-hidden p-0 md:max-h-[calc(100dvh-32px)]"
+    >
+      <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-hairline px-4 pb-2.5 pt-6 md:px-6 md:pb-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold leading-[26px] tracking-[-0.01em] text-text-primary">
+              Start a discussion
+            </h2>
+            <p className="mt-0.5 text-xs leading-5 text-text-secondary">
               Problem-linked and pattern-linked, or it won&apos;t be findable later.
             </p>
           </div>
@@ -100,88 +111,92 @@ export function DiscussComposer({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded-md text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+            className="-mr-2 inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary md:mr-0 md:h-8 md:w-8"
           >
             <X className="h-5 w-5" strokeWidth={1.5} />
           </button>
         </div>
 
-        <label className="block">
-          <span className={labelCls}>Problem slug</span>
-          <input
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            placeholder="two-sum"
-            className={inputCls}
-          />
-        </label>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3 md:space-y-5 md:px-6 md:py-4">
+          <label className="block">
+            <span className={labelCls}>Problem slug</span>
+            <input
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              placeholder="two-sum"
+              className={`${inputCls} font-mono`}
+            />
+          </label>
 
-        <label className="block">
-          <span className={labelCls}>Patterns (comma separated)</span>
-          <input
-            value={patterns}
-            onChange={(e) => setPatterns(e.target.value)}
-            placeholder="Arrays, Hash Table"
-            className={inputCls}
-          />
-        </label>
+          <label className="block">
+            <span className={labelCls}>Patterns (comma separated)</span>
+            <input
+              value={patterns}
+              onChange={(e) => setPatterns(e.target.value)}
+              placeholder="Arrays, Hash Table"
+              className={inputCls}
+            />
+          </label>
 
-        <label className="block">
-          <span className={labelCls}>What did you try, and what should the reader try?</span>
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={5}
-            placeholder="Try solving it without the hash map first — what breaks?"
-            className="w-full resize-y rounded-md border border-hairline bg-well px-3 py-2.5 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none"
-          />
-        </label>
+          <label className="block">
+            <span className={labelCls}>What did you try, and what should the reader try?</span>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={5}
+              placeholder="Try solving it without the hash map first — what breaks?"
+              className="w-full resize-y rounded-md border border-hairline bg-well px-3 py-2.5 text-[15px] leading-6 text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none max-md:text-sm"
+            />
+          </label>
 
-        <div className="space-y-2">
-          <span className="text-sm font-medium text-text-secondary">Who sees it</span>
-          <div className="flex gap-1.5 rounded-md bg-well p-1">
-            {(["squad", "global"] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setVisibility(v)}
-                aria-pressed={visibility === v}
-                className={`flex min-h-[44px] flex-1 cursor-pointer items-center justify-center rounded-sm px-3 text-xs font-medium capitalize transition-colors ${
-                  visibility === v
-                    ? "bg-surface-overlay text-text-primary"
-                    : "text-text-secondary hover:text-text-primary"
-                }`}
-              >
-                {v === "global" ? "Everyone" : "Squad"}
-              </button>
-            ))}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-text-tertiary max-md:font-mono max-md:uppercase max-md:tracking-[0.06em]">
+                Who sees it
+              </span>
+              <SegmentedControl
+                label="Who sees it"
+                value={visibility}
+                onChange={setVisibility}
+                className="max-md:h-auto [&>button]:whitespace-nowrap"
+                options={[
+                  { value: "squad", label: "Squad" },
+                  { value: "global", label: "Everyone" },
+                ]}
+              />
+            </div>
+            {globalBlocked && (
+              <p className="text-xs leading-5 text-primary">
+                Posting to Everyone needs 3 logged solves. You have {solveCount}. Your squad
+                feed is open now —{" "}
+                <Link href="/practice" className="underline underline-offset-4">
+                  solve something
+                </Link>
+                .
+              </p>
+            )}
           </div>
-          {globalBlocked && (
-            <p className="text-xs leading-5 text-primary">
-              Posting to Everyone needs 3 logged solves. You have {solveCount}. Your squad
-              feed is open now —{" "}
-              <Link href="/practice" className="underline underline-offset-4">
-                solve something
-              </Link>
-              .
-            </p>
+
+          {/* The verdict is shown as guidance, not as an error. It is a preview of
+              a rule the database will apply for real. */}
+          {!verdict.ok && body.length > 0 && (
+            <p className="text-xs leading-5 text-text-secondary">{draftMessage(verdict)}</p>
+          )}
+
+          {error && (
+            <div role="alert" className="rounded-md border border-error/30 bg-error-tint px-3 py-2 text-xs leading-5 text-error">
+              {error}
+            </div>
           )}
         </div>
 
-        {/* The verdict is shown as guidance, not as an error. It is a preview of
-            a rule the database will apply for real. */}
-        {!verdict.ok && body.length > 0 && (
-          <p className="text-xs leading-5 text-text-secondary">{draftMessage(verdict)}</p>
-        )}
-
-        {error && (
-          <div role="alert" className="rounded-md border border-error/30 bg-error-tint px-3 py-2 text-xs leading-5 text-error">
-            {error}
-          </div>
-        )}
-
-        <div className="flex items-center justify-end gap-2 border-t border-hairline pt-4">
-          <Button variant="ghost" type="button" onClick={onClose} className="min-h-[44px]">
+        <div className="flex shrink-0 items-center gap-3 border-t border-hairline bg-surface-raised p-4 pb-[calc(16px+env(safe-area-inset-bottom))] md:justify-end md:bg-surface md:px-6 md:pb-4">
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={onClose}
+            className="h-11 flex-1 border border-hairline bg-surface md:h-10 md:flex-none md:border-transparent md:bg-transparent"
+          >
             Cancel
           </Button>
           <Button
@@ -189,7 +204,7 @@ export function DiscussComposer({
             type="submit"
             disabled={!verdict.ok || globalBlocked || busy}
             loading={busy}
-            className="min-h-[44px]"
+            className="h-11 flex-[2] font-semibold md:h-10 md:flex-none md:px-6 md:font-medium"
           >
             {!busy && "Post"}
           </Button>

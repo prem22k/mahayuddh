@@ -5,6 +5,14 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { PageLoader } from "@/components/ui/PageLoader";
+import {
+  AuthAlert,
+  AuthCard,
+  AuthFrame,
+  PasswordToggle,
+  authInputCls,
+  authLabelCls,
+} from "@/components/auth/AuthChrome";
 import { cn } from "@/lib/utils";
 
 /**
@@ -51,9 +59,6 @@ function UpdatePasswordForm() {
       setChecking(false);
     });
   }, [router, supabase]);
-
-  const inputCls =
-    "w-full min-h-[44px] rounded-md border border-hairline bg-well px-3 py-2.5 text-sm text-text-primary placeholder:text-text-disabled transition-colors hover:border-hairline-strong focus:border-hairline-strong focus:outline-none";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,74 +117,67 @@ function UpdatePasswordForm() {
   if (checking) return <PageLoader label="Checking your link..." />;
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-canvas p-4 text-text-primary select-none">
-      <div className="w-full max-w-[440px]">
-        <p className="mb-6 text-center font-display text-3xl font-semibold tracking-tight">
-          Mahayuddh
+    <AuthFrame
+      intro={
+        <p className="font-display text-2xl font-semibold leading-tight tracking-tight text-text-primary md:font-sans md:text-[15px] md:font-normal md:leading-6 md:tracking-normal md:text-text-secondary">
+          Practice DSA with your people.
         </p>
-        <div className="rounded-xl border border-hairline bg-surface p-6 sm:p-8">
-          <h1 className="font-display text-xl font-semibold">Choose a new password</h1>
-          <p className="mt-1 text-sm leading-6 text-text-secondary">
-            After this, every other signed-in device is logged out.
-          </p>
-          {errorMsg && (
-            <div
-              aria-live="polite"
-              className="mt-4 rounded-md border border-error/30 bg-error-tint px-3 py-2.5 text-xs leading-5 text-error"
-            >
-              {errorMsg}
-            </div>
-          )}
-          <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-            <div>
-              <label htmlFor="new-password" className="mb-1.5 block pl-1 text-sm font-medium text-text-secondary">
-                New password
-              </label>
-              <div className="relative">
-                <input
-                  id="new-password"
-                  autoComplete="new-password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 8 characters"
-                  className={cn(inputCls, "pr-16")}
-                  required
-                  minLength={8}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((s) => !s)}
-                  aria-pressed={showPassword}
-                  className="absolute right-1 top-1/2 min-h-[44px] min-w-[44px] -translate-y-1/2 rounded-md px-2 text-xs font-medium text-text-secondary hover:text-text-primary"
-                >
-                  {showPassword ? "Hide" : "Show"}
-                </button>
-              </div>
-            </div>
-            <div>
-              <label htmlFor="confirm-password" className="mb-1.5 block pl-1 text-sm font-medium text-text-secondary">
-                Repeat it
-              </label>
+      }
+    >
+      <div aria-live="polite" aria-atomic="true">
+        {errorMsg && <AuthAlert tone="error">{errorMsg}</AuthAlert>}
+      </div>
+      <AuthCard>
+        <h1 className="font-display text-xl font-semibold leading-7 tracking-tight">
+          Choose a new password
+        </h1>
+        <p className="mt-1 text-sm leading-6 text-text-secondary">
+          After this, every other signed-in device is logged out.
+        </p>
+        <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+          <div>
+            <label htmlFor="new-password" className={authLabelCls}>
+              New password
+            </label>
+            <div className="relative">
               <input
-                id="confirm-password"
+                id="new-password"
                 autoComplete="new-password"
                 type={showPassword ? "text" : "password"}
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                placeholder="Same password again"
-                className={inputCls}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 8 characters"
+                className={cn(authInputCls, "pr-11")}
                 required
                 minLength={8}
               />
+              <PasswordToggle shown={showPassword} onToggle={() => setShowPassword((s) => !s)} />
             </div>
-            <Button type="submit" variant="primary" size="full" loading={loading} className="min-h-[44px]">
+          </div>
+          <div>
+            <label htmlFor="confirm-password" className={authLabelCls}>
+              Repeat it
+            </label>
+            <input
+              id="confirm-password"
+              autoComplete="new-password"
+              type={showPassword ? "text" : "password"}
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder="Same password again"
+              className={authInputCls}
+              required
+              minLength={8}
+            />
+          </div>
+          <div className="pt-2">
+            <Button type="submit" variant="primary" size="full" loading={loading} className="h-11 md:h-10">
               {!loading && "Set password and log out everywhere"}
             </Button>
-          </form>
-        </div>
-      </div>
-    </div>
+          </div>
+        </form>
+      </AuthCard>
+    </AuthFrame>
   );
 }
 

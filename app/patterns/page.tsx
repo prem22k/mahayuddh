@@ -12,6 +12,7 @@ import {
   type CatalogTopicSummary,
 } from "@/lib/data/problems";
 import { getUserStatusesBySlugs } from "@/lib/data/sheets";
+import { SplitBar } from "@/components/matrix/SplitBar";
 
 // Patterns index: every topic in the catalog with the caller's solved counts
 // and a link to each hub. Solved counts come from the caller's own
@@ -62,25 +63,29 @@ export default function PatternsPage() {
 
   if (topics === null) {
     return (
-      <div className="space-y-6" aria-label="Loading patterns">
-        <Skeleton className="h-10 w-1/3" />
-        <Skeleton className="h-14 w-full" />
-        <Skeleton className="h-14 w-full" />
-        <Skeleton className="h-14 w-full" />
-        <Skeleton className="h-14 w-full" />
+      <div className="flex flex-col gap-6 md:gap-8" aria-label="Loading patterns">
+        <div className="space-y-3">
+          <Skeleton className="h-9 w-1/3" />
+          <Skeleton className="h-5 w-2/3" />
+        </div>
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2 md:gap-3">
+          {Array.from({ length: 8 }, (_, i) => (
+            <Skeleton key={i} className="h-16 w-full rounded-lg" />
+          ))}
+        </div>
       </div>
     );
   }
 
   if (topics.length === 0) {
     return (
-      <div className="space-y-6">
-        <div>
+      <div className="flex flex-col gap-6 md:gap-8">
+        <section className="flex flex-col gap-3">
           <h1 className="type-display-md text-text-primary">Patterns</h1>
-          <p className="mt-1 text-sm leading-6 text-text-secondary">
+          <p className="max-w-3xl text-[15px] leading-6 text-text-secondary md:text-[17px] md:leading-7">
             Every pattern in the catalog, with your progress on each.
           </p>
-        </div>
+        </section>
         <EmptyState
           heading="No patterns indexed yet"
           body="The catalog hasn't synced any topics. Try a practice battle instead."
@@ -98,34 +103,56 @@ export default function PatternsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="type-display-md text-text-primary">Patterns</h1>
-        <p className="mt-1 max-w-xl text-[15px] leading-6 text-text-secondary">
+    <div className="flex flex-col gap-6 md:gap-8">
+      <section className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="type-display-md text-text-primary">Patterns</h1>
+          <PatternChip
+            label={`${topics.length} indexed`}
+            className="h-6 border border-pattern/30 font-mono text-xs uppercase tracking-[0.06em] tnum"
+          />
+        </div>
+        <p className="max-w-3xl text-[15px] leading-6 text-text-secondary md:text-[17px] md:leading-7">
           Every pattern in the catalog
           {user ? ", with your progress on each." : ". Log in to see your progress on each."}
         </p>
-      </div>
+      </section>
 
-      <ul className="space-y-2">
+      <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 md:gap-3">
         {topics.map((t) => (
           <li key={t.topic}>
             <Link
               href={`/patterns/${encodeURIComponent(t.topic)}`}
-              className="card-interactive group flex min-h-[44px] items-center gap-3 rounded-xl border border-hairline bg-surface px-4 py-3"
+              className="group flex min-h-14 items-center gap-4 rounded-lg border border-hairline bg-surface px-4 py-3 transition-colors hover:border-hairline-strong hover:bg-surface-raised"
             >
-              <PatternChip label={t.topic} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium leading-5 text-text-primary">
+                <span className="block truncate text-[15px] font-medium leading-6 text-text-primary">
                   {t.topic}
                 </span>
                 <span className="mt-0.5 block truncate font-mono text-xs text-text-tertiary tnum">
-                  {user ? `${t.solved} of ${t.count} solved` : `${t.count} problems`}
+                  {user ? (
+                    <>
+                      <span className="text-text-secondary">{t.solved}</span> of {t.count} solved
+                      {t.attempted > 0 && <> · {t.attempted} attempted</>}
+                    </>
+                  ) : (
+                    `${t.count} problems`
+                  )}
                 </span>
               </span>
+              {user && (
+                <SplitBar
+                  total={t.count}
+                  verified={0}
+                  selfReported={t.solved}
+                  label={`${t.topic} solved`}
+                  className="hidden h-1.5 w-20 shrink-0 sm:flex"
+                />
+              )}
               <ChevronRight
-                className="h-4 w-4 shrink-0 text-text-tertiary transition-colors group-hover:text-text-primary"
+                className="h-4 w-4 shrink-0 text-text-tertiary transition-[color,transform] group-hover:translate-x-0.5 group-hover:text-text-primary"
                 strokeWidth={1.5}
+                aria-hidden
               />
             </Link>
           </li>
