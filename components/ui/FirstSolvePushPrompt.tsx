@@ -40,27 +40,35 @@ export function FirstSolvePushPrompt() {
   };
 
   return (
-    <section className="card space-y-2" aria-label="Turn on push alerts">
-      <p className="text-sm font-medium leading-5 text-text-primary">
-        Solved your first battle. Want the next challenge to find you?
-      </p>
-      <p className="text-sm leading-6 text-text-secondary">
-        Turn on push alerts and your squad&apos;s challenges arrive on your phone.
-        The bell up top can switch them off any time.
-      </p>
-      <div className="flex flex-wrap items-center gap-2 pt-1">
+    <section
+      className="flex flex-col gap-3 rounded-lg border border-hairline bg-surface p-4 sm:flex-row sm:items-center md:p-5"
+      aria-label="Turn on push alerts"
+    >
+      <span className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-md border border-hairline bg-well text-primary sm:flex">
+        <BellRing className="h-[18px] w-[18px]" strokeWidth={1.5} aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold leading-5 text-text-primary">
+          Solved your first battle. Want the next challenge to find you?
+        </p>
+        <p className="mt-0.5 text-xs leading-[18px] text-text-secondary">
+          Turn on push alerts and your squad&apos;s challenges arrive on your phone.
+          The bell up top can switch them off any time.
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => void requestPushPermission().then(dismiss)}
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium leading-5 text-on-primary transition-colors hover:bg-primary-hover"
+          className="inline-flex h-11 items-center gap-1.5 rounded-md border border-hairline bg-surface-raised px-3 text-xs font-medium text-text-primary transition-colors hover:border-hairline-strong hover:bg-surface-overlay md:h-9"
         >
-          <BellRing className="h-4 w-4" strokeWidth={1.5} />
+          <BellRing className="h-3.5 w-3.5 sm:hidden" strokeWidth={1.5} aria-hidden />
           Turn on alerts
         </button>
         <button
           type="button"
           onClick={dismiss}
-          className="inline-flex min-h-[44px] items-center rounded-md px-3 text-sm font-medium leading-5 text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary"
+          className="inline-flex h-11 items-center rounded-md px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:h-9"
         >
           Not now
         </button>

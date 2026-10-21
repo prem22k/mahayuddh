@@ -3,14 +3,14 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Copy, Check, Trash2, Bookmark } from "lucide-react";
+import { ArrowUpRight, Bookmark, Check, ChevronRight, Copy, RotateCcw, Sparkles, Swords, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { copyText } from "@/lib/clipboard";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { NextBattle } from "@/components/recommend/NextBattle";
-import { ProblemLink } from "@/components/ui/ProblemLink";
+import { problemUrl } from "@/components/ui/ProblemLink";
 import { getCatalogBySlugs } from "@/lib/data/problems";
 import { getPrimersForPatterns } from "@/lib/data/primers";
 import { setProblemStatus } from "@/lib/data/sheets";
@@ -23,6 +23,7 @@ import { getApproachesForProblem, createApproach, setApproachVisibility, deleteA
 import { BoundedAssistant } from "@/components/ai/BoundedAssistant";
 import { FirstSolvePushPrompt } from "@/components/ui/FirstSolvePushPrompt";
 import { dataErrorMessage } from "@/lib/data/errors";
+import { formatDuration } from "@/lib/format";
 import { track } from "@/lib/analytics";
 import { Button } from "@/components/ui/Button";
 import {
@@ -32,29 +33,25 @@ import {
   PatternChip,
 } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
-import { UnderlineTabs } from "@/components/ui/ProblemRow";
 import { ErrorCard } from "@/components/ui/States";
-import { Problem, ProblemEvent, ProblemEventKind, Approach, ApproachVisibility, Primer, Battle, Suggestion, ReviewItem, TriState } from "@/types/database";
+import { ProblemTabs, ProblemTab } from "@/components/practice/ProblemTabs";
+import { OverflowMenu, OverflowItem } from "@/components/practice/OverflowMenu";
+import { LatestResultCard } from "@/components/practice/LatestResultCard";
+import { BattleTimeline } from "@/components/practice/BattleTimeline";
+import { SquadOnProblem } from "@/components/practice/SquadOnProblem";
+import { OpenChallenges, LearnFirst } from "@/components/practice/ProblemRail";
+import { Problem, ProblemEvent, Approach, ApproachVisibility, Primer, Battle, Suggestion, ReviewItem, TriState } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
 
-const KIND_LABEL: Record<ProblemEventKind, { label: string; cls: string }> = {
-  solved: { label: "Solved", cls: "bg-verified-tint text-verified border border-verified/30" },
-  attempted: { label: "Attempted", cls: "bg-surface-overlay text-text-secondary border border-hairline-strong" },
-  explained: { label: "Explained", cls: "bg-pattern-tint text-pattern border border-pattern/30" },
-  revisited: { label: "Revisited", cls: "bg-pattern-tint text-pattern border border-pattern/30" },
-  challenge_completed: { label: "Challenge completed", cls: "bg-verified-tint text-verified border border-verified/30" },
-  failed: { label: "Failed", cls: "bg-error-tint text-error border border-error/30" },
-  stuck: { label: "Stuck", cls: "bg-surface-overlay text-text-secondary border border-hairline-strong" },
-};
-
 function fmtDur(sec: number | null): string {
-  if (sec == null) return "";
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
+  return formatDuration(sec) ?? "";
 }
 
-const TABS = ["Your battles", "Squad approaches", "Your approach", "Practice with AI"] as const;
+type Tab = "Your battles" | "Squad approaches" | "Your approach" | "Practice with AI";
+
+const fieldCls =
+  "mt-1 w-full rounded-md border border-hairline bg-well px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none";
+const labelCls = "text-xs font-medium leading-4 text-text-secondary";
 
 export default function ProblemPage() {
   const params = useParams<{ slug: string }>();
@@ -65,7 +62,7 @@ export default function ProblemPage() {
   const [problem, setProblem] = useState<Problem | null>(null);
   const [status, setStatus] = useState<TriState>("unsolved");
   const [timeline, setTimeline] = useState<ProblemEvent[]>([]);
-  const [squadActivity, setSquadActivity] = useState<ProblemEvent[]>([]);
+  const [slugEvents, setSlugEvents] = useState<ProblemEvent[]>([]);
   const [approaches, setApproaches] = useState<Approach[]>([]);
   const [primers, setPrimers] = useState<Primer[]>([]);
   const [battles, setBattles] = useState<Battle[]>([]);
@@ -73,7 +70,7 @@ export default function ProblemPage() {
   const [review, setReview] = useState<ReviewItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [tab, setTab] = useState<string>("Your battles");
+  const [tab, setTab] = useState<Tab>("Your battles");
 
   const [coreIdea, setCoreIdea] = useState("");
   const [aPattern, setAPattern] = useState("");
@@ -88,6 +85,7 @@ export default function ProblemPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [proofCopied, setProofCopied] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
 
@@ -140,7 +138,8 @@ export default function ProblemPage() {
         setStatus("unsolved");
         setTimeline([]);
       }
-      setSquadActivity(recent.slice(-10).reverse());
+      // Every visible event on this slug; the squad rail filters to members.
+      setSlugEvents(recent);
       setApproaches(approaches);
       if (user) {
         setBookmarked(bookmarked);
@@ -158,6 +157,16 @@ export default function ProblemPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Battle cards and the compare page link here with #explain: land on the
+  // write-up tab instead of a dead anchor.
+  useEffect(() => {
+    if (loading || typeof window === "undefined" || window.location.hash !== "#explain") return;
+    setTab("Your approach");
+    requestAnimationFrame(() =>
+      document.getElementById("explain")?.scrollIntoView({ behavior: "smooth", block: "start" })
+    );
+  }, [loading]);
 
   const handleStatus = async (next: TriState) => {
     if (!user) return;
@@ -241,578 +250,536 @@ export default function ProblemPage() {
   const latest = battles[0] ?? null;
   const verified = latest ? latest.evidence === "leetcode" : status === "solved";
   const squadApproaches = approaches.filter((a) => a.user_id !== user?.id);
+  const revisits = timeline.filter((ev) => ev.kind === "revisited").length;
+  // Timeline entries the battles list doesn't already cover (BattleTimeline merges both).
+  const battleIds = new Set(battles.map((b) => b.id));
+  const looseEvents = timeline.filter((ev) => !(ev.battle_id && battleIds.has(ev.battle_id))).length;
+
+  const startBattle = () =>
+    problem &&
+    startSolving({
+      id: problem.question_id || slug,
+      title,
+      slug,
+      difficulty: problem.difficulty || "Medium",
+      category: problem.topics?.[0] || "General",
+    });
+
+  const openExplain = () => {
+    setTab("Your approach");
+    requestAnimationFrame(() =>
+      document.getElementById("approach-form")?.scrollIntoView({ behavior: "smooth" })
+    );
+  };
+
+  const stats = [
+    `${battles.length} ${battles.length === 1 ? "attempt" : "attempts"}`,
+    revisits > 0 ? `${revisits} ${revisits === 1 ? "revisit" : "revisits"}` : null,
+    challenges.length > 0
+      ? `${challenges.length} open ${challenges.length === 1 ? "challenge" : "challenges"}`
+      : null,
+    squadApproaches.length > 0
+      ? `${squadApproaches.length} squad ${squadApproaches.length === 1 ? "approach" : "approaches"}`
+      : null,
+  ].filter((s): s is string => Boolean(s));
+
+  const overflow: OverflowItem[] = [
+    ...(user && status !== "solved" ? [{ label: "Mark solved", onSelect: () => handleStatus("solved") }] : []),
+    ...(user && status !== "attempted" && status !== "solved"
+      ? [{ label: "Mark attempted", onSelect: () => handleStatus("attempted") }]
+      : []),
+  ];
+
+  const tabs: ProblemTab<Tab>[] = [
+    { value: "Your battles", label: "Your battles", count: battles.length + looseEvents },
+    { value: "Squad approaches", label: "Squad approaches", count: approaches.length },
+    { value: "Your approach", label: "Your approach" },
+    {
+      value: "Practice with AI",
+      label: "Practice with AI",
+      shortLabel: "AI Practice",
+      icon: <Sparkles className="hidden h-4 w-4 text-pattern md:block" strokeWidth={1.5} aria-hidden />,
+    },
+  ];
 
   return (
     <div className="select-none">
-      <Link
-        href="/practice"
-        className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium leading-5 text-text-secondary hover:text-text-primary"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.5} />
-        <span>Practice</span>
-      </Link>
+      {/* Problem header. Phones stack: crumb, title, chips, status, actions.
+          Desktop puts the actions beside the title. */}
+      <header className="flex flex-col gap-3 border-b border-hairline pb-4 lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-x-6 lg:gap-y-3.5">
+        <nav
+          aria-label="Breadcrumb"
+          className="order-1 flex min-w-0 items-center gap-1.5 font-mono text-xs font-medium tracking-[0.06em] text-text-tertiary lg:col-span-2 md:gap-2"
+        >
+          <Link
+            href="/practice"
+            className="inline-flex min-h-[44px] shrink-0 items-center transition-colors hover:text-text-primary md:min-h-0"
+          >
+            Practice
+          </Link>
+          <span aria-hidden className="hidden md:inline">/</span>
+          <span className="hidden truncate text-text-secondary md:inline">{title}</span>
+          {problem && (
+            <>
+              <span aria-hidden className="md:hidden">›</span>
+              <span className="shrink-0 tnum md:hidden">No. {problem.question_id}</span>
+            </>
+          )}
+          {topics[0] && (
+            <>
+              <span aria-hidden className="md:hidden">›</span>
+              <span className="truncate font-sans tracking-normal text-text-secondary md:hidden">
+                {topics[0]}
+              </span>
+            </>
+          )}
+        </nav>
 
-      {/* Problem header */}
-      <div className="mt-2">
-        <h1 className="type-display-md text-text-primary">{title}</h1>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <span className="font-mono text-sm text-text-tertiary tnum">
-            No. {problem?.question_id ?? "3"}
-          </span>
+        <h1 className="order-2 font-display text-[22px] font-semibold leading-snug tracking-[-0.015em] text-text-primary md:text-[32px] md:leading-9 md:tracking-[-0.02em] lg:col-start-1 lg:row-start-2 lg:self-center">
+          {title}
+        </h1>
+
+        <div className="order-3 flex flex-wrap items-center gap-2 lg:col-span-2 lg:row-start-3 md:gap-3 lg:pt-1">
+          {problem && (
+            <span className="hidden h-6 items-center rounded-xs border border-hairline bg-well px-2 font-mono text-xs font-medium tracking-[0.06em] text-text-tertiary tnum md:inline-flex">
+              No. {problem.question_id}
+            </span>
+          )}
           {problem && <DifficultyBadgeNew difficulty={problem.difficulty} />}
           {topics.slice(0, 2).map((t) => (
             <PatternChip key={t} label={t} href={`/patterns/${encodeURIComponent(t)}`} />
           ))}
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          {status === "solved" ? (
-            <>
-              <VerifiedBadge />
-              <span className="text-sm leading-6 text-text-secondary">
-                Solved{bestSec != null ? ` · best ${fmtDur(bestSec)}` : ""}
+          <span aria-hidden className="hidden text-hairline-strong md:inline">|</span>
+          <div className="flex w-full items-center justify-between gap-2 pt-1 md:w-auto md:pt-0">
+            <div className="flex flex-wrap items-center gap-2">
+              {status === "solved" ? (
+                <>
+                  {verified ? <VerifiedBadge /> : <SelfReportedBadge />}
+                  <span className="text-xs font-medium leading-4 text-text-secondary">
+                    Solved
+                    {bestSec != null && (
+                      <>
+                        {" · best "}
+                        <span className="font-mono font-semibold text-text-primary tnum">{fmtDur(bestSec)}</span>
+                      </>
+                    )}
+                  </span>
+                </>
+              ) : status === "attempted" ? (
+                <span className="text-xs font-medium leading-4 text-text-secondary">Attempted · finish the battle.</span>
+              ) : (
+                <span className="text-xs font-medium leading-4 text-text-secondary">Not attempted yet.</span>
+              )}
+            </div>
+            {problem && (
+              <span className="shrink-0 font-mono text-xs font-medium tracking-[0.06em] text-text-tertiary tnum md:hidden">
+                LeetCode #{problem.question_id}
               </span>
-            </>
-          ) : status === "attempted" ? (
-            <span className="text-sm leading-6 text-text-secondary">Attempted · finish the battle.</span>
-          ) : (
-            <span className="text-sm leading-6 text-text-secondary">Not attempted yet.</span>
-          )}
+            )}
+          </div>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button
-            variant="secondary"
-            className="min-h-[44px]"
-            onClick={() =>
-              problem &&
-              startSolving({
-                id: problem.question_id || slug,
-                title,
-                slug,
-                difficulty: problem.difficulty || "Medium",
-                category: problem.topics?.[0] || "General",
-              })
-            }
+
+        <div className="order-4 flex items-center gap-2 lg:col-start-2 lg:row-start-2 lg:self-center">
+          <button
+            type="button"
+            onClick={startBattle}
+            className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-hairline bg-surface-raised px-3 text-sm font-medium leading-5 text-text-primary transition-colors hover:border-hairline-strong hover:bg-surface-overlay md:h-10 md:flex-none md:gap-2 md:px-4"
           >
+            <Swords className="h-[18px] w-[18px]" strokeWidth={1.5} aria-hidden />
             {status === "solved" ? "Battle again" : "Start battle"}
-          </Button>
-          <span className="inline-flex min-h-[44px] items-center">
-            <ProblemLink
-              slug={slug}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-raised hover:text-text-primary"
-            />
-          </span>
-          <Button
-            variant="ghost"
-            className="min-h-[44px]"
+          </button>
+          <a
+            href={problemUrl(slug)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex h-11 items-center justify-center gap-1.5 rounded-md border border-hairline px-3 text-sm font-medium leading-5 text-text-secondary transition-colors hover:border-hairline-strong hover:text-text-primary md:h-10 md:px-3.5"
+          >
+            <span className="md:hidden">LeetCode</span>
+            <span className="hidden md:inline">Open on LeetCode</span>
+            <ArrowUpRight className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+          </a>
+          <button
+            type="button"
             onClick={async () => setBookmarked(await toggleBookmark(slug))}
             title="Bookmark for revision"
+            aria-label={bookmarked ? "Bookmarked for revision" : "Bookmark for revision"}
+            aria-pressed={bookmarked}
+            className={cn(
+              "flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-hairline bg-surface-raised transition-colors hover:border-hairline-strong hover:text-text-primary md:h-10 md:w-10 md:bg-transparent",
+              bookmarked ? "text-primary" : "text-text-secondary"
+            )}
           >
-            <Bookmark
-              className="h-4 w-4"
-              strokeWidth={1.5}
-              fill={bookmarked ? "currentColor" : "none"}
-            />
-            {bookmarked ? "Bookmarked" : "Bookmark"}
-          </Button>
-          {user && status !== "solved" && (
-            <Button variant="ghost" className="min-h-[44px]" onClick={() => handleStatus("solved")}>
-              Mark solved
-            </Button>
-          )}
-          {user && status !== "attempted" && status !== "solved" && (
-            <Button variant="ghost" className="min-h-[44px]" onClick={() => handleStatus("attempted")}>
-              Mark attempted
-            </Button>
-          )}
+            <Bookmark className="h-[18px] w-[18px]" strokeWidth={1.5} fill={bookmarked ? "currentColor" : "none"} />
+          </button>
+          <OverflowMenu items={overflow} label="More problem actions" />
         </div>
-      </div>
+      </header>
 
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
+      <div className="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
         {/* Focal column */}
-        <div className="min-w-0 space-y-6">
-          {/* Latest battle result card */}
-          {latest && (latest.outcome === "solved" || latest.outcome === "failed") ? (
-            <section className="card space-y-3" aria-label="Latest battle result">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm leading-6 text-text-tertiary">Latest battle result</span>
-                {bestSec != null && latest.outcome === "solved" && (
-                  <span className="inline-flex h-6 items-center rounded-sm bg-primary-tint px-2 text-xs font-medium leading-4 text-primary">
-                    Personal best
-                  </span>
-                )}
-              </div>
-              {latest.outcome === "solved" ? (
-                <>
-                  <div className="type-mono-display text-text-primary tnum">
-                    {latest.duration_sec != null ? fmtDur(latest.duration_sec) : "—"}
-                  </div>
-                  <p className="text-sm leading-6 text-text-secondary">
-                    {prevSec != null && latest.duration_sec != null ? (
-                      <>
-                        <span className="line-through">{fmtDur(prevSec)}</span>
-                        {" → "}
-                        <span className="font-mono tnum">{fmtDur(latest.duration_sec)}</span>
-                        {" · "}
-                        {fmtDur((prevSec as number) - (latest.duration_sec as number))} faster
-                      </>
-                    ) : (
-                      "First timed solve"
-                    )}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {verified ? <VerifiedBadge /> : <SelfReportedBadge />}
-                    <span className="text-sm leading-6 text-text-secondary">
-                      {verified ? "Matched an accepted LeetCode submission" : "Logged without a LeetCode match"}
-                    </span>
-                  </div>
-                  <p className="text-xs leading-4 text-text-tertiary">
-                    {battles.length} attempts · {challenges.length} open challenges · {squadApproaches.length} squad approaches
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <Button
-                      variant="primary"
-                      className="min-h-[44px]"
-                      onClick={() => {
-                        setTab("Your approach");
-                        document.getElementById("approach-form")?.scrollIntoView({ behavior: "smooth" });
-                      }}
-                    >
-                      Explain your approach
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      className="min-h-[44px]"
-                      onClick={() => (window.location.href = "/challenges")}
-                    >
-                      Challenge someone
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      className="min-h-[44px]"
-                      onClick={() => (window.location.href = `/practice/${slug}/compare`)}
-                    >
-                      Compare with squad
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="min-h-[44px]"
-                      onClick={async () => {
-                        await copyText(`${window.location.origin}/practice/${slug}`);
-                      }}
-                    >
-                      Share proof
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm leading-6 text-text-primary">
-                    Stopped at {latest.duration_sec != null ? fmtDur(latest.duration_sec) : "—"}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      variant="primary"
-                      className="min-h-[44px]"
-                      onClick={() =>
-                        problem &&
-                        startSolving({
-                          id: problem.question_id || slug,
-                          title,
-                          slug,
-                          difficulty: problem.difficulty || "Medium",
-                          category: problem.topics?.[0] || "General",
-                        })
-                      }
-                    >
-                      Take revenge
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="min-h-[44px]"
-                      onClick={() => (window.location.href = "/stuck")}
-                    >
-                      Ask for a hint
-                    </Button>
-                  </div>
-                </>
-              )}
-            </section>
-          ) : (
-            <section className="card space-y-3" aria-label="Start your first battle">
-              <p className="text-sm font-medium leading-5 text-text-primary">No result yet</p>
-              <p className="text-sm leading-6 text-text-secondary">
-                Start your first battle to get a time on the board.
-              </p>
-              <Button
-                variant="primary"
-                className="min-h-[44px]"
-                onClick={() =>
-                  problem &&
-                  startSolving({
-                    id: problem.question_id || slug,
-                    title,
-                    slug,
-                    difficulty: problem.difficulty || "Medium",
-                    category: problem.topics?.[0] || "General",
-                  })
-                }
-              >
-                Start battle
-              </Button>
-            </section>
-          )}
+        <div className="flex min-w-0 flex-col gap-6 lg:col-span-8">
+          <LatestResultCard
+            latest={latest}
+            bestSec={bestSec}
+            prevSec={prevSec}
+            verified={verified}
+            stats={stats}
+            copied={proofCopied}
+            onStart={startBattle}
+            onExplain={openExplain}
+            onChallenge={() => (window.location.href = "/challenges")}
+            onCompare={() => (window.location.href = `/practice/${slug}/compare`)}
+            onShare={async () => {
+              if (await copyText(`${window.location.origin}/practice/${slug}`)) {
+                setProofCopied(true);
+                setTimeout(() => setProofCopied(false), 2000);
+              }
+            }}
+            onHint={() => (window.location.href = "/stuck")}
+          />
 
           {/* Contextual push prompt: once, after a solve, wired to the bell flow. */}
           {user && status === "solved" && <FirstSolvePushPrompt />}
 
-          {/* Tabs */}
-          <div className="overflow-x-auto">
-            <UnderlineTabs tabs={TABS} value={tab} onChange={setTab} />
-          </div>
+          <div id="explain" className="flex scroll-mt-24 flex-col gap-4">
+            <ProblemTabs tabs={tabs} value={tab} onChange={setTab} />
 
-          {tab === "Your battles" && (
-            <section className="space-y-2" aria-label="Your battles">
-              {timeline.length === 0 && battles.length === 0 ? (
-                <div className="card">
-                  <p className="text-sm leading-6 text-text-secondary">
-                    No battles recorded yet. Your attempts, solves and revisits form a timeline here.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  {battles.map((b) => (
-                    <div
-                      key={b.id}
-                      className="flex min-h-[44px] flex-wrap items-center gap-2.5 rounded-xl border border-hairline bg-surface px-4 py-3 text-sm leading-5"
+            {tab === "Your battles" && (
+              <section className="space-y-3" aria-label="Your battles">
+                <BattleTimeline battles={battles} timeline={timeline} />
+                {user &&
+                  battles
+                    .filter((b) => b.outcome === "solved" || b.outcome === "failed")
+                    .slice(0, 1)
+                    .map((b) => <BattleCard key={b.id} battleId={b.id} onCompareAvailable={squadApproaches.length > 0} />)}
+              </section>
+            )}
+
+            {tab === "Squad approaches" && (
+              <section className="space-y-3" aria-label="Squad approaches">
+                {approaches.length === 0 ? (
+                  <div className="rounded-lg border border-hairline bg-surface p-4 md:p-6">
+                    <h3 className="text-base font-semibold leading-6 text-text-primary">No approaches yet</h3>
+                    <p className="mt-1 text-sm leading-6 text-text-secondary">
+                      When someone in your squad explains their solution, it shows up here.
+                    </p>
+                  </div>
+                ) : (
+                  approaches.map((a) => (
+                    <article
+                      key={a.id}
+                      className="flex flex-col gap-3 rounded-lg border border-hairline bg-surface p-4 transition-colors hover:border-hairline-strong md:p-5"
                     >
-                      <span
-                        className={cn(
-                          "inline-flex h-6 items-center rounded-sm border px-2 text-xs font-medium leading-4",
-                          KIND_LABEL[b.outcome === "solved" ? "solved" : b.outcome === "failed" ? "failed" : "attempted"].cls
-                        )}
-                      >
-                        {b.outcome === "solved" ? "Solved" : b.outcome === "failed" ? "Failed" : b.outcome}
-                      </span>
-                      <span className="font-mono text-text-tertiary tnum">
-                        {new Date(b.started_at).toLocaleDateString()}
-                      </span>
-                      {b.duration_sec != null && (
-                        <span className="font-mono text-text-primary tnum">{fmtDur(b.duration_sec)}</span>
-                      )}
-                      <span className="text-xs leading-4 text-text-tertiary">
-                        {b.evidence === "leetcode" ? "· LeetCode evidence" : "· Self-reported"}
-                      </span>
-                    </div>
-                  ))}
-                  {timeline
-                    .filter((ev) => !battles.some((b) => b.id === ev.id))
-                    .map((ev) => {
-                      const k = KIND_LABEL[ev.kind];
-                      const source = (ev.metadata as { source?: string })?.source;
-                      return (
-                        <div
-                          key={ev.id}
-                          className="flex min-h-[44px] flex-wrap items-center gap-2.5 rounded-xl border border-hairline bg-surface px-4 py-3 text-sm leading-5"
-                        >
-                          <span className={cn("inline-flex h-6 items-center rounded-sm border px-2 text-xs font-medium leading-4", k.cls)}>
-                            {k.label}
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-hairline pb-3">
+                        <span className="flex min-w-0 items-center gap-2.5">
+                          <Avatar
+                            name={a.author?.username || "Member"}
+                            src={a.author?.avatar_url}
+                            size="md"
+                          />
+                          <span className="truncate text-sm font-semibold leading-5 text-text-primary">
+                            @{a.author?.username || "you"}
                           </span>
-                          <span className="font-mono text-text-tertiary tnum">
-                            {new Date(ev.created_at).toLocaleDateString()}
-                          </span>
-                          {ev.duration_sec != null && (
-                            <span className="font-mono text-text-primary tnum">{fmtDur(ev.duration_sec)}</span>
+                          {a.user_id === user?.id && (
+                            <span className="inline-flex h-5 shrink-0 items-center rounded-xs border border-primary/20 bg-primary-tint px-1.5 font-mono text-[11px] font-medium text-primary">
+                              You
+                            </span>
                           )}
-                          <span className="text-xs leading-4 text-text-tertiary">
-                            {source === "leetcode" ? "· LeetCode evidence" : "· Self-reported"}
-                          </span>
-                        </div>
-                      );
-                    })}
-                </>
-              )}
-              {user &&
-                battles
-                  .filter((b) => b.outcome === "solved" || b.outcome === "failed")
-                  .slice(0, 1)
-                  .map((b) => <BattleCard key={b.id} battleId={b.id} onCompareAvailable={squadApproaches.length > 0} />)}
-            </section>
-          )}
-
-          {tab === "Squad approaches" && (
-            <section className="space-y-2" aria-label="Squad approaches">
-              {approaches.length === 0 ? (
-                <div className="card">
-                  <h3 className="font-display text-xl font-semibold text-text-primary">No approaches yet</h3>
-                  <p className="mt-1 text-sm leading-6 text-text-secondary">
-                    When someone in your squad explains their solution, it shows up here.
-                  </p>
-                </div>
-              ) : (
-                approaches.map((a) => (
-                  <div key={a.id} className="card space-y-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="flex items-center gap-2">
-                        <Avatar name={a.author?.username || "Member"} size="sm" />
-                        <span className="text-sm font-medium leading-5 text-text-primary">
-                          @{a.author?.username || "you"}
                         </span>
-                      </span>
-                      <span className="flex items-center gap-2">
-                        <span className="text-xs leading-4 text-text-tertiary">{a.visibility}</span>
-                        <button
-                          onClick={async () => {
-                            if (await copyText(a.core_idea)) {
-                              setCopiedId(a.id);
-                              setTimeout(() => setCopiedId(null), 2000);
-                            }
-                          }}
-                          className="flex h-11 w-11 items-center justify-center rounded-md text-text-secondary hover:bg-surface-raised hover:text-text-primary md:h-9 md:w-9"
-                          aria-label="Copy approach"
-                        >
-                          {copiedId === a.id ? <Check className="h-3.5 w-3.5" strokeWidth={1.5} /> : <Copy className="h-3.5 w-3.5" strokeWidth={1.5} />}
-                        </button>
-                        {a.user_id === user?.id && (
+                        <span className="flex items-center gap-1">
+                          <span className="mr-1 inline-flex h-6 items-center rounded-xs border border-hairline bg-well px-2 text-[11px] font-medium capitalize leading-4 text-text-tertiary">
+                            {a.visibility}
+                          </span>
                           <button
                             onClick={async () => {
-                              await deleteApproach(a.id);
+                              if (await copyText(a.core_idea)) {
+                                setCopiedId(a.id);
+                                setTimeout(() => setCopiedId(null), 2000);
+                              }
+                            }}
+                            className="flex h-11 w-11 items-center justify-center rounded-md text-text-secondary hover:bg-surface-raised hover:text-text-primary md:h-9 md:w-9"
+                            aria-label="Copy approach"
+                          >
+                            {copiedId === a.id ? <Check className="h-3.5 w-3.5" strokeWidth={1.5} /> : <Copy className="h-3.5 w-3.5" strokeWidth={1.5} />}
+                          </button>
+                          {a.user_id === user?.id && (
+                            <button
+                              onClick={async () => {
+                                await deleteApproach(a.id);
+                                setApproaches(await getApproachesForProblem(slug).catch(() => []));
+                              }}
+                              className="flex h-11 w-11 items-center justify-center rounded-md text-text-tertiary hover:text-error md:h-9 md:w-9"
+                              aria-label="Delete approach"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+                            </button>
+                          )}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="mb-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-text-tertiary">
+                          Core idea
+                        </p>
+                        <p className="text-[15px] leading-6 text-text-primary">{a.core_idea}</p>
+                      </div>
+                      {(a.complexity_time || a.complexity_space) && (
+                        <p className="flex flex-wrap items-center gap-x-4 gap-y-1 border-y border-hairline py-2.5 font-mono text-xs tnum">
+                          <span>
+                            <span className="text-text-tertiary">Time: </span>
+                            <span className="font-medium text-text-primary">{a.complexity_time || "?"}</span>
+                          </span>
+                          <span aria-hidden className="text-hairline-strong">·</span>
+                          <span>
+                            <span className="text-text-tertiary">Space: </span>
+                            <span className="font-medium text-text-primary">{a.complexity_space || "?"}</span>
+                          </span>
+                        </p>
+                      )}
+                      {a.code ? (
+                        revealed[a.id] ? (
+                          <pre className="overflow-x-auto rounded-md border border-hairline bg-well p-4 font-mono text-sm leading-[22px] text-text-primary">
+                            {a.code}
+                          </pre>
+                        ) : (
+                          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-hairline bg-well p-3">
+                            <span className="text-xs font-medium leading-4 text-text-secondary">
+                              Code hidden until you reveal it
+                            </span>
+                            <button
+                              type="button"
+                              className="inline-flex h-11 items-center rounded-sm border border-hairline bg-surface-overlay px-3 text-xs font-medium text-text-primary transition-colors hover:bg-[#272830] md:h-8"
+                              onClick={() => setRevealed((r) => ({ ...r, [a.id]: true }))}
+                            >
+                              Reveal code
+                            </button>
+                          </div>
+                        )
+                      ) : null}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <Link
+                          href={`/approach/${a.id}`}
+                          className="inline-flex min-h-[44px] items-center gap-1 text-sm font-medium leading-5 text-text-primary underline decoration-hairline-strong underline-offset-[3px] hover:decoration-text-primary"
+                        >
+                          Read full approach
+                        </Link>
+                        {a.user_id === user?.id && (
+                          <select
+                            value={a.visibility}
+                            onChange={async (e) => {
+                              const v = e.target.value as ApproachVisibility;
+                              if (v === "squad" && !profile?.active_squad_id) return;
+                              await setApproachVisibility(a.id, v, profile?.active_squad_id ?? null);
                               setApproaches(await getApproachesForProblem(slug).catch(() => []));
                             }}
-                            className="flex h-11 w-11 items-center justify-center rounded-md text-text-tertiary hover:text-error md:h-9 md:w-9"
-                            aria-label="Delete approach"
+                            className="h-11 rounded-md border border-hairline bg-well px-2.5 text-xs text-text-primary md:h-8"
+                            title="Sharing is intentional and reversible"
+                            aria-label="Who can read this approach"
                           >
-                            <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
-                          </button>
+                            <option value="private">Private</option>
+                            <option value="squad">Squad</option>
+                            <option value="public">Public</option>
+                          </select>
                         )}
-                      </span>
-                    </div>
-                    <p className="text-sm leading-6 text-text-primary">{a.core_idea}</p>
-                    {(a.complexity_time || a.complexity_space) && (
-                      <p className="font-mono text-xs text-text-tertiary tnum">
-                        {a.complexity_time || "?"} · {a.complexity_space || "?"}
-                      </p>
-                    )}
-                    {a.code ? (
-                      revealed[a.id] ? (
-                        <pre className="overflow-x-auto rounded-md bg-well p-4 font-mono text-sm leading-6 text-text-primary">
-                          {a.code}
-                        </pre>
-                      ) : (
-                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-well px-4 py-3">
-                          <span className="text-xs leading-4 text-text-secondary">Code hidden until you reveal it</span>
-                          <Button
-                            variant="secondary"
-                            className="min-h-[44px]"
-                            onClick={() => setRevealed((r) => ({ ...r, [a.id]: true }))}
-                          >
-                            Reveal code
-                          </Button>
-                        </div>
-                      )
-                    ) : null}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        href={`/approach/${a.id}`}
-                        className="inline-flex min-h-[44px] items-center text-sm font-medium leading-5 text-text-primary underline decoration-hairline-strong underline-offset-[3px] hover:decoration-text-primary"
-                      >
-                        Read full approach
-                      </Link>
-                      {a.user_id === user?.id && (
-                        <select
-                          value={a.visibility}
-                          onChange={async (e) => {
-                            const v = e.target.value as ApproachVisibility;
-                            if (v === "squad" && !profile?.active_squad_id) return;
-                            await setApproachVisibility(a.id, v, profile?.active_squad_id ?? null);
-                            setApproaches(await getApproachesForProblem(slug).catch(() => []));
-                          }}
-                          className="rounded-md border border-hairline bg-well px-2 py-1.5 text-xs text-text-primary"
-                          title="Sharing is intentional and reversible"
-                        >
-                          <option value="private">Private</option>
-                          <option value="squad">Squad</option>
-                          <option value="public">Public</option>
-                        </select>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </section>
-          )}
+                      </div>
+                    </article>
+                  ))
+                )}
+              </section>
+            )}
 
-          {tab === "Your approach" && (
-            <section className="space-y-3" aria-label="Your approach">
-              {user && status === "solved" ? (
-                <form
-                  id="approach-form"
-                  onSubmit={handleSaveApproach}
-                  className="card space-y-3"
-                >
-                  <div className="text-sm font-medium leading-5 text-text-primary">Explain your approach</div>
-                  {formError && <div className="text-sm leading-6 text-error">{formError}</div>}
-                  <textarea
-                    value={coreIdea}
-                    onChange={(e) => setCoreIdea(e.target.value)}
-                    rows={3}
-                    maxLength={5000}
-                    placeholder="Core idea in two sentences. What was the key insight?"
-                    className="w-full rounded-md border border-hairline bg-well p-3 text-sm leading-6 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong"
-                  />
-                  <button
-                    type="button"
-                    aria-expanded={expanded}
-                    onClick={() => setExpanded((v) => !v)}
-                    className="inline-flex min-h-[44px] items-center text-sm font-medium leading-5 text-text-secondary hover:text-text-primary"
+            {tab === "Your approach" && (
+              <section className="space-y-3" aria-label="Your approach">
+                {user && status === "solved" ? (
+                  <form
+                    id="approach-form"
+                    onSubmit={handleSaveApproach}
+                    className="flex flex-col gap-3 rounded-lg border border-hairline bg-surface p-4 md:p-6"
                   >
-                    {expanded ? "Fewer details" : "Add complexity, key detail, edge cases, mistakes, code"}
-                  </button>
-                  {expanded && (
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <label className="block">
-                        <span className="text-xs font-medium leading-4 text-text-secondary">Pattern</span>
-                        <input
-                          value={aPattern}
-                          onChange={(e) => setAPattern(e.target.value)}
-                          maxLength={80}
-                          placeholder="e.g. Two pointers"
-                          className="mt-1 w-full rounded-md border border-hairline bg-well px-2.5 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-xs font-medium leading-4 text-text-secondary">Time</span>
-                        <input
-                          value={aTime}
-                          onChange={(e) => setATime(e.target.value)}
-                          maxLength={40}
-                          placeholder="e.g. O(n)"
-                          className="mt-1 w-full rounded-md border border-hairline bg-well px-2.5 py-2 font-mono text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-xs font-medium leading-4 text-text-secondary">Space</span>
-                        <input
-                          value={aSpace}
-                          onChange={(e) => setASpace(e.target.value)}
-                          maxLength={40}
-                          placeholder="e.g. O(1)"
-                          className="mt-1 w-full rounded-md border border-hairline bg-well px-2.5 py-2 font-mono text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-xs font-medium leading-4 text-text-secondary">Key detail</span>
-                        <input
-                          value={aKeyDetail}
-                          onChange={(e) => setAKeyDetail(e.target.value)}
-                          maxLength={500}
-                          placeholder="The one thing that makes it work"
-                          className="mt-1 w-full rounded-md border border-hairline bg-well px-2.5 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-xs font-medium leading-4 text-text-secondary">Edge cases</span>
-                        <input
-                          value={aEdgeCases}
-                          onChange={(e) => setAEdgeCases(e.target.value)}
-                          maxLength={1000}
-                          placeholder="Empty input, duplicates, single element…"
-                          className="mt-1 w-full rounded-md border border-hairline bg-well px-2.5 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-xs font-medium leading-4 text-text-secondary">Mistakes</span>
-                        <input
-                          value={aMistakes}
-                          onChange={(e) => setAMistakes(e.target.value)}
-                          maxLength={1000}
-                          placeholder="What you got wrong first"
-                          className="mt-1 w-full rounded-md border border-hairline bg-well px-2.5 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong"
-                        />
-                      </label>
-                      <label className="block sm:col-span-2">
-                        <span className="text-xs font-medium leading-4 text-text-secondary">Code</span>
-                        <textarea
-                          value={aCode}
-                          onChange={(e) => setACode(e.target.value)}
-                          rows={4}
-                          maxLength={20000}
-                          placeholder="Your final solution."
-                          className="mt-1 w-full rounded-md border border-hairline bg-well p-2.5 font-mono text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong"
-                        />
-                      </label>
+                    <div>
+                      <h3 className="text-base font-semibold leading-6 text-text-primary">Explain your approach</h3>
+                      <p className="mt-0.5 text-xs font-medium leading-4 text-text-tertiary">
+                        Private by default. Share it with your squad when it reads right.
+                      </p>
                     </div>
-                  )}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <select
-                      value={visibility}
-                      onChange={(e) => setVisibility(e.target.value as ApproachVisibility)}
-                      aria-label="Who can read this approach"
-                      className="rounded-md border border-hairline bg-well px-2 py-2 text-sm text-text-primary"
+                    {formError && <div className="text-sm leading-6 text-error">{formError}</div>}
+                    <label className="block">
+                      <span className="font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-text-tertiary">
+                        Core idea
+                      </span>
+                      <textarea
+                        value={coreIdea}
+                        onChange={(e) => setCoreIdea(e.target.value)}
+                        rows={3}
+                        maxLength={5000}
+                        placeholder="Core idea in two sentences. What was the key insight?"
+                        className="mt-1.5 w-full rounded-md border border-hairline bg-well p-3 text-sm leading-6 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      aria-expanded={expanded}
+                      onClick={() => setExpanded((v) => !v)}
+                      className="inline-flex min-h-[44px] items-center gap-1 self-start text-sm font-medium leading-5 text-text-secondary hover:text-text-primary md:min-h-9"
                     >
-                      <option value="private">Private</option>
-                      <option value="squad">Squad</option>
-                      <option value="public">Public</option>
-                    </select>
-                    <Button variant="primary" className="min-h-[44px]" loading={saving} disabled={!coreIdea.trim()}>
-                      Save approach
-                    </Button>
+                      <ChevronRight
+                        className={cn("h-4 w-4 transition-transform", expanded && "rotate-90")}
+                        strokeWidth={1.5}
+                        aria-hidden
+                      />
+                      {expanded ? "Fewer details" : "Add complexity, key detail, edge cases, mistakes, code"}
+                    </button>
+                    {expanded && (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <label className="block">
+                          <span className={labelCls}>Pattern</span>
+                          <input
+                            value={aPattern}
+                            onChange={(e) => setAPattern(e.target.value)}
+                            maxLength={80}
+                            placeholder="e.g. Two pointers"
+                            className={fieldCls}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className={labelCls}>Time</span>
+                          <input
+                            value={aTime}
+                            onChange={(e) => setATime(e.target.value)}
+                            maxLength={40}
+                            placeholder="e.g. O(n)"
+                            className={cn(fieldCls, "font-mono")}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className={labelCls}>Space</span>
+                          <input
+                            value={aSpace}
+                            onChange={(e) => setASpace(e.target.value)}
+                            maxLength={40}
+                            placeholder="e.g. O(1)"
+                            className={cn(fieldCls, "font-mono")}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className={labelCls}>Key detail</span>
+                          <input
+                            value={aKeyDetail}
+                            onChange={(e) => setAKeyDetail(e.target.value)}
+                            maxLength={500}
+                            placeholder="The one thing that makes it work"
+                            className={fieldCls}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className={labelCls}>Edge cases</span>
+                          <input
+                            value={aEdgeCases}
+                            onChange={(e) => setAEdgeCases(e.target.value)}
+                            maxLength={1000}
+                            placeholder="Empty input, duplicates, single element…"
+                            className={fieldCls}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className={labelCls}>Mistakes</span>
+                          <input
+                            value={aMistakes}
+                            onChange={(e) => setAMistakes(e.target.value)}
+                            maxLength={1000}
+                            placeholder="What you got wrong first"
+                            className={fieldCls}
+                          />
+                        </label>
+                        <label className="block sm:col-span-2">
+                          <span className={labelCls}>Code</span>
+                          <textarea
+                            value={aCode}
+                            onChange={(e) => setACode(e.target.value)}
+                            rows={4}
+                            maxLength={20000}
+                            placeholder="Your final solution."
+                            className={cn(fieldCls, "p-3 font-mono leading-[22px]")}
+                          />
+                        </label>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-3">
+                      <select
+                        value={visibility}
+                        onChange={(e) => setVisibility(e.target.value as ApproachVisibility)}
+                        aria-label="Who can read this approach"
+                        className="h-11 rounded-md border border-hairline bg-well px-2.5 text-sm text-text-primary md:h-10"
+                      >
+                        <option value="private">Private</option>
+                        <option value="squad">Squad</option>
+                        <option value="public">Public</option>
+                      </select>
+                      <Button variant="primary" className="h-11 md:h-10" loading={saving} disabled={!coreIdea.trim()}>
+                        Save approach
+                      </Button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="rounded-lg border border-hairline bg-surface p-4 md:p-6">
+                    <p className="text-sm leading-6 text-text-secondary">
+                      Solve it first, or reveal anyway. Your write-up unlocks after a solve.
+                    </p>
                   </div>
-                </form>
-              ) : (
-                <div className="card">
-                  <p className="text-sm leading-6 text-text-secondary">
-                    Solve it first, or reveal anyway. Your write-up unlocks after a solve.
-                  </p>
-                </div>
-              )}
-            </section>
-          )}
+                )}
+              </section>
+            )}
 
-          {tab === "Practice with AI" && (
-            <section className="grid gap-3 md:grid-cols-2" aria-label="Practice with AI">
-              {user && status === "solved" && profile?.active_squad_id ? (
-                <>
+            {tab === "Practice with AI" && (
+              <section className="grid gap-3 md:grid-cols-2" aria-label="Practice with AI">
+                {user && status === "solved" && profile?.active_squad_id ? (
+                  <>
+                    <BoundedAssistant
+                      feature="explain-back"
+                      squadId={profile.active_squad_id}
+                      problemSlug={slug}
+                      problemTitle={problem?.title ?? null}
+                      input={coreIdea}
+                    />
+                    <BoundedAssistant
+                      feature="interview-sim"
+                      squadId={profile.active_squad_id}
+                      problemSlug={slug}
+                      problemTitle={problem?.title ?? null}
+                      input={coreIdea}
+                    />
+                  </>
+                ) : null}
+                {user && status === "attempted" && profile?.active_squad_id ? (
                   <BoundedAssistant
-                    feature="explain-back"
+                    feature="explain-mistake"
                     squadId={profile.active_squad_id}
                     problemSlug={slug}
                     problemTitle={problem?.title ?? null}
-                    input={coreIdea}
                   />
-                  <BoundedAssistant
-                    feature="interview-sim"
-                    squadId={profile.active_squad_id}
-                    problemSlug={slug}
-                    problemTitle={problem?.title ?? null}
-                    input={coreIdea}
-                  />
-                </>
-              ) : null}
-              {user && status === "attempted" && profile?.active_squad_id ? (
-                <BoundedAssistant
-                  feature="explain-mistake"
-                  squadId={profile.active_squad_id}
-                  problemSlug={slug}
-                  problemTitle={problem?.title ?? null}
-                />
-              ) : null}
-              {(!user || status === "unsolved") && (
-                <div className="card md:col-span-2">
-                  <p className="text-sm leading-6 text-text-secondary">
-                    Attempt the problem first. These tools respond to your work, they never hand over code.
-                  </p>
-                </div>
-              )}
-            </section>
-          )}
+                ) : null}
+                {(!user || status === "unsolved") && (
+                  <div className="rounded-lg border border-hairline bg-surface p-4 md:col-span-2 md:p-6">
+                    <p className="flex items-start gap-2 text-sm leading-6 text-text-secondary">
+                      <Sparkles className="mt-1 h-4 w-4 shrink-0 text-pattern" strokeWidth={1.5} aria-hidden />
+                      Attempt the problem first. These tools respond to your work, they never hand over code.
+                    </p>
+                  </div>
+                )}
+              </section>
+            )}
+          </div>
 
           {review && (
             <Link
               href="/practice"
-              className="card-interactive block rounded-xl border border-hairline bg-surface px-4 py-3 text-sm leading-6"
+              className="flex min-h-[44px] items-center gap-3 rounded-lg border border-hairline bg-surface px-4 py-3 text-sm leading-6 transition-colors hover:border-hairline-strong hover:bg-surface-raised"
             >
-              <span className="font-medium text-text-primary">Review due: {review.reason.replace("_", " ")}</span>
-              <span className="text-text-secondary"> — open your practice queue</span>
+              <RotateCcw className="h-4 w-4 shrink-0 text-primary" strokeWidth={1.5} aria-hidden />
+              <span className="min-w-0 flex-1">
+                <span className="font-medium text-text-primary">Review due: {review.reason.replace("_", " ")}</span>
+                <span className="text-text-secondary"> — open your practice queue</span>
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-text-tertiary" strokeWidth={1.5} aria-hidden />
             </Link>
           )}
 
@@ -820,93 +787,19 @@ export default function ProblemPage() {
         </div>
 
         {/* Rail */}
-        <aside className="space-y-6">
-          <section className="space-y-2" aria-label="Your squad on this problem">
-            <h2 className="text-lg font-semibold leading-7 text-text-primary">Your squad on this problem</h2>
-            <div className="card space-y-2">
-              {squadActivity.length === 0 ? (
-                <>
-                  <div className="flex items-center gap-2.5 text-sm leading-6">
-                    <Avatar name="Priya Nair" size="sm" />
-                    <span className="flex-1 text-text-primary">Priya</span>
-                    <span className="font-mono text-text-primary tnum">12:58</span>
-                    <VerifiedBadge />
-                  </div>
-                  <div className="flex items-center gap-2.5 text-sm leading-6">
-                    <Avatar name="Prem Sai" size="sm" />
-                    <span className="flex-1 text-text-primary">You</span>
-                    <span className="font-mono text-text-primary tnum">
-                      {bestSec != null ? fmtDur(bestSec) : "15:06"}
-                    </span>
-                    <VerifiedBadge />
-                  </div>
-                  <div className="flex items-center gap-2.5 text-sm leading-6">
-                    <Avatar name="Rahul Verma" size="sm" />
-                    <span className="flex-1 text-text-primary">Rahul</span>
-                    <span className="font-mono text-text-primary tnum">19:47</span>
-                    <VerifiedBadge />
-                  </div>
-                  <div className="flex items-center gap-2.5 text-sm leading-6">
-                    <Avatar name="Arjun Mehta" size="sm" />
-                    <span className="flex-1 text-text-secondary">Arjun</span>
-                    <span className="text-xs leading-4 text-text-tertiary">Attempted</span>
-                  </div>
-                  <div className="flex items-center gap-2.5 text-sm leading-6">
-                    <Avatar name="Sneha Iyer" size="sm" />
-                    <span className="flex-1 text-text-secondary">Sneha</span>
-                    <span className="text-xs leading-4 text-text-tertiary">Not yet</span>
-                  </div>
-                </>
-              ) : (
-                squadActivity.slice(0, 5).map((ev) => (
-                  <div key={ev.id} className="flex items-center gap-2.5 text-sm leading-6">
-                    <Avatar name="Member" size="sm" />
-                    <span className="flex-1 truncate text-text-secondary">
-                      {ev.kind} {ev.duration_sec != null ? `· ${fmtDur(ev.duration_sec)}` : ""}
-                    </span>
-                    <span className="font-mono text-xs text-text-tertiary tnum">
-                      {new Date(ev.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-
-          {challenges.length > 0 && (
-            <section className="space-y-2" aria-label="Open challenges">
-              <h2 className="text-lg font-semibold leading-7 text-text-primary">Open challenges</h2>
-              {challenges.map((c) => (
-                <Link
-                  key={c.id}
-                  href={`/c/${c.id}`}
-                  className="card-interactive block min-h-[44px] rounded-xl border border-hairline bg-surface px-4 py-3 text-sm leading-6"
-                >
-                  <span className="font-medium text-text-primary">@{c.from_profile?.username}</span>
-                  <span className="text-text-secondary"> → @{c.to_profile?.username}</span>
-                  {c.beat_time && c.sender_time_sec != null && (
-                    <span className="font-mono text-text-secondary tnum"> · beat {fmtDur(c.sender_time_sec)}</span>
-                  )}
-                </Link>
-              ))}
-            </section>
-          )}
-
-          {primers.length > 0 && (
-            <section className="space-y-2" aria-label="Learn first">
-              <h2 className="text-lg font-semibold leading-7 text-text-primary">Learn first</h2>
-              {primers.slice(0, 1).map((p) => (
-                <Link
-                  key={p.slug}
-                  href={`/primers/${p.slug}`}
-                  className="card-interactive block min-h-[44px] rounded-xl border border-hairline bg-surface px-4 py-3"
-                >
-                  <span className="block text-sm font-medium leading-5 text-text-primary">{p.title}</span>
-                  <span className="mt-0.5 block text-xs leading-4 text-text-tertiary">Primer · read first</span>
-                </Link>
-              ))}
-            </section>
-          )}
+        <aside className="flex min-w-0 flex-col gap-6 pt-1 lg:col-span-4 lg:pt-0">
+          <SquadOnProblem
+            slug={slug}
+            userId={user?.id ?? null}
+            username={profile?.username ?? null}
+            avatarUrl={profile?.avatar_url}
+            selfStatus={status}
+            selfBestSec={bestSec}
+            selfVerified={verified}
+            events={slugEvents}
+          />
+          <OpenChallenges challenges={challenges} userId={user?.id ?? null} />
+          <LearnFirst primers={primers} />
         </aside>
       </div>
     </div>

@@ -154,26 +154,28 @@ export function BoundedAssistant({
   return (
     <section
       aria-label={copy.title}
-      className="rounded-2xl border border-hairline bg-surface p-4 space-y-3"
+      className="flex flex-col gap-3 rounded-lg border border-hairline bg-surface p-4"
     >
-      <header className="space-y-1.5">
-        <p className="flex items-center gap-1.5 text-sm font-bold">
-          <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden />
+      <header className="space-y-1">
+        <p className="flex items-center gap-1.5 text-sm font-semibold leading-5 text-text-primary">
+          <Sparkles className="h-4 w-4 text-pattern" strokeWidth={1.5} aria-hidden />
           {copy.title}
-          <span className="text-[10px] font-normal text-text-disabled">§45</span>
+          <span className="font-mono text-[10px] font-normal text-text-disabled">§45</span>
         </p>
-        <p className="text-[11px] text-text-secondary leading-relaxed">{copy.blurb}</p>
+        <p className="text-xs leading-[18px] text-text-secondary">{copy.blurb}</p>
       </header>
 
       <label className="block">
-        <span className="text-[11px] text-text-secondary">{copy.inputLabel}</span>
+        <span className="font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-text-tertiary">
+          {copy.inputLabel}
+        </span>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={3}
           maxLength={8000}
           placeholder={copy.placeholder}
-          className="mt-1 w-full rounded-lg border border-hairline bg-well p-2 text-[12px] leading-relaxed text-text-primary placeholder:text-text-disabled focus:border-primary/40 focus:outline-none"
+          className="mt-1.5 w-full rounded-md border border-hairline bg-well p-3 text-sm leading-6 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
         />
       </label>
 
@@ -181,7 +183,7 @@ export function BoundedAssistant({
         type="button"
         onClick={ask}
         disabled={disabled}
-        className="inline-flex items-center gap-1.5 rounded-full bg-surface-overlay px-3 py-1.5 text-[11px] font-bold text-text-primary hover:bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+        className="inline-flex h-11 items-center gap-1.5 self-start rounded-md border border-hairline bg-surface-raised px-3 text-xs font-medium text-text-primary transition-colors hover:border-hairline-strong hover:bg-surface-overlay disabled:cursor-not-allowed disabled:opacity-40 md:h-9"
       >
         {busy && <Spinner className="h-3 w-3" />}
         {busy ? "Asking…" : copy.cta}
@@ -193,24 +195,24 @@ export function BoundedAssistant({
         and people report bugs and stop using the thing.
       */}
       {refusal && (
-        <p role="status" className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-2.5 text-[11px] leading-relaxed text-amber-200">
+        <p role="status" className="rounded-md border border-primary/25 bg-primary-tint p-3 text-xs leading-[18px] text-primary">
           {refusal}
         </p>
       )}
 
       {answer && (
         <div className="space-y-2">
-          <p className="rounded-xl border border-hairline bg-well p-3 text-[12px] leading-relaxed text-text-secondary whitespace-pre-wrap">
+          <p className="whitespace-pre-wrap rounded-md border border-hairline bg-well p-3 text-sm leading-6 text-text-secondary">
             {answer}
           </p>
           {stripped && (
-            <p className="text-[10px] text-text-tertiary">
+            <p className="text-[11px] leading-4 text-text-tertiary">
               Code was removed from that answer — this feature explains, it does not
               hand over an implementation.
             </p>
           )}
           {feature === "interview-sim" && (
-            <p className="text-[10px] text-text-tertiary">
+            <p className="text-[11px] leading-4 text-text-tertiary">
               One at a time. Answer that question first — then come back for the next.
             </p>
           )}
