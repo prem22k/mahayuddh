@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { getRecommendationStats } from "@/lib/data/recommend";
 import { label, type AcceptRate, type SignalBreakdown } from "@/lib/recommendationLog";
 import { dataErrorMessage } from "@/lib/data/errors";
+import { Button } from "@/components/ui/Button";
 
 /**
  * "Is this helping you?" (§24).
@@ -36,33 +37,34 @@ export function RecommendationStats() {
   }, []);
 
   if (loading) {
-    return <p className="text-[11px] text-text-disabled">Reading your recommendation log…</p>;
+    return <p className="text-xs leading-5 text-text-tertiary">Reading your recommendation log…</p>;
   }
 
   if (error) {
     return (
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] text-text-secondary">{error}</p>
-        <button
+        <p className="text-xs leading-5 text-text-secondary">{error}</p>
+        <Button
+          variant="secondary"
+          className="shrink-0 border border-hairline"
           onClick={() => window.location.reload()}
-          className="px-3 py-1 rounded-full bg-surface-overlay text-[11px] font-bold text-text-secondary hover:text-text-primary cursor-pointer shrink-0"
         >
           Retry
-        </button>
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
-      <p className="text-[11px] text-text-secondary">{summary}</p>
+    <div className="space-y-3">
+      <p className="text-xs leading-5 text-text-secondary">{summary}</p>
 
       {overall && signals.length > 0 && (
-        <ul className="space-y-1">
+        <ul className="space-y-1.5">
           {signals.map((s) => (
-            <li key={s.signal} className="flex items-center gap-2 text-[11px]">
-              <span className="text-text-tertiary w-32 shrink-0 truncate">{label(s.signal)}</span>
-              <div className="flex-1 h-1.5 rounded-full bg-well overflow-hidden">
+            <li key={s.signal} className="flex items-center gap-3 text-xs leading-5">
+              <span className="w-32 shrink-0 truncate text-text-secondary">{label(s.signal)}</span>
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full border border-hairline bg-well">
                 {/* Width is the measured rate, never a rounded-up vibe. With
                     fewer than five presentations the bar is left empty and the
                     count says why. */}
@@ -71,7 +73,7 @@ export function RecommendationStats() {
                   style={{ width: `${(s.rate ?? 0) * 100}%` }}
                 />
               </div>
-              <span className="text-text-tertiary font-mono w-16 text-right shrink-0">
+              <span className="w-16 shrink-0 text-right font-mono text-text-tertiary tnum">
                 {s.accepted}/{s.presented}
               </span>
             </li>
@@ -80,7 +82,7 @@ export function RecommendationStats() {
       )}
 
       {overall && (
-        <p className="text-[10px] text-text-disabled">
+        <p className="text-xs leading-4 text-text-tertiary">
           A recommendation can carry several reasons, so each is credited with all of them.
           Numbers under five presentations are not yet evidence of anything.
         </p>

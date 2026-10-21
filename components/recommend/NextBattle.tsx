@@ -14,6 +14,21 @@ import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
 import type { Recommendation } from "@/lib/recommend";
 import { RecommendationStats } from "./RecommendationStats";
+import { Button } from "@/components/ui/Button";
+import { DifficultyBadgeNew, PatternChip } from "@/components/ui/Badge";
+import { cn } from "@/lib/utils";
+
+/** Same card language as the Arena "Up next" card. */
+const CARD = "rounded-lg border border-hairline bg-surface p-4 md:p-6";
+
+function Header() {
+  return (
+    <div className="flex items-center gap-2">
+      <Sparkles className="h-3.5 w-3.5 text-primary" strokeWidth={1.75} aria-hidden />
+      <h2 className="text-sm font-semibold leading-5 text-text-primary">Next battle</h2>
+    </div>
+  );
+}
 
 /**
  * "Next battle" (Step 24, Bible §24).
@@ -83,135 +98,132 @@ export function NextBattle({
 
   if (loading) {
     return (
-      <div className={`rounded-xl border-hairline bg-surface p-5 ${className}`}>
-        <div className="text-[11px] font-semibold text-text-secondary">Next battle</div>
-        <p className="text-xs text-text-tertiary mt-1">Reading your history…</p>
-      </div>
+      <section className={cn(CARD, className)} aria-label="Next battle" aria-busy>
+        <Header />
+        <p className="mt-2 text-xs leading-5 text-text-tertiary">Reading your history…</p>
+      </section>
     );
   }
 
   if (error) {
     return (
-      <div className={`rounded-xl border-hairline bg-surface p-5 ${className}`}>
-        <div className="text-[11px] font-semibold text-text-secondary">Next battle</div>
-        <div className="flex items-center justify-between gap-3 mt-1">
-          <p className="text-xs text-text-tertiary">{error}</p>
-          <button
-            onClick={() => void load()}
-            className="px-3 py-1 rounded-full bg-surface-overlay text-text-secondary hover:text-text-primary cursor-pointer shrink-0"
-          >
+      <section className={cn(CARD, className)} aria-label="Next battle">
+        <Header />
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <p className="text-xs leading-5 text-text-secondary">{error}</p>
+          <Button variant="secondary" className="shrink-0 border border-hairline" onClick={() => void load()}>
             Retry
-          </button>
+          </Button>
         </div>
-      </div>
+      </section>
     );
   }
 
   // "Nothing to recommend" is a real answer. Saying it beats padding the card.
   if (!rec || dismissed) {
     return (
-      <div className={`space-y-3 ${className}`}>
-        <div className="rounded-xl border-hairline bg-surface p-5">
-        <div className="text-[11px] font-semibold text-text-secondary">Next battle</div>
-        <p className="text-xs text-text-tertiary mt-1">
-          {dismissed
-            ? "Dismissed. Ask again when you want another suggestion."
-            : "Nothing to recommend right now — no problem in your current sheet has a recorded reason to come back to."}
-        </p>
-        {!dismissed && (
-          <Link
-            href="/practice"
-            className="inline-block mt-3 px-4 py-2 rounded-full bg-primary text-on-primary hover:bg-primary-hover text-[11px] font-bold"
-          >
-            Browse your sheet
-          </Link>
-        )}
-        {dismissed && (
-          <button
-            onClick={() => {
-              setDismissed(false);
-              void load();
-            }}
-            className="mt-3 px-4 py-2 rounded-full bg-surface-overlay text-text-secondary hover:text-text-primary cursor-pointer"
-          >
-            Ask again
-          </button>
-        )}
-        </div>
+      <div className={cn("space-y-3", className)}>
+        <section className={CARD} aria-label="Next battle">
+          <Header />
+          <p className="mt-2 text-sm leading-6 text-text-secondary">
+            {dismissed
+              ? "Dismissed. Ask again when you want another suggestion."
+              : "Nothing to recommend right now — no problem in your current sheet has a recorded reason to come back to."}
+          </p>
+          {!dismissed && (
+            <Link
+              href="/practice"
+              className="mt-4 inline-flex h-10 items-center rounded-md border border-hairline bg-surface-overlay px-4 text-sm font-medium text-text-primary transition-colors hover:bg-[#272830]"
+            >
+              Browse your sheet
+            </Link>
+          )}
+          {dismissed && (
+            <Button
+              variant="secondary"
+              className="mt-4 border border-hairline"
+              onClick={() => {
+                setDismissed(false);
+                void load();
+              }}
+            >
+              Ask again
+            </Button>
+          )}
+        </section>
 
         {/* §24: once somebody has dismissed a suggestion there is something to
             read back. Before that the card would be an empty promise. */}
         {dismissed && (
-          <div className="rounded-xl border-hairline bg-surface p-5 space-y-2">
-            <div className="text-[11px] font-semibold text-text-secondary">
-              Is this helping you?
-            </div>
+          <section className={cn(CARD, "space-y-3")} aria-label="Is this helping you?">
+            <h3 className="text-sm font-medium leading-5 text-text-primary">Is this helping you?</h3>
             <RecommendationStats />
-          </div>
+          </section>
         )}
       </div>
     );
   }
 
   return (
-    <div className={`rounded-xl border-hairline bg-surface p-5 space-y-3 ${className}`}>
-      <div className="flex items-center gap-2">
-        <Sparkles className="w-3.5 h-3.5 text-primary" />
-        <span className="text-[11px] font-semibold text-text-secondary">Next battle</span>
-      </div>
+    <section className={cn(CARD, "flex flex-col gap-4", className)} aria-label="Next battle">
+      <Header />
 
-      <div>
+      <div className="flex flex-col gap-1 md:flex-row md:flex-wrap md:items-center md:gap-2">
         <Link
           href={`/practice/${rec.problem.titleSlug}`}
-          className="text-lg font-semibold text-text-primary hover:text-primary transition-colors"
+          className="font-display text-lg font-semibold leading-tight text-text-primary transition-colors hover:text-primary md:font-sans md:text-base md:leading-6"
         >
           {rec.problem.title}
         </Link>
-        <p className="text-[11px] text-text-secondary">
-          {rec.problem.difficulty}
-          {rec.problem.patterns[0] ? ` · ${rec.problem.patterns[0]}` : ""}
-        </p>
+        <span className="flex flex-wrap items-center gap-2">
+          <DifficultyBadgeNew difficulty={rec.problem.difficulty} size="sm" />
+          {rec.problem.patterns[0] && (
+            <PatternChip label={rec.problem.patterns[0]} className="h-5 px-2 text-[11px]" />
+          )}
+        </span>
       </div>
 
       {/* Every bullet is a measurement. reasonCount is shown rather than hidden
           so a one-reason recommendation does not look like a strong one. */}
-      <ul className="space-y-1">
+      <ul className="flex flex-col gap-1.5">
         {rec.why.map((w) => (
-          <li key={w} className="text-[11px] text-text-secondary flex gap-2">
-            <span className="text-text-tertiary">·</span>
+          <li key={w} className="flex items-start gap-2 text-xs leading-5 text-text-secondary">
+            <span aria-hidden className="mt-2 h-1 w-1 shrink-0 rounded-full bg-text-tertiary" />
             <span>{w}</span>
           </li>
         ))}
       </ul>
 
       {rec.blockedBy.length > 0 && (
-        <p className="text-[10px] text-primary/85">
+        <p className="text-xs leading-5 text-primary">
           Listed despite unmet prerequisites ({rec.blockedBy.join(", ")}). You can skip it.
         </p>
       )}
 
       <div className="flex items-center gap-2 pt-1">
-        <button
+        <Button
+          variant="secondary"
+          className="h-11 shrink-0 border border-hairline md:h-10"
           onClick={() => void decide("accepted")}
-          className="px-4 py-2 rounded-full bg-primary text-on-primary hover:bg-primary-hover text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
         >
-          <Play className="w-3 h-3 fill-current shrink-0" />
+          <Play className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
           {/* The label was a bare text node, so a narrow card broke it across
               two lines mid-phrase ("Start" / "this"). */}
           <span className="whitespace-nowrap">Start this</span>
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
+          className="h-11 shrink-0 md:h-10"
           onClick={() => void decide("dismissed")}
-          className="px-3 py-2 rounded-full bg-surface-overlay hover:bg-surface-raised border border-hairline text-text-primary text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
           title="Not this one"
         >
-          <X className="w-3 h-3 shrink-0" />
+          <X className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
           <span className="whitespace-nowrap">Not this</span>
-        </button>
-        <span className="text-[10px] text-text-secondary ml-auto shrink-0 whitespace-nowrap">
+        </Button>
+        <span className="ml-auto shrink-0 whitespace-nowrap font-mono text-xs font-medium tracking-[0.06em] text-text-tertiary tnum">
           {rec.reasonCount} {rec.reasonCount === 1 ? "reason" : "reasons"}
         </span>
       </div>
-    </div>
+    </section>
   );
 }
