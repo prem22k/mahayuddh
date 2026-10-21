@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { UserPlus, UserCheck } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { isFollowing, toggleFollow } from "@/lib/data/profile";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
+import { cn } from "@/lib/utils";
 
 /**
  * Follow button (§21).
@@ -18,9 +20,24 @@ import { track } from "@/lib/analytics";
  * `check (follower_id <> followed_id)`, so a self-follow button is a button
  * that always fails — and on a pattern page where you are the only person who
  * teaches that pattern, it was the only button there was.
+ *
+ * Stitch: a neutral secondary button, never gold — the page's one gold action
+ * belongs to the visitor close. With `signInHref`, a signed-out visitor gets a
+ * link to sign in (carrying ?next=) instead of a button that can only fail.
  */
-export function FollowButton({ userId, username }: { userId: string; username: string }) {
-  const { user } = useAuth();
+export function FollowButton({
+  userId,
+  username,
+  signInHref,
+  className,
+}: {
+  userId: string;
+  username: string;
+  /** Optional: where a signed-out visitor goes to follow. Off by default. */
+  signInHref?: string;
+  className?: string;
+}) {
+  const { user, loading } = useAuth();
   const [following, setFollowing] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +52,23 @@ export function FollowButton({ userId, username }: { userId: string; username: s
   }, [userId, isSelf]);
 
   if (isSelf) return null;
+
+  const cls = cn(
+    "inline-flex h-10 items-center justify-center gap-2 rounded-md border px-5 text-sm font-medium transition-colors disabled:opacity-50 max-md:h-9 max-md:min-h-[44px] max-md:px-3.5 max-md:text-xs",
+    following
+      ? "border-hairline-strong bg-transparent text-text-secondary hover:bg-surface-raised hover:text-text-primary"
+      : "border-hairline bg-surface-overlay text-text-primary hover:bg-[#272830]",
+    className
+  );
+
+  if (signInHref && !loading && !user) {
+    return (
+      <Link href={signInHref} className={cls} title={`Sign in to follow @${username}`}>
+        <UserPlus className="h-4 w-4 text-text-secondary" strokeWidth={1.5} aria-hidden />
+        Follow
+      </Link>
+    );
+  }
 
   const toggle = async () => {
     setBusy(true);
@@ -53,23 +87,25 @@ export function FollowButton({ userId, username }: { userId: string; username: s
   return (
     <div className="flex items-center gap-2">
       <button
+        type="button"
         onClick={() => void toggle()}
         disabled={busy || following === null}
-        className={`px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 ${
-          following
-            ? "bg-surface-overlay border border-hairline text-text-primary"
-            : "bg-primary text-on-primary hover:bg-primary-hover"
-        }`}
+        aria-pressed={following === true}
+        className={cls}
         title={
           following
             ? `Unfollow @${username}`
             : `Follow @${username} to see their teaching in Following`
         }
       >
-        {following ? <UserCheck className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
+        {following ? (
+          <UserCheck className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+        ) : (
+          <UserPlus className="h-4 w-4 text-text-secondary" strokeWidth={1.5} aria-hidden />
+        )}
         {following ? "Following" : "Follow"}
       </button>
-      {error && <span className="text-[10px] text-error">{error}</span>}
+      {error && <span className="text-xs text-error">{error}</span>}
     </div>
   );
 }

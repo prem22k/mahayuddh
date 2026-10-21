@@ -76,7 +76,7 @@ export function reputationDimensions(s: TeacherStats): Dimension[] {
       value: s.approaches + s.primers,
       note:
         s.primers > 0
-          ? `${s.approaches} approaches, ${s.primers} primers, ${s.patterns_taught} patterns.`
+          ? `${s.approaches} ${s.approaches === 1 ? "approach" : "approaches"}, ${s.primers} ${s.primers === 1 ? "primer" : "primers"}, ${s.patterns_taught} ${s.patterns_taught === 1 ? "pattern" : "patterns"}.`
           : `${s.approaches} ${s.approaches === 1 ? "approach" : "approaches"}.`,
     },
     {

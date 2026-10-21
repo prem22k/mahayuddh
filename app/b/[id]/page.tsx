@@ -1,15 +1,12 @@
-import Link from "next/link";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { Check, ExternalLink } from "lucide-react";
 import { getServiceClient } from "@/lib/supabase/service";
 import { safeNext } from "@/lib/safeNext";
 import { buildPublicCard, BattleCardInput, formatDuration } from "@/lib/battleCard";
-import { ShareRow } from "@/components/ui/ShareRow";
-import { PostKit } from "@/components/ui/PostKit";
 import { TrackVisit } from "@/components/ui/TrackVisit";
-import type { Battle, ProblemEvent, Approach, Suggestion, Problem } from "@/types/database";
+import { ProofView } from "@/components/proof/ProofView";
+import type { Battle, BattleOutcome, ProblemEvent, Approach, Suggestion, Problem } from "@/types/database";
 
 /**
  * Public battle card (Step 16, Bible §38).
@@ -21,12 +18,24 @@ import type { Battle, ProblemEvent, Approach, Suggestion, Problem } from "@/type
 
 export const dynamic = "force-dynamic";
 
+/** Battle-row facts the public card projection does not carry. */
+interface ProofFacts {
+  outcome: BattleOutcome;
+  durationSec: number | null;
+  /** ended_at, or started_at while the battle runs. */
+  at: string;
+  /** LeetCode frontend number from the catalog, when the catalog has the problem. */
+  questionId: string | null;
+  ownerAvatar: string | null;
+}
+
 async function loadCard(id: string): Promise<{
   card: ReturnType<typeof buildPublicCard>;
+  facts: ProofFacts;
   exists: boolean;
 }> {
   const supabase = getServiceClient();
-  if (!supabase) return { card: null as never, exists: false };
+  if (!supabase) return { card: null as never, facts: null as never, exists: false };
 
   const { data: battle } = await supabase
     .from("battles")
@@ -35,17 +44,17 @@ async function loadCard(id: string): Promise<{
     )
     .eq("id", id)
     .maybeSingle();
-  if (!battle) return { card: null as never, exists: false };
+  if (!battle) return { card: null as never, facts: null as never, exists: false };
 
   const slug = (battle.problem_slug as string).toLowerCase();
   const ownerId = battle.user_id as string;
 
   const [ownerRes, catalogRes, battlesRes, eventsRes, approachesRes, challengesRes] =
     await Promise.all([
-      supabase.from("profiles").select("username").eq("id", ownerId).maybeSingle(),
+      supabase.from("profiles").select("username,avatar_url").eq("id", ownerId).maybeSingle(),
       supabase
         .from("problems")
-        .select("title_slug,title,difficulty,topics")
+        .select("title_slug,title,difficulty,question_id,topics")
         .eq("title_slug", slug)
         .maybeSingle(),
       supabase
@@ -87,7 +96,17 @@ async function loadCard(id: string): Promise<{
     challenges: (challengesRes.data ?? []) as Suggestion[],
   };
 
-  return { card: buildPublicCard(input), exists: true };
+  const row = battle as Battle;
+  const qid = (catalogRes.data as Problem | null)?.question_id;
+  const facts: ProofFacts = {
+    outcome: row.outcome,
+    durationSec: row.duration_sec,
+    at: row.ended_at ?? row.started_at,
+    questionId: qid ? String(qid) : null,
+    ownerAvatar: (ownerRes.data as { avatar_url: string | null } | null)?.avatar_url ?? null,
+  };
+
+  return { card: buildPublicCard(input), facts, exists: true };
 }
 
 export async function generateMetadata({
@@ -96,11 +115,20 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const { card, exists } = await loadCard(id);
+  const { card, facts, exists } = await loadCard(id);
   if (!exists) return { title: "Battle not found | Mahayuddh" };
 
   const solved = card.solvedSec != null ? formatDuration(card.solvedSec) : null;
   const who = card.ownerUsername ? `@${card.ownerUsername}` : "Someone";
+
+  // An unsolved battle is still shareable, but its preview must not say "solved".
+  if (facts.outcome !== "solved") {
+    return {
+      title: `${card.title} — ${who}'s battle`,
+      description: `${who} battled ${card.title}${card.difficulty ? ` (${card.difficulty})` : ""}. Not solved yet.`,
+      openGraph: { title: `${who} battled ${card.title}`, description: "Not solved yet", type: "article" },
+    };
+  }
 
   return {
     title: `${card.title} in ${solved ?? "one battle"} — ${who}`,
@@ -123,165 +151,38 @@ export default async function BattleSharePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { card, exists } = await loadCard(id);
+  const { card, facts, exists } = await loadCard(id);
   if (!exists || !card) notFound();
 
   const solved = card.solvedSec != null ? formatDuration(card.solvedSec) : null;
-  const prev = card.previousBestSec != null ? formatDuration(card.previousBestSec) : null;
-  const verified = card.evidence === "leetcode";
-  const who = card.ownerUsername ? `@${card.ownerUsername}` : "A Mahayuddh developer";
-  const dateLine = new Date(card.startedAt ?? new Date().toISOString())
-    .toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
-    .toUpperCase();
-  const noLine = card.problemSlug ? `NO. ${card.problemSlug}` : "NO. 3";
 
   // Deep-continue (Wave D): every CTA carries ?next=<artifact> through
   // safeNext, so a logged-out visitor lands back on this battle after auth
   // instead of a generic page. Login already honors ?next=.
   const artifactPath = `/b/${id}`;
   const nextParam = encodeURIComponent(safeNext(artifactPath) ?? "/home");
-  const shareText = `I solved ${card.title} on Mahayuddh${solved ? ` in ${solved}` : ""}.`;
+  const shareText =
+    facts.outcome === "solved"
+      ? `I solved ${card.title} on Mahayuddh${solved ? ` in ${solved}` : ""}.`
+      : `I battled ${card.title} on Mahayuddh.`;
 
   return (
-    <div className="min-h-screen bg-canvas text-text-primary">
-      <header className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4">
-        <span className="font-display text-lg font-semibold tracking-tight">Mahayuddh</span>
-        <Link
-          href={`/login?next=${nextParam}`}
-          className="inline-flex min-h-[44px] items-center rounded-md px-3 text-sm font-medium leading-5 text-text-secondary hover:bg-surface-raised hover:text-text-primary"
-        >
-          Sign in
-        </Link>
-      </header>
-
-      <main className="mx-auto max-w-3xl space-y-4 px-4 pb-16 pt-6">
-        <div className="pass">
-          <div className="pass-body space-y-4">
-            <h1 className="font-display text-4xl font-semibold leading-none tracking-tight md:text-[44px]">
-              {card.title}
-            </h1>
-            <div className="flex flex-wrap items-center gap-2">
-              {card.difficulty && (
-                <span className="inline-flex h-6 items-center gap-1.5 rounded-sm px-2 text-xs font-medium leading-4 text-text-secondary">
-                  {card.difficulty}
-                </span>
-              )}
-              {card.pattern && (
-                <span className="inline-flex h-6 items-center rounded-full bg-pattern-tint px-2.5 text-xs font-medium leading-4 text-pattern">
-                  {card.pattern}
-                </span>
-              )}
-            </div>
-            <div className="type-mono-display tnum">{solved ?? "—"}</div>
-            <p className="text-sm leading-6 text-text-secondary">
-              {prev ? (
-                <>
-                  <span className="line-through">{prev}</span>
-                  {" → "}
-                  <span className="font-mono tnum">{solved}</span>
-                  {" · faster"}
-                </>
-              ) : (
-                "First timed solve"
-              )}
-              {card.isPersonalRecord && (
-                <span className="ml-2 inline-flex h-6 items-center rounded-sm bg-primary-tint px-2 text-xs font-medium leading-4 text-primary">
-                  Personal best
-                </span>
-              )}
-            </p>
-            <div className="flex items-center gap-2.5">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-surface-overlay text-xs font-medium text-text-secondary">
-                {(card.ownerUsername ?? "M").slice(0, 2).toUpperCase()}
-              </span>
-              <span className="text-sm leading-6 text-text-secondary">{who}</span>
-            </div>
-          </div>
-          <div className="pass-stub">
-            <div className="pass-serial">{who.toUpperCase().slice(0, 12)}</div>
-            <div className="pass-serial">{dateLine}</div>
-            <div className="pass-serial">{noLine.toUpperCase()}</div>
-            {verified ? (
-              <div className="seal-bloom mt-2 flex h-12 w-12 animate-stamp items-center justify-center rounded-full border border-verified/30">
-                <span className="flex flex-col items-center text-verified">
-                  <Check className="h-4 w-4" strokeWidth={1.5} />
-                  <span className="font-mono text-[10px] font-medium tracking-widest">VERIFIED</span>
-                </span>
-              </div>
-            ) : (
-              <div className="pass-serial mt-2">SELF-REPORTED</div>
-            )}
-          </div>
-        </div>
-
-        <p className="text-center text-xs leading-4 text-text-tertiary">
-          {card.stats.attempts} attempts · {card.stats.revisits} revisits · challenged {card.stats.challengesSent} ·{" "}
-          {card.stats.friendsCompleted} friends solved it
-        </p>
-        <p className="text-center text-sm leading-6 text-text-secondary">
-          {verified
-            ? "Verified against an accepted LeetCode submission."
-            : "Logged without a LeetCode match."}
-        </p>
-
-        <Suspense fallback={null}>
-          <TrackVisit artifact={`battle:${id}`} />
-        </Suspense>
-
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          <Link
-            href={`/login?mode=signup&next=${nextParam}`}
-            className="inline-flex h-12 min-h-[44px] items-center rounded-md bg-primary px-6 text-sm font-medium leading-5 text-on-primary hover:bg-primary-hover"
-          >
-            Try this problem
-          </Link>
-          <a
-            href={`https://leetcode.com/problems/${card.problemSlug}/`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-md bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary"
-          >
-            See it on LeetCode
-            <ExternalLink className="h-4 w-4" strokeWidth={1.5} />
-          </a>
-          <ShareRow
-            path={`/b/${id}`}
-            artifact={{ kind: "battle", id }}
-            text={shareText}
-            label="Share"
-          />
-        </div>
-
-        {card.sharedApproachId && (
-          <div className="flex items-center justify-center">
-            <Link
-              href={`/a/${card.sharedApproachId}`}
-              className="inline-flex min-h-[44px] items-center rounded-md bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-surface-raised"
-            >
-              Read the approach
-            </Link>
-          </div>
-        )}
-
-        <div className="flex items-center justify-center">
-          <PostKit
-            imageHref={`/b/${id}/opengraph-image`}
-            path={artifactPath}
-            artifact={{ kind: "battle", id }}
-            text={shareText}
-          />
-        </div>
-
-        <footer className="flex flex-wrap items-center justify-center gap-2 pt-6 text-xs leading-4 text-text-tertiary">
-          <span>Mahayuddh · Practice DSA with your people</span>
-          <Link
-            href={`/login?mode=signup&next=${nextParam}`}
-            className="inline-flex min-h-[44px] items-center font-medium text-text-primary underline decoration-hairline-strong underline-offset-[3px]"
-          >
-            Start your squad
-          </Link>
-        </footer>
-      </main>
-    </div>
+    <>
+      <Suspense fallback={null}>
+        <TrackVisit artifact={`battle:${id}`} />
+      </Suspense>
+      <ProofView
+        battleId={id}
+        card={card}
+        outcome={facts.outcome}
+        durationSec={facts.durationSec}
+        at={facts.at}
+        questionId={facts.questionId}
+        ownerAvatar={facts.ownerAvatar}
+        signInHref={`/login?next=${nextParam}`}
+        signupHref={`/login?mode=signup&next=${nextParam}`}
+        shareText={shareText}
+      />
+    </>
   );
 }
