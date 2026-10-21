@@ -1,45 +1,31 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import {
-  Plus,
-  Play,
-  CheckCircle2,
-  ArrowRight,
-  Clock,
-  Link2,
-  Check,
-  Forward,
-  BellRing,
-  Lock,
-  X,
-} from "lucide-react";
-import { slugifyTitle } from "@/lib/slug";
+import { Plus, Play, Forward, BellRing } from "lucide-react";
 import { copyText } from "@/lib/clipboard";
 import {
   getSuggestions,
-  createSuggestion,
   markSuggestionCompleted,
   dismissSuggestion,
   acceptSuggestion,
   remindSuggestion,
 } from "@/lib/data/suggestions";
-import { getLatestBattle } from "@/lib/data/battles";
+import { getCatalogBySlugs } from "@/lib/data/problems";
 import { logFeedEvent } from "@/lib/data/feed";
-import { notify } from "@/lib/data/notifications";
 import { getSquadProfiles } from "@/lib/data/profiles";
+import { orderChainOldestFirst } from "@/lib/chains";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
-import { DifficultyBadgeNew } from "@/components/ui/Badge";
-import { ProblemLink } from "@/components/ui/ProblemLink";
-import { ModalShell } from "@/components/ui/ModalShell";
+import { problemUrl } from "@/components/ui/ProblemLink";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { Button } from "@/components/ui/Button";
 import { EmptyState, ErrorCard } from "@/components/ui/States";
 import { UnderlineTabs } from "@/components/ui/ProblemRow";
-import { Pass, PassSerial } from "@/components/pass/Pass";
-import { Avatar } from "@/components/ui/Avatar";
+import { SendChallengeModal } from "@/components/modals/SendChallengeModal";
+import { ChallengePass, type ProblemMeta } from "@/components/challenges/ChallengePass";
+import { ChallengeRow, type RowAction } from "@/components/challenges/ChallengeRow";
+import type { OverflowItem } from "@/components/practice/OverflowMenu";
 import { Suggestion, Profile, Difficulty } from "@/types/database";
 import { track } from "@/lib/analytics";
 
@@ -53,44 +39,30 @@ const TAB_TO_KEY: Record<TabLabel, TabKey> = {
   Done: "done",
 };
 
+/** What the composer opens with: a fresh challenge, a URL prefill, or a pass-on. */
+interface ComposerSeed {
+  initialTo?: string;
+  initialProblem?: { slug: string; title: string; difficulty: Difficulty };
+  initialBeatSec?: number | null;
+  passParent?: Suggestion | null;
+}
+
 export default function SuggestionsPage() {
   const { user, profile } = useAuth();
   const { startSolving } = useSolving();
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [catalog, setCatalog] = useState<Map<string, ProblemMeta>>(new Map());
   const [loading, setLoading] = useState(true);
+  // Profiles must be in before the composer mounts, or its recipient default is empty.
+  const [profilesReady, setProfilesReady] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("all");
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
+  const [composer, setComposer] = useState<ComposerSeed | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-
-  // Form State
-  const [targetUserId, setTargetUserId] = useState("");
-  const [problemTitle, setProblemTitle] = useState("");
-  const [problemSlug, setProblemSlug] = useState("");
-  const [difficulty, setDifficulty] = useState<Difficulty>("Medium");
-  const [note, setNote] = useState("");
-  const [beatTime, setBeatTime] = useState(false);
-  const [myTime, setMyTime] = useState("");
-  const [deadline, setDeadline] = useState("");
-  // Off by default (Bible §12: least help first). Explicit opt-in only.
-  const [spoiler, setSpoiler] = useState(false);
-  const [passParent, setPassParent] = useState<Suggestion | null>(null);
-  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
   const [remindId, setRemindId] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
-
-  function parseMmSs(v: string): number | null {
-    const m = v.trim().match(/^(?:(\d+):)?([0-5]?\d)$/);
-    if (!m) return null;
-    const mins = m[1] ? parseInt(m[1], 10) : 0;
-    return mins * 60 + parseInt(m[2], 10);
-  }
-
-  function fmtTime(sec: number): string {
-    return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
-  }
+  // ?to= / ?problem= / ?pass= prefill, applied once the data it may need is loaded.
+  const urlPrefill = useRef<(ComposerSeed & { passId?: string }) | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -102,11 +74,12 @@ export default function SuggestionsPage() {
       ]);
       setSuggestions(suggestionsData);
       setProfiles(profilesData);
-      const otherProfiles = profilesData.filter((p) => p.id !== user?.id);
-      if (otherProfiles.length > 0 && !targetUserId) {
-        setTargetUserId(otherProfiles[0].id);
-      } else if (profilesData.length > 0 && !targetUserId) {
-        setTargetUserId(profilesData[0].id);
+      setProfilesReady(true);
+      const prefill = urlPrefill.current;
+      if (prefill && user?.id) {
+        urlPrefill.current = null;
+        const parent = prefill.passId ? suggestionsData.find((s) => s.id === prefill.passId) : undefined;
+        setComposer(parent ? { passParent: parent } : prefill);
       }
     } catch (err) {
       console.error("Error loading suggestions:", err);
@@ -114,136 +87,63 @@ export default function SuggestionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, targetUserId]);
+  }, [user?.id]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Honor ?to=<user_id> (leaderboard) and ?problem=&title=&difficulty=&time=
-  // (post-solve "Challenge someone" on Today's Battle) — the prefill path
-  // exists so no next action is ever a dead form.
+  // Honor ?to=<user_id> (leaderboard), ?problem=&title=&difficulty=&time=
+  // (post-solve "Challenge someone" on Today's Battle) and ?pass=<id> (the
+  // /c/ page's "Pass it on") — the prefill path exists so no next action is
+  // ever a dead form.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const to = params.get("to");
-    if (to) setTargetUserId(to);
-
     const slug = params.get("problem");
     const title = params.get("title");
+    const passId = params.get("pass");
+    const seed: ComposerSeed & { passId?: string } = {};
+    if (to) seed.initialTo = to;
     if (slug && title) {
-      setProblemSlug(slug);
-      setProblemTitle(title);
       const d = params.get("difficulty");
-      if (d === "Easy" || d === "Medium" || d === "Hard") setDifficulty(d);
+      seed.initialProblem = {
+        slug,
+        title,
+        difficulty: d === "Easy" || d === "Medium" || d === "Hard" ? d : "Medium",
+      };
       // Prefill the beat-my-time target from the solve we just finished.
       const time = params.get("time");
       const secs = time ? Number.parseInt(time, 10) : NaN;
-      if (Number.isFinite(secs) && secs >= 0) {
-        setBeatTime(true);
-        setMyTime(`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`);
-      }
+      if (Number.isFinite(secs) && secs >= 0) seed.initialBeatSec = secs;
     }
-    if (to || (slug && title)) setIsModalOpen(true);
+    if (passId) seed.passId = passId;
+    if (to || (slug && title) || passId) urlPrefill.current = seed;
   }, []);
 
-  const handleSendChallenge = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!problemTitle.trim() || !user) return;
-    if (!targetUserId || targetUserId === "demo") {
-      setCreateError("Pick a squad member to challenge.");
-      setSubmitting(false);
-      return;
-    }
-    if (targetUserId === user.id) {
-      setCreateError("Challenge a squad mate, not yourself.");
-      setSubmitting(false);
-      return;
-    }
+  // No. and pattern for every listed problem, one batched catalog read.
+  // Decoration only: a failed lookup leaves them off.
+  const slugKey = Array.from(new Set(suggestions.map((s) => s.problem_slug))).sort().join(",");
+  useEffect(() => {
+    if (!slugKey) return;
+    let live = true;
+    getCatalogBySlugs(slugKey.split(","))
+      .then((rows) => {
+        if (!live) return;
+        setCatalog(
+          new Map(
+            rows.map((r) => [r.title_slug, { number: String(r.question_id), pattern: r.topics?.[0] ?? null }])
+          )
+        );
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [slugKey]);
 
-    setSubmitting(true);
-    setCreateError(null);
-    try {
-      const slug = (problemSlug.trim().toLowerCase() || slugifyTitle(problemTitle)).slice(0, 80);
-      const senderSecs = beatTime ? parseMmSs(myTime) : null;
-      if (beatTime && senderSecs == null) {
-        setCreateError("Enter your solve time as m:ss (or uncheck “beat my time”).");
-        setSubmitting(false);
-        return;
-      }
-      const res = await createSuggestion({
-        fromUser: user.id,
-        toUser: targetUserId,
-        problemTitle: problemTitle.trim(),
-        problemSlug: slug,
-        difficulty,
-        message: note.trim(),
-        senderTimeSec: senderSecs,
-        beatTime,
-        deadlineAt: deadline ? new Date(deadline + "T23:59:59").toISOString() : null,
-        parentId: passParent?.id ?? null,
-        // Off by default: a challenge is an invitation to think, not to copy.
-        spoiler,
-      });
-
-      if (res.ok) {
-        track("challenge_sent", { problem_slug: slug, beat_time: beatTime, pass: !!passParent });
-        // The recipient is owed an answer — this is Loop A's return mechanism.
-        notify({
-          userId: targetUserId,
-          kind: "challenge",
-          title: `${profile ? `@${profile.username}` : "A squad mate"} challenged you`,
-          body: `${problemTitle.trim()} · ${difficulty}`,
-          deepLink: `/c/${res.suggestion.id}`,
-          actorId: user.id,
-          urgent: true,
-        }).catch(() => {});
-        logFeedEvent({
-          eventType: "challenge",
-          squadId: profile?.active_squad_id ?? null,
-          problemTitle: problemTitle.trim(),
-          problemSlug: slug,
-          difficulty,
-          objectId: res.suggestion.id,
-          metadata: passParent ? { parent_id: passParent.id } : {},
-        }).catch(() => {});
-        setSuggestions([res.suggestion, ...suggestions]);
-        setIsModalOpen(false);
-        setProblemTitle("");
-        setProblemSlug("");
-        setNote("");
-        setBeatTime(false);
-        setMyTime("");
-        setDeadline("");
-        setSpoiler(false);
-        setPassParent(null);
-        setCreateError(null);
-
-        try {
-          const confetti = (await import("canvas-confetti")).default;
-          confetti({
-            particleCount: 60,
-            spread: 60,
-            origin: { y: 0.8 },
-            colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
-          });
-        } catch {
-          // ignore
-        }
-      } else if (res.reason === "duplicate") {
-        setCreateError("This squad mate already has a pending challenge for that problem.");
-      } else if (res.reason === "invalid") {
-        setCreateError("Check the problem slug (lowercase letters, numbers, dashes) and keep hints under 2000 characters.");
-      } else {
-        setCreateError("Couldn't send the challenge. Please try again.");
-      }
-    } catch (err) {
-      console.error("Error creating challenge:", err);
-      setCreateError("Couldn't send the challenge. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const openComposer = (seed: ComposerSeed = {}) => setComposer(seed);
 
   const handleStartSolvingChallenge = async (item: Suggestion) => {
     // Persist the accept so the sender sees it in progress and the battle can be
@@ -283,38 +183,22 @@ export default function SuggestionsPage() {
   };
 
   const handleDecline = async (item: Suggestion) => {
-    const ok = await dismissSuggestion(item.id);
-    if (ok) setSuggestions((prev) => prev.filter((s) => s.id !== item.id));
+    try {
+      const ok = await dismissSuggestion(item.id);
+      if (ok) setSuggestions((prev) => prev.filter((s) => s.id !== item.id));
+    } catch {
+      setActionNotice("Couldn't dismiss that challenge. Try again.");
+    }
   };
 
   const handleCopyLink = async (item: Suggestion) => {
     if (await copyText(`${window.location.origin}/c/${item.id}`)) {
-      setCopiedLinkId(item.id);
-      setTimeout(() => setCopiedLinkId(null), 2000);
+      setActionNotice("Challenge link copied.");
     }
   };
 
-  const handlePass = (item: Suggestion) => {
-    // Pass the challenge along: prefill problem, link chain via parent_id.
-    setPassParent(item);
-    setProblemTitle(item.problem_title);
-    setProblemSlug(item.problem_slug);
-    setDifficulty(item.difficulty);
-    setNote("");
-    setBeatTime(false);
-    setMyTime("");
-    setDeadline("");
-    setSpoiler(false);
-    setCreateError(null);
-    setIsModalOpen(true);
-  };
-
-  const fillLatestTime = async () => {
-    const slug = (problemSlug.trim().toLowerCase() || slugifyTitle(problemTitle)).slice(0, 80);
-    if (!slug) return;
-    const latest = await getLatestBattle(slug).catch(() => null);
-    if (latest?.duration_sec != null) setMyTime(fmtTime(latest.duration_sec));
-  };
+  // Pass the challenge along: prefill problem, link chain via parent_id.
+  const handlePass = (item: Suggestion) => openComposer({ passParent: item });
 
   const [completeError, setCompleteError] = useState<string | null>(null);
 
@@ -353,6 +237,48 @@ export default function SuggestionsPage() {
     }
   };
 
+  /** One visible action per row (the one the row exists for); the rest go in ⋯. */
+  const rowControls = (item: Suggestion): { action: RowAction; menu: OverflowItem[] } => {
+    const isTarget = item.to_user === user?.id;
+    const isSender = item.from_user === user?.id;
+    const pending = item.status === "pending";
+    const iconCls = "h-3.5 w-3.5";
+    const solve: RowAction = {
+      label: isTarget && pending ? "Accept" : "Solve in dock",
+      icon: <Play className={iconCls} strokeWidth={1.5} aria-hidden />,
+      onClick: () => handleStartSolvingChallenge(item),
+      title: "Load into solve dock",
+    };
+    const remindTitle = item.reminded_at
+      ? `Last nudged ${new Date(item.reminded_at).toLocaleDateString()}, one nudge per 24h`
+      : "Nudge them (once per 24h)";
+    const remind: RowAction = {
+      label: remindId === item.id ? "…" : "Remind",
+      icon: <BellRing className={iconCls} strokeWidth={1.5} aria-hidden />,
+      onClick: () => handleRemind(item),
+      disabled: remindId === item.id,
+      title: remindTitle,
+    };
+    const action = isSender && pending && !isTarget ? remind : solve;
+
+    const menu: OverflowItem[] = [];
+    if (action !== solve) menu.push({ label: "Solve in dock", onSelect: solve.onClick });
+    if (isTarget && pending) {
+      menu.push({ label: "Mark solved", onSelect: () => handleMarkCompleted(item) });
+      menu.push({ label: "Decline", onSelect: () => handleDecline(item) });
+    }
+    if (pending && action !== remind && remindId !== item.id) {
+      menu.push({ label: "Remind", onSelect: () => handleRemind(item) });
+    }
+    if (pending) menu.push({ label: "Pass it on", onSelect: () => handlePass(item) });
+    menu.push({ label: "Copy challenge link", onSelect: () => handleCopyLink(item) });
+    menu.push({
+      label: "Open on LeetCode",
+      onSelect: () => window.open(problemUrl(item.problem_slug), "_blank", "noopener,noreferrer"),
+    });
+    return { action, menu };
+  };
+
   const filteredList = suggestions.filter((s) => {
     if (activeTab === "for_you") return s.to_user === user?.id && s.status !== "completed";
     if (activeTab === "sent") return s.from_user === user?.id;
@@ -365,120 +291,72 @@ export default function SuggestionsPage() {
   const doneCount = suggestions.filter((s) => s.status === "completed").length;
   const openForYou =
     suggestions.find((s) => s.to_user === user?.id && s.status === "pending") ?? null;
-  const eligibleRecipientProfiles = profiles.filter((p) => p.id !== user?.id);
   const tabLabel = (Object.keys(TAB_TO_KEY) as TabLabel[]).find((k) => TAB_TO_KEY[k] === activeTab) ?? "All";
+  const tabCounts: Record<TabLabel, number> = {
+    All: suggestions.length,
+    "For you": forYouCount,
+    Sent: sentCount,
+    Done: doneCount,
+  };
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
+    <div className="space-y-8 md:space-y-10">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="type-display-md text-text-primary">Challenges</h1>
-          <p className="mt-1 text-sm leading-6 text-text-secondary">
+          <p className="mt-1 max-w-[240px] text-[13px] leading-5 text-text-secondary sm:max-w-none md:text-[15px] md:leading-6">
             Friendly 1v1s. Solve it, beat their time, pass it on.
           </p>
         </div>
-
-        {!openForYou && (
-          <span className="self-start md:self-auto">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setCreateError(null);
-                setPassParent(null);
-                setIsModalOpen(true);
-              }}
-            >
-              <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
-              New challenge
-            </Button>
-          </span>
-        )}
-        {openForYou && (
-          <span className="self-start md:self-auto">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setCreateError(null);
-                setPassParent(null);
-                setIsModalOpen(true);
-              }}
-            >
-              <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
-              New challenge
-            </Button>
-          </span>
-        )}
+        <Button
+          variant="secondary"
+          className="h-11 shrink-0 border border-hairline px-3 md:h-10 md:px-4"
+          onClick={() => openComposer()}
+        >
+          <Plus className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+          New challenge
+        </Button>
       </div>
 
       {loadError && <ErrorCard message={loadError} onRetry={() => void loadData()} />}
 
       {openForYou ? (
-        <Pass
-          body={
-            <div className="space-y-4">
-              <div className="flex items-center gap-2.5">
-                <Avatar
-                  name={openForYou.from_profile?.username ?? "Challenger"}
-                  src={openForYou.from_profile?.avatar_url}
-                  size="md"
-                />
-                <p className="type-title text-text-primary">
-                  {openForYou.from_profile?.username
-                    ? `@${openForYou.from_profile.username} challenged you`
-                    : "You were challenged"}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="type-title text-text-primary">{openForYou.problem_title}</span>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <DifficultyBadgeNew difficulty={openForYou.difficulty} />
-                <span className="font-mono text-sm text-text-tertiary tnum">
-                  No. {openForYou.problem_slug}
-                </span>
-              </div>
-              {openForYou.sender_time_sec != null ? (
-                <p className="type-mono-display text-text-primary">
-                  Beat {fmtTime(openForYou.sender_time_sec)}
-                </p>
-              ) : (
-                <p className="type-mono-display text-text-primary">Open</p>
-              )}
-              {openForYou.note && !(openForYou.spoiler && openForYou.to_user !== user?.id) && (
-                <p className="text-sm leading-6 text-text-secondary">
-                  &ldquo;{openForYou.note}&rdquo;
-                </p>
-              )}
-              {openForYou.spoiler && openForYou.to_user !== user?.id && (
-                <p className="flex items-center gap-1.5 text-sm text-text-tertiary">
-                  <Lock className="h-3.5 w-3.5" strokeWidth={1.5} />
-                  A hint unlocks when you finish.
-                </p>
-              )}
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="primary" size="lg" onClick={() => handleStartSolvingChallenge(openForYou)}>
-                  Accept challenge
-                </Button>
-                <Button variant="ghost" onClick={() => handlePass(openForYou)}>
+        <ChallengePass
+          item={openForYou}
+          viewerId={user?.id}
+          meta={catalog.get(openForYou.problem_slug)}
+          // The inbox hero is always addressed to the viewer, who may read the note.
+          noteVisible={!(openForYou.spoiler && openForYou.to_user !== user?.id)}
+          lockedCopy="A hint unlocks when you finish."
+          actions={
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full font-semibold md:w-auto"
+                onClick={() => handleStartSolvingChallenge(openForYou)}
+              >
+                <Play className="h-4 w-4" strokeWidth={1.5} fill="currentColor" aria-hidden />
+                Accept challenge
+              </Button>
+              <div className="grid grid-cols-2 gap-2 md:contents">
+                <Button
+                  variant="secondary"
+                  className="h-11 border border-hairline bg-transparent max-md:text-[13px] md:h-12 md:bg-surface-overlay md:px-5"
+                  onClick={() => handlePass(openForYou)}
+                >
+                  <Forward className="h-4 w-4 text-text-secondary" strokeWidth={1.5} aria-hidden />
                   Pass it on
                 </Button>
-                <Button variant="ghost" onClick={() => handleDecline(openForYou)}>
+                <Button
+                  variant="ghost"
+                  className="h-11 border border-hairline text-text-tertiary max-md:text-[13px] md:ml-auto md:h-12 md:border-transparent"
+                  onClick={() => handleDecline(openForYou)}
+                >
                   Not now
                 </Button>
               </div>
             </div>
-          }
-          stub={
-            <>
-              <PassSerial>From @{openForYou.from_profile?.username ?? "squad"}</PassSerial>
-              <PassSerial>To @{openForYou.to_profile?.username ?? "you"}</PassSerial>
-              <PassSerial>
-                {openForYou.deadline_at
-                  ? `Due ${new Date(openForYou.deadline_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
-                  : "No deadline"}
-              </PassSerial>
-              <PassSerial>Open</PassSerial>
-            </>
           }
         />
       ) : (
@@ -492,385 +370,85 @@ export default function SuggestionsPage() {
                 Send one to someone in your squad.
               </p>
             </div>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setCreateError(null);
-                setPassParent(null);
-                setIsModalOpen(true);
-              }}
-            >
+            <Button variant="secondary" onClick={() => openComposer()}>
               New challenge
             </Button>
           </div>
         )
       )}
 
-      <UnderlineTabs
-        tabs={TABS.map((t) =>
-          t === "All"
-            ? `All ${suggestions.length}`
-            : t === "For you"
-              ? `For you ${forYouCount}`
-              : t === "Sent"
-                ? `Sent ${sentCount}`
-                : `Done ${doneCount}`
-        )}
-        value={`${tabLabel} ${tabLabel === "All" ? suggestions.length : tabLabel === "For you" ? forYouCount : tabLabel === "Sent" ? sentCount : doneCount}`}
-        onChange={(v) => {
-          const base = (Object.keys(TAB_TO_KEY) as TabLabel[]).find((k) => v.startsWith(k));
-          if (base) setActiveTab(TAB_TO_KEY[base]);
-        }}
-      />
-
-      {completeError && (
-        <div role="alert" className="card border-error/30 bg-error-tint">
-          <p className="text-sm text-error">{completeError}</p>
-        </div>
-      )}
-      {actionNotice && (
-        <div role="status" className="card">
-          <p className="text-sm text-text-secondary">{actionNotice}</p>
-        </div>
-      )}
-      {loading ? (
-        <PageLoader label="Loading challenges..." className="h-60" />
-      ) : filteredList.length === 0 ? (
-        <EmptyState
-          heading="Nothing here yet"
-          body={
-            activeTab === "for_you"
-              ? "No challenges waiting for you. Solve a battle and challenge a friend, theirs will land here."
-              : "No challenges yet. Solve a battle and challenge a friend to start your squad loop."
-          }
-          action={
-            <Link
-              href="/home"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-[#272830]"
-            >
-              Start a battle
-            </Link>
-          }
+      <div className="space-y-4">
+        <UnderlineTabs
+          tabs={TABS}
+          counts={tabCounts}
+          value={tabLabel}
+          onChange={(v) => {
+            const base = (Object.keys(TAB_TO_KEY) as TabLabel[]).find((k) => k === v);
+            if (base) setActiveTab(TAB_TO_KEY[base]);
+          }}
         />
-      ) : (
-        <div className="mx-auto w-full max-w-reading space-y-3">
-          {filteredList.map((item) => {
-            const isTarget = item.to_user === user?.id;
-            const isCompleted = item.status === "completed";
 
-            return (
-              <div
-                key={item.id}
-                className="rounded-xl border border-hairline bg-surface p-4"
+        {completeError && (
+          <div role="alert" className="card border-error/30 bg-error-tint">
+            <p className="text-sm text-error">{completeError}</p>
+          </div>
+        )}
+        {actionNotice && (
+          <div role="status" className="card">
+            <p className="text-sm text-text-secondary">{actionNotice}</p>
+          </div>
+        )}
+        {loading ? (
+          <PageLoader label="Loading challenges..." className="h-60" />
+        ) : filteredList.length === 0 ? (
+          <EmptyState
+            heading="Nothing here yet"
+            body={
+              activeTab === "for_you"
+                ? "No challenges waiting for you. Solve a battle and challenge a friend, theirs will land here."
+                : "No challenges yet. Solve a battle and challenge a friend to start your squad loop."
+            }
+            action={
+              <Link
+                href="/home"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-[#272830]"
               >
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-1.5 text-sm text-text-secondary">
-                      <span className="truncate font-medium text-text-primary">
-                        @{item.from_profile?.username || "Member"}
-                      </span>
-                      <ArrowRight className="h-3 w-3 shrink-0" strokeWidth={1.5} />
-                      <span className="truncate font-medium text-text-primary">
-                        @{item.to_profile?.username || "Member"}
-                      </span>
-                      {isTarget && (
-                        <span className="shrink-0 rounded-full bg-surface-overlay px-1.5 py-0.5 text-xs font-medium text-text-primary">
-                          You
-                        </span>
-                      )}
-                    </div>
-
-                    {isCompleted ? (
-                      <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-verified">
-                        <CheckCircle2 className="h-3 w-3" strokeWidth={1.5} />
-                        <span>Solved</span>
-                      </span>
-                    ) : (
-                      <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-text-secondary">
-                        <Clock className="h-3 w-3" strokeWidth={1.5} />
-                        <span>Pending</span>
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <h3 className="text-sm font-medium text-text-primary">{item.problem_title}</h3>
-                    <DifficultyBadgeNew difficulty={item.difficulty} />
-                    {item.sender_time_sec != null && (
-                      <span className="font-mono text-xs text-text-secondary tnum">
-                        {item.beat_time ? `Beat ${fmtTime(item.sender_time_sec)}` : `Solved in ${fmtTime(item.sender_time_sec)}`}
-                      </span>
-                    )}
-                    {item.deadline_at && item.status === "pending" && (
-                      <span className="font-mono text-xs text-text-tertiary tnum">
-                        due {new Date(item.deadline_at).toLocaleDateString()}
-                      </span>
-                    )}
-                  </div>
-
-                  {item.note && !(item.spoiler && !isTarget && !isCompleted) && (
-                    <div className="mt-3 rounded-lg border border-hairline bg-well p-3 text-sm leading-6 text-text-secondary">
-                      &ldquo;{item.note}&rdquo;
-                    </div>
-                  )}
-                  {item.spoiler && !isTarget && !isCompleted && (
-                    <div className="mt-3 flex items-center gap-1.5 rounded-lg border border-hairline bg-well p-3 text-sm text-text-tertiary">
-                      <Lock className="h-3.5 w-3.5" strokeWidth={1.5} />
-                      Hidden hint, reveals when accepted.
-                    </div>
-                  )}
-                  {item.parent_id && (
-                    <Link href={`/c/${item.id}`} className="mt-2 inline-flex min-h-[44px] items-center text-sm font-medium text-text-primary underline decoration-hairline-strong underline-offset-[3px] hover:decoration-text-primary md:min-h-0">
-                      View challenge chain
-                    </Link>
-                  )}
-                </div>
-
-                <div className="mt-3 flex items-center justify-between gap-2 border-t border-hairline pt-3">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      onClick={() => handleStartSolvingChallenge(item)}
-                      className="flex min-h-[44px] items-center gap-1.5 rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0 md:h-10"
-                      title="Load into solve dock"
-                    >
-                      <Play className="h-3 w-3" strokeWidth={1.5} />
-                      <span>{isTarget && !isCompleted ? "Accept and solve" : "Solve in dock"}</span>
-                    </button>
-
-                    {isTarget && !isCompleted && item.status === "pending" && (
-                      <>
-                        <button
-                          onClick={() => handleMarkCompleted(item)}
-                          className="flex min-h-[44px] items-center gap-1.5 rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0 md:h-10"
-                        >
-                          <CheckCircle2 className="h-3 w-3" strokeWidth={1.5} />
-                          <span>Mark solved</span>
-                        </button>
-                        <button
-                          onClick={() => handleDecline(item)}
-                          className="flex min-h-[44px] items-center rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0 md:h-10"
-                        >
-                          Decline
-                        </button>
-                      </>
-                    )}
-
-                    {item.status === "pending" && (
-                      <button
-                        onClick={() => handleRemind(item)}
-                        disabled={remindId === item.id}
-                        className="flex min-h-[44px] items-center gap-1.5 rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary disabled:opacity-40 md:min-h-0 md:h-10"
-                        title={
-                          item.reminded_at
-                            ? `Last nudged ${new Date(item.reminded_at).toLocaleDateString()}, one nudge per 24h`
-                            : "Nudge them (once per 24h)"
-                        }
-                      >
-                        <BellRing className="h-3 w-3" strokeWidth={1.5} />
-                        <span>{remindId === item.id ? "…" : "Remind"}</span>
-                      </button>
-                    )}
-
-                    {item.status === "pending" && (
-                      <button
-                        onClick={() => handlePass(item)}
-                        className="flex min-h-[44px] items-center gap-1.5 rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0 md:h-10"
-                        title="Forward to another squad mate"
-                      >
-                        <Forward className="h-3 w-3" strokeWidth={1.5} />
-                        <span>Pass</span>
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => handleCopyLink(item)}
-                      className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0 md:min-w-0 md:p-2"
-                      title="Copy challenge link"
-                      aria-label="Copy challenge link"
-                    >
-                      {copiedLinkId === item.id ? <Check className="h-3.5 w-3.5" strokeWidth={1.5} /> : <Link2 className="h-3.5 w-3.5" strokeWidth={1.5} />}
-                    </button>
-                  </div>
-
-                  <ProblemLink slug={item.problem_slug} variant="pill" />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {isModalOpen && (
-        <ModalShell
-          label="Challenge someone"
-          onClose={() => { setCreateError(null); setIsModalOpen(false); }}
-          maxWidthClass="max-w-[560px]"
-        >
-            <div className="mb-1 flex items-start justify-between gap-3">
-              <h2 className="font-display text-2xl font-semibold tracking-tight text-text-primary">{passParent ? "Pass it on" : "Challenge someone"}</h2>
-              <button
-                onClick={() => { setCreateError(null); setIsModalOpen(false); }}
-                aria-label="Close"
-                className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded-md text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
-              >
-                <X className="h-5 w-5" strokeWidth={1.5} />
-              </button>
-            </div>
-            <p className="mb-5 text-xs leading-5 text-text-secondary">
-              {passParent
-                ? `Forwarding @${passParent.from_profile?.username || "a squad mate"}'s ${passParent.problem_title} challenge — the chain grows.`
-                : "Pick a squad mate and a problem. They get the problem, not your solution."}
-            </p>
-
-            {createError && (
-              <div role="alert" className="mb-4 rounded-md border border-error/30 bg-error-tint px-3 py-2 text-xs leading-5 text-error">
-                {createError}
-              </div>
-            )}
-
-            <form onSubmit={handleSendChallenge} className="space-y-4">
-              <div>
-                <label className="mb-1.5 block pl-1 text-sm font-medium text-text-secondary">
-                  Squad member
-                </label>
-                <select
-                  value={targetUserId}
-                  onChange={(e) => setTargetUserId(e.target.value)}
-                  className="h-10 min-h-[44px] w-full rounded-md border border-hairline bg-well px-3 text-sm text-text-primary focus:border-hairline-strong focus:outline-none md:min-h-0"
-                >
-                  {(eligibleRecipientProfiles.length > 0 ? eligibleRecipientProfiles : profiles).map((p) => (
-                    <option key={p.id} value={p.id} className="bg-surface text-text-primary">
-                      @{p.username} {p.leetcode_username ? `(${p.leetcode_username})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block pl-1 text-sm font-medium text-text-secondary">
-                  Problem title
-                </label>
-                <input
-                  type="text"
-                  value={problemTitle}
-                  onChange={(e) => setProblemTitle(e.target.value)}
-                  placeholder="e.g. Word Ladder or Course Schedule"
-                  className="h-10 min-h-[44px] w-full rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:min-h-0"
-                  required
+                Start a battle
+              </Link>
+            }
+          />
+        ) : (
+          <div className="space-y-3 md:space-y-2">
+            {filteredList.map((item) => {
+              const { action, menu } = rowControls(item);
+              return (
+                <ChallengeRow
+                  key={item.id}
+                  item={item}
+                  viewerId={user?.id}
+                  meta={catalog.get(item.problem_slug)}
+                  lineage={item.parent_id ? orderChainOldestFirst(suggestions, item.id) : []}
+                  action={action}
+                  menu={menu}
                 />
-              </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1.5 block pl-1 text-sm font-medium text-text-secondary">
-                    Problem slug
-                  </label>
-                  <input
-                    type="text"
-                    value={problemSlug}
-                    onChange={(e) => setProblemSlug(e.target.value)}
-                    placeholder="e.g. word-ladder"
-                    className="h-10 min-h-[44px] w-full rounded-md border border-hairline bg-well px-3 font-mono text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:min-h-0"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block pl-1 text-sm font-medium text-text-secondary">
-                    Difficulty
-                  </label>
-                  <select
-                    value={difficulty}
-                    onChange={(e) => setDifficulty(e.target.value as Difficulty)}
-                    className="h-10 min-h-[44px] w-full rounded-md border border-hairline bg-well px-3 text-sm text-text-primary focus:border-hairline-strong focus:outline-none md:min-h-0"
-                  >
-                    <option value="Easy" className="bg-surface text-text-primary">Easy</option>
-                    <option value="Medium" className="bg-surface text-text-primary">Medium</option>
-                    <option value="Hard" className="bg-surface text-text-primary">Hard</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block pl-1 text-sm font-medium text-text-secondary">
-                  Note
-                </label>
-                <textarea
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="e.g. Took me two tries. Think hard about the visited set."
-                  rows={3}
-                  className="w-full rounded-md border border-hairline bg-well p-2.5 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1.5 flex min-h-[44px] cursor-pointer items-center gap-2 pl-1 text-sm font-medium text-text-secondary md:min-h-0">
-                    <input type="checkbox" checked={beatTime} onChange={(e) => setBeatTime(e.target.checked)} className="accent-primary" />
-                    <span>Beat my time</span>
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={myTime}
-                      onChange={(e) => setMyTime(e.target.value)}
-                      placeholder="21:43"
-                      disabled={!beatTime}
-                      className="h-10 min-h-[44px] w-full rounded-md border border-hairline bg-well px-3 font-mono text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none disabled:opacity-40 md:min-h-0"
-                    />
-                    {beatTime && (
-                      <button type="button" onClick={fillLatestTime} className="flex min-h-[44px] shrink-0 items-center text-sm font-medium text-text-primary underline decoration-hairline-strong underline-offset-[3px] hover:decoration-text-primary md:min-h-0">
-                        My latest
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1.5 block pl-1 text-sm font-medium text-text-secondary">
-                    Deadline
-                  </label>
-                  <input
-                    type="date"
-                    value={deadline}
-                    onChange={(e) => setDeadline(e.target.value)}
-                    className="h-10 min-h-[44px] w-full rounded-md border border-hairline bg-well px-3 text-sm text-text-primary focus:border-hairline-strong focus:outline-none md:min-h-0"
-                  />
-                </div>
-              </div>
-
-              <label className="flex cursor-pointer items-start gap-2.5 text-sm text-text-secondary">
-                <input
-                  type="checkbox"
-                  checked={spoiler}
-                  onChange={(e) => setSpoiler(e.target.checked)}
-                  className="mt-1 accent-primary"
-                />
-                <span>
-                  <span className="font-medium text-text-primary">Hide the note until they finish</span>
-                  <br />
-                  Off by default. When on, your note stays hidden until the challenge is
-                  accepted.
-                </span>
-              </label>
-
-              <div className="flex justify-end gap-2 border-t border-hairline pt-3">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => { setCreateError(null); setPassParent(null); setIsModalOpen(false); }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  loading={submitting}
-                >
-                  {submitting ? "Sending..." : "Send challenge"}
-                </Button>
-              </div>
-            </form>
-        </ModalShell>
+      {composer && profilesReady && (
+        <SendChallengeModal
+          // Remount per opening so a pass-on never inherits a previous draft.
+          key={composer.passParent?.id ?? `new-${composer.initialTo ?? ""}-${composer.initialProblem?.slug ?? ""}`}
+          profiles={profiles}
+          initialTo={composer.initialTo}
+          initialProblem={composer.initialProblem}
+          initialBeatSec={composer.initialBeatSec}
+          passParent={composer.passParent}
+          onClose={() => setComposer(null)}
+          onSent={(s) => setSuggestions((prev) => [s, ...prev])}
+        />
       )}
     </div>
   );

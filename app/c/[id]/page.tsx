@@ -3,22 +3,20 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Lock } from "lucide-react";
+import { Forward, LogIn, Play, SearchX, Swords, Waypoints } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
-import { PassSerial } from "@/components/pass/Pass";
 import { Button } from "@/components/ui/Button";
-import { DifficultyBadgeNew, PatternChip } from "@/components/ui/Badge";
-import { Avatar } from "@/components/ui/Avatar";
 import { Skeleton } from "@/components/ui/States";
+import { ChallengePass, type ProblemMeta } from "@/components/challenges/ChallengePass";
+import { ChainTrack, chainNames } from "@/components/challenges/ChainTrack";
+import { fmtClock, ticketOf } from "@/components/challenges/challengeFormat";
 import { getSuggestionById, getChallengeChain } from "@/lib/data/suggestions";
-import { chainState, CHAIN_STATE_LABEL } from "@/lib/chains";
+import { getCatalogBySlugs } from "@/lib/data/problems";
+import { chainState } from "@/lib/chains";
+import { cn } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { Suggestion } from "@/types/database";
-
-function fmtTime(sec: number): string {
-  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
-}
 
 // /c/[id] — challenge deep link (Bible §42): problem + target + message, no
 // spoiler by default. Minimal friction: preview first, signup second, battle third.
@@ -29,6 +27,7 @@ export default function ChallengeDeepLinkPage() {
   const { startSolving } = useSolving();
   const [item, setItem] = useState<Suggestion | null>(null);
   const [chain, setChain] = useState<Suggestion[]>([]);
+  const [meta, setMeta] = useState<ProblemMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -46,13 +45,32 @@ export default function ChallengeDeepLinkPage() {
       .finally(() => setLoading(false));
   }, [params.id]);
 
+  // Catalog No. and pattern for the problem row; left off if the lookup fails.
+  const slug = item?.problem_slug ?? "";
+  useEffect(() => {
+    if (!slug) return;
+    let live = true;
+    getCatalogBySlugs([slug])
+      .then(([row]) => {
+        if (live && row) setMeta({ number: String(row.question_id), pattern: row.topics?.[0] ?? null });
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [slug]);
+
+  // Signed out there is no app shell, so the page brings its own gutters and
+  // a quiet brand bar; signed in, the shell's <main> already provides them.
+  const frame = cn("mx-auto w-full max-w-[780px]", !user && "px-4 pb-12 pt-6 md:pt-10");
+
   if (loading) {
     return (
-      <div className="mx-auto max-w-3xl space-y-4 px-4 pt-8">
+      <div className={cn(frame, "space-y-4")}>
         <div className="pass">
           <div className="pass-body space-y-4">
             <Skeleton className="h-7 w-56" />
-            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-48" />
             <Skeleton className="h-12 w-full" />
           </div>
@@ -66,15 +84,20 @@ export default function ChallengeDeepLinkPage() {
   }
   if (notFound || !item) {
     return (
-      <div className="mx-auto max-w-md space-y-3 p-12 text-center">
-        <p className="text-sm font-medium leading-5 text-text-primary">This challenge doesn&apos;t exist or was withdrawn.</p>
-        <p className="text-sm leading-6 text-text-secondary">Start your own battle instead.</p>
-        <Link
-          href="/"
-          className="inline-flex min-h-[44px] items-center rounded-md bg-primary px-4 text-sm font-medium leading-5 text-on-primary hover:bg-primary-hover"
-        >
-          Start a battle
-        </Link>
+      <div className={frame}>
+        <div className="mx-auto max-w-md rounded-xl border border-hairline bg-surface px-6 py-12 text-center">
+          <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-hairline bg-surface-raised text-text-secondary">
+            <SearchX className="h-6 w-6" strokeWidth={1.5} aria-hidden />
+          </span>
+          <p className="type-title text-text-primary">This challenge doesn&apos;t exist or was withdrawn.</p>
+          <p className="mb-6 mt-2 text-[15px] leading-6 text-text-secondary">Start your own battle instead.</p>
+          <Link
+            href="/"
+            className="inline-flex min-h-[44px] items-center rounded-md bg-primary px-5 text-sm font-medium leading-5 text-on-primary hover:bg-primary-hover"
+          >
+            Start a battle
+          </Link>
+        </div>
       </div>
     );
   }
@@ -98,109 +121,125 @@ export default function ChallengeDeepLinkPage() {
     router.push("/");
   };
 
-  const fromName = item.from_profile?.username || "Rahul";
-  const toName = item.to_profile?.username || "you";
-  const beat = item.sender_time_sec != null ? fmtTime(item.sender_time_sec) : "38:11";
+  // Hand the composer the problem. The recipient also hands this challenge over
+  // as the parent, so passing it on grows the chain; anyone else starts a fresh
+  // challenge on the same problem.
+  const passHref = `/challenges?${new URLSearchParams({
+    problem: item.problem_slug,
+    title: item.problem_title,
+    difficulty: item.difficulty,
+    ...(isRecipient ? { pass: item.id } : {}),
+  }).toString()}`;
+
   const state = chainState(item);
-  const stubStatus =
-    state === "completed" ? "BEATEN" : state === "timed_out" ? "EXPIRED" : String(item.status ?? "OPEN").toUpperCase();
-  const dueLine = item.deadline_at
-    ? `DUE ${new Date(item.deadline_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }).toUpperCase()}`
-    : "DUE 18 OCT";
+  const beat = fmtClock(item.sender_time_sec);
+  const hops = chain.length;
+  // Fastest time anyone in the chain set when they sent or passed it on.
+  const fastest = chain
+    .filter((c) => c.sender_time_sec != null && c.from_profile?.username)
+    .sort((a, b) => (a.sender_time_sec ?? 0) - (b.sender_time_sec ?? 0))[0];
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 px-4 pt-8 select-none">
-      <div className="pass">
-        <div className="pass-body space-y-4">
-          <div className="flex items-center gap-3">
-            <Avatar name={fromName} size="md" />
-            <h1 className="type-title text-text-primary">
-              {fromName} challenged {isRecipient ? "you" : `@${toName}`}
-            </h1>
+    <div className={cn(frame, "select-none space-y-6")}>
+      {!user && (
+        <div className="flex items-center justify-between gap-3 border-b border-hairline pb-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link href="/" className="flex items-center gap-2 font-display text-lg font-semibold tracking-[-0.01em] text-text-primary">
+              <Swords className="h-[18px] w-[18px] text-text-secondary" strokeWidth={1.5} aria-hidden />
+              Mahayuddh
+            </Link>
+            <span aria-hidden className="text-text-disabled">/</span>
+            <span className="truncate font-mono text-xs font-medium uppercase tracking-[0.06em] text-text-tertiary tnum">
+              <span className="hidden sm:inline">Challenge </span>
+              {ticketOf(item.id)}
+            </span>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-lg font-semibold leading-7 text-text-primary">{item.problem_title}</span>
-            <DifficultyBadgeNew difficulty={item.difficulty} />
-            <span className="font-mono text-sm text-text-tertiary tnum">No. 127</span>
-            <PatternChip label="Graphs" />
-          </div>
-          <div>
-            <div className="text-xs leading-4 text-text-tertiary">Beat</div>
-            <div className="type-mono-display text-text-primary tnum">{beat}</div>
-          </div>
-          {showNote && item.note ? (
-            <blockquote className="rounded-md bg-well px-4 py-3 text-sm leading-6 text-text-secondary">
-              &ldquo;{item.note}&rdquo;
-            </blockquote>
-          ) : item.spoiler ? (
-            <p className="flex items-center gap-2 rounded-md bg-well px-4 py-3 text-sm leading-6 text-text-secondary">
-              <Lock className="h-4 w-4" strokeWidth={1.5} />
-              A hint unlocks when you finish.
-            </p>
-          ) : null}
-          {item.deadline_at && (
-            <p className="text-sm leading-6 text-text-secondary">
-              Due {new Date(item.deadline_at).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
-            </p>
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="primary" size="lg" className="min-h-[44px]" onClick={handleAccept}>
+          <Link
+            href={`/login?next=${encodeURIComponent(`/c/${item.id}`)}`}
+            className="inline-flex min-h-[44px] shrink-0 items-center rounded-md px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary"
+          >
+            Sign in
+          </Link>
+        </div>
+      )}
+
+      <ChallengePass
+        item={item}
+        viewerId={user?.id}
+        meta={meta}
+        variant="page"
+        headingAs="h1"
+        noteVisible={showNote}
+        lockedCopy="A hint unlocks when you finish."
+        actions={
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+            <Button variant="primary" size="lg" className="w-full text-[15px] md:w-auto" onClick={handleAccept}>
+              {!user ? (
+                <LogIn className="h-[18px] w-[18px]" strokeWidth={1.5} aria-hidden />
+              ) : isRecipient ? (
+                <Swords className="h-[18px] w-[18px]" strokeWidth={1.5} aria-hidden />
+              ) : (
+                <Play className="h-[18px] w-[18px]" strokeWidth={1.5} fill="currentColor" aria-hidden />
+              )}
               {!user ? "Sign in to accept" : isRecipient ? "Accept challenge" : "Solve it too"}
             </Button>
             <Button
               variant="ghost"
-              className="min-h-[44px]"
-              onClick={() => router.push(`/challenges?problem=${item.problem_slug}`)}
+              className="h-11 md:h-12 md:border md:border-hairline md:bg-surface-raised md:px-5 md:text-text-primary md:hover:bg-surface-overlay"
+              onClick={() => router.push(passHref)}
             >
+              <Forward className="h-4 w-4" strokeWidth={1.5} aria-hidden />
               Pass it on
             </Button>
           </div>
-          {!user && (
-            <p className="text-sm leading-6 text-text-secondary">
-              New here? You can join and accept in under a minute.
-            </p>
-          )}
-          {state === "timed_out" && (
-            <p className="text-sm leading-6 text-text-secondary">
-              This challenge is past its deadline. Solve it anyway, or pass it on.
-            </p>
-          )}
-        </div>
-        <div className="pass-stub">
-          <PassSerial>FROM @{fromName.toUpperCase()}</PassSerial>
-          <PassSerial>TO @{isRecipient ? "PREM" : toName.toUpperCase()}</PassSerial>
-          <PassSerial>{dueLine}</PassSerial>
-          <PassSerial>{stubStatus}</PassSerial>
-        </div>
-      </div>
+        }
+        after={
+          <>
+            {!user && (
+              <p className="-mt-2 text-sm leading-6 text-text-secondary">
+                New here? You can join and accept in under a minute.
+              </p>
+            )}
+            {state === "timed_out" && (
+              <p className="-mt-2 text-sm leading-6 text-text-secondary">
+                This challenge is past its deadline. Solve it anyway, or pass it on.
+              </p>
+            )}
+          </>
+        }
+      />
 
       {chain.length > 1 && (
-        <div className="card space-y-2">
+        <section aria-labelledby="chain-heading" className="space-y-4 rounded-xl border border-hairline bg-surface p-4 md:p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm font-medium leading-5 text-text-primary">
-              Started by Prem → Rahul → you
-            </span>
-            <span className="font-mono text-xs text-text-tertiary tnum">
-              {chain.length} {chain.length === 1 ? "hop" : "hops"}
+            <h2 id="chain-heading" className="flex items-center gap-2 text-sm font-medium leading-5 text-text-secondary">
+              <Waypoints className="h-[18px] w-[18px] text-text-tertiary" strokeWidth={1.5} aria-hidden />
+              Challenge chain
+            </h2>
+            <span className="font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-text-tertiary">
+              Started by {chainNames(chain, user?.id)}
             </span>
           </div>
-          <div className="space-y-2">
-            {chain.map((c, i) => (
-              <div
-                key={c.id}
-                className="flex min-h-[44px] items-center gap-2 rounded-md border border-hairline bg-well px-3 py-2 text-sm leading-5"
-              >
-                <span className="font-mono text-text-tertiary tnum">{i + 1}.</span>
-                <span className="font-medium text-text-primary">@{c.from_profile?.username}</span>
-                <span className="text-text-tertiary">→</span>
-                <span className="font-medium text-text-primary">@{c.to_profile?.username}</span>
-                <span className="ml-auto text-xs font-medium leading-4 text-text-secondary">
-                  {CHAIN_STATE_LABEL[chainState(c)]}
-                </span>
-              </div>
-            ))}
+          <ChainTrack chain={chain} viewerId={user?.id} variant="full" className="px-0 md:px-2" />
+          <div className="flex items-center justify-between gap-3 border-t border-hairline pt-3 text-[13px] leading-5 text-text-secondary">
+            <span>
+              {fastest ? (
+                <>
+                  Fastest set so far:{" "}
+                  <span className="font-medium text-text-primary">@{fastest.from_profile?.username}</span>{" "}
+                  <span className="font-mono tnum">{fmtClock(fastest.sender_time_sec)}</span>
+                </>
+              ) : beat ? (
+                <>Time to beat: <span className="font-mono tnum">{beat}</span></>
+              ) : (
+                "No times set in this chain yet"
+              )}
+            </span>
+            <span className="shrink-0 font-mono text-xs text-text-tertiary tnum">
+              {hops} {hops === 1 ? "hop" : "hops"} logged
+            </span>
           </div>
-        </div>
+        </section>
       )}
 
       <footer className="pt-4 text-center text-xs leading-4 text-text-tertiary">
