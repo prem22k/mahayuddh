@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { type ResponseCookie } from "next/dist/compiled/@edge-runtime/cookies";
 import { safeNext } from "@/lib/safeNext";
+import { isPublicSharePath as isPublicPath } from "@/lib/publicPaths";
 
 interface CookieToSet {
   name: string;
@@ -56,71 +57,9 @@ export async function updateSession(request: NextRequest) {
   // /api/squads/referral both did. An allowlist here can only ever be wrong in
   // one direction, so it is gone.
   const isApiRequest = request.nextUrl.pathname.startsWith("/api");
-// Invite + share deep links preview for logged-out users (Bible §42: preview
-  // first, signup second). Join/accept/start actions still require auth inside
-  // the pages. /b/* is the share surface (Step 16) — a share link that demands a
-  // login before showing anything cannot drive Loop B growth.
-  // /a/* is the public approach projection (Wave D): visibility=public rows
-  // only, served by the service client. Private rows redirect to login inside
-  // the page, so the allowlist cannot leak them.
-  const isInvitePath =
-    request.nextUrl.pathname.startsWith("/c/") ||
-    request.nextUrl.pathname.startsWith("/b/") ||
-    request.nextUrl.pathname.startsWith("/a/") ||
-    request.nextUrl.pathname.startsWith("/u/") ||
-    request.nextUrl.pathname.startsWith("/squad/join/");
-
-  // Social-card renders must be fetchable by scrapers, which never carry a
-  // session. Every /opengraph-image (welcome, invites, recaps, primers) renders
-  // public-safe content by construction — the invite card deliberately omits
-  // anything the preview API wouldn't show a stranger — so the whole family is
-  // exempt rather than allowlisted one route at a time.
-  const isSocialCard =
-    request.nextUrl.pathname.endsWith("/opengraph-image") ||
-    request.nextUrl.pathname.endsWith("/twitter-image");
-
-  // A single public primer is a share surface. The layout already generates
-  // real per-primer metadata for public primers (Bible §14), so blocking the
-  // route meant a share preview could never exist. RLS keeps squad primers out
-  // of a logged-out request's reach: `getPrimer` returns null and the page says
-  // not found, so this allowlist cannot leak a private primer. The list at
-  // /primers stays authenticated.
-  const isPublicPrimerPath = /^\/primers\/[^/]+$/.test(request.nextUrl.pathname);
-
-  // One frozen recap is public (Step 20) so a shared week renders for a
-  // logged-out visitor. Matched precisely: the *list* at /squad/[id]/recaps
-  // still requires auth, because it offers the generate button.
-  // Step 3's public landing. Every share surface in the product sends somebody
-  // here, and §42 says a share link has to show context before it asks for an
-  // account — "here is a login form" is not context.
-  const isWelcomePath = request.nextUrl.pathname === "/welcome";
-
-  const isPublicRecapPath = /^\/squad\/[^/]+\/recaps\/[^/]+$/.test(
-    request.nextUrl.pathname
-  );
-
-  // A finished season is a shareable result (§38), matched precisely. The
-  // squad's season LIST stays authenticated.
-  const isPublicSeasonPath = /^\/squad\/[^/]+\/seasons\/[^/]+$/.test(
-    request.nextUrl.pathname
-  );
-  // Crawler + resilience surfaces. /sitemap.xml and /robots.txt must answer
-  // for search engines (bouncing them to /login silently de-indexes the
-  // public pages). /offline is the PWA + failover hub: the service worker
-  // falls back to it with no network, and logged-out visitors must reach it
-  // for the backup-server path to exist at all.
-  const p = request.nextUrl.pathname;
-  const isCrawlerOrResiliencePath =
-    p === "/offline" || p === "/sitemap.xml" || p === "/robots.txt";
-
-  const isPublicSharePath =
-    isInvitePath ||
-    isPublicRecapPath ||
-    isPublicPrimerPath ||
-    isPublicSeasonPath ||
-    isWelcomePath ||
-    isSocialCard ||
-    isCrawlerOrResiliencePath;
+// Share and resilience pages a signed-out visitor may open. The list lives
+  // in lib/publicPaths so the app shell reads the same one.
+  const isPublicSharePath = isPublicPath(request.nextUrl.pathname);
 
   // Fast-path: Check if any Supabase auth cookies exist in request
   const allCookies = request.cookies.getAll();
