@@ -37,7 +37,7 @@ function allowedOrigins(): string[] {
   ];
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   // ── Body size ─────────────────────────────────────────────────────────────
   // Cheapest possible rejection: header comparison, no allocation, no read.
   const maxBodyBytes = maxBodyBytesFor(request.nextUrl.pathname);
