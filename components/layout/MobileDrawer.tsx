@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { LogoMark } from "@/components/landing/Brand";
 import { usePathname } from "next/navigation";
 import {
   X,
@@ -46,7 +47,7 @@ export function MobileDrawer({ onClose }: { onClose: () => void }) {
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-4 pb-4 pt-5">
         <Link href="/home" className="flex items-center gap-2.5" onClick={onClose}>
-          <span className="h-2 w-2 rounded-full bg-primary" aria-hidden />
+          <LogoMark className="h-[22px] w-[22px]" />
           <span className="font-display text-lg font-semibold tracking-tight text-text-primary">
             Mahayuddh
           </span>

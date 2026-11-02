@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { LogoMark } from "@/components/landing/Brand";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Search,
@@ -67,7 +68,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
             className="mb-5 flex items-center gap-2.5 px-3"
             aria-label="Mahayuddh home"
           >
-            <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-primary" aria-hidden />
+            <LogoMark className="h-[22px] w-[22px]" />
             <span className="sidebar-label font-display text-lg font-semibold tracking-tight text-text-primary">
               Mahayuddh
             </span>
