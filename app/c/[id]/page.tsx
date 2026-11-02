@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Forward, LogIn, Play, SearchX, Swords, Waypoints } from "lucide-react";
@@ -17,6 +17,9 @@ import { chainState } from "@/lib/chains";
 import { cn } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { Suggestion } from "@/types/database";
+import { useCachedQuery } from "@/lib/cache/query";
+
+const NO_SUGGESTIONS: Suggestion[] = [];
 
 // /c/[id] — challenge deep link (Bible §42): problem + target + message, no
 // spoiler by default. Minimal friction: preview first, signup second, battle third.
@@ -25,40 +28,41 @@ export default function ChallengeDeepLinkPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { startSolving } = useSolving();
-  const [item, setItem] = useState<Suggestion | null>(null);
-  const [chain, setChain] = useState<Suggestion[]>([]);
-  const [meta, setMeta] = useState<ProblemMeta | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
-
-  useEffect(() => {
-    track("invite_opened", { challenge_id: params.id });
-    Promise.all([getSuggestionById(params.id), getChallengeChain(params.id)])
-      .then(([row, ch]) => {
-        if (!row) setNotFound(true);
-        else {
-          setItem(row);
-          setChain(ch);
-        }
-      })
-      .catch(() => setNotFound(true))
-      .finally(() => setLoading(false));
-  }, [params.id]);
+  // Every read below goes through the client cache (lib/cache/query.tsx): a
+  // revisit renders from cache at once and refreshes in the background; the
+  // skeleton only shows on the very first load.
+  const itemQuery = useCachedQuery(
+    params.id ? ["suggestion-by-id", params.id] : null,
+    () => getSuggestionById(params.id),
+    { freshForMs: 10_000 }
+  );
+  const chainQuery = useCachedQuery(
+    params.id ? ["challenge-chain", params.id] : null,
+    () => getChallengeChain(params.id),
+    { freshForMs: 10_000 }
+  );
+  const item = itemQuery.data ?? null;
+  const chain = chainQuery.data ?? NO_SUGGESTIONS;
 
   // Catalog No. and pattern for the problem row; left off if the lookup fails.
   const slug = item?.problem_slug ?? "";
+  const catalogQuery = useCachedQuery(
+    slug ? ["catalog-by-slugs", slug] : null,
+    () => getCatalogBySlugs([slug]),
+    { freshForMs: 10 * 60_000 }
+  );
+  const catalogRow = catalogQuery.data?.[0] ?? null;
+  const meta: ProblemMeta | null = catalogRow
+    ? { number: String(catalogRow.question_id), pattern: catalogRow.topics?.[0] ?? null }
+    : null;
+
+  const loading = itemQuery.isLoading || chainQuery.isLoading;
+  const notFound =
+    (!itemQuery.isLoading && itemQuery.data === null) || !!itemQuery.error || !!chainQuery.error;
+
   useEffect(() => {
-    if (!slug) return;
-    let live = true;
-    getCatalogBySlugs([slug])
-      .then(([row]) => {
-        if (live && row) setMeta({ number: String(row.question_id), pattern: row.topics?.[0] ?? null });
-      })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [slug]);
+    track("invite_opened", { challenge_id: params.id });
+  }, [params.id]);
 
   // Signed out there is no app shell, so the page brings its own gutters and
   // a quiet brand bar; signed in, the shell's <main> already provides them.

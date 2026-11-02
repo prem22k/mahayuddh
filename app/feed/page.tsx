@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { ChevronDown, Plus } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -33,6 +33,7 @@ import { dataErrorMessage } from "@/lib/data/errors";
 import { type FeedScope } from "@/lib/feedPolicy";
 import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
 const PAGE_SIZE = 20;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -52,6 +53,12 @@ const SCOPE_TO_TAB: Record<FeedScope, TabLabel> = {
   platform: "Updates",
 };
 
+// Stable empty values: a fresh [] per render would re-run every memo.
+const NO_EVENTS: RankedFeedEvent[] = [];
+const NO_PLATFORM: PlatformPost[] = [];
+const NO_DISCUSSIONS: Discussion[] = [];
+const NO_CATALOG_ROWS: Awaited<ReturnType<typeof getCatalogBySlugs>> = [];
+
 /** Rail counts: the squad scope only, and only the last seven days of it. */
 function weekStats(rows: RankedFeedEvent[]): WeekStats {
   const since = Date.now() - WEEK_MS;
@@ -69,93 +76,126 @@ function weekStats(rows: RankedFeedEvent[]): WeekStats {
 export default function FeedPage() {
   const { user, profile, loading: authLoading } = useAuth();
   const { activeProblem } = useSolving();
+  const invalidate = useInvalidate();
   const [tab, setTab] = useState<FeedScope>("squad");
-  const [events, setEvents] = useState<RankedFeedEvent[]>([]);
-  const [squadEvents, setSquadEvents] = useState<RankedFeedEvent[]>([]);
-  const [platform, setPlatform] = useState<PlatformPost[]>([]);
-  const [discussions, setDiscussions] = useState<Discussion[]>([]);
-  const [catalog, setCatalog] = useState<Map<string, ProblemMeta>>(new Map());
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [composerOpen, setComposerOpen] = useState(false);
   const [discussOpen, setDiscussOpen] = useState(false);
-  const [solveCount, setSolveCount] = useState(0);
 
   const squadId = profile?.active_squad_id ?? null;
   const pulse = useSquadPulse(squadId);
+  const noSquad = tab === "squad" && !squadId;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      if (tab === "platform") {
-        setPlatform(await getPlatformPosts());
-        setEvents([]);
-        setDiscussions([]);
-        return;
-      }
-      const rows = await getRankedFeed(tab, { squadId, limit: 40 });
-      track("feed_view", { scope: tab, rows: rows.length });
-      setEvents(rows);
-      if (tab === "squad") setSquadEvents(rows);
-      setPlatform([]);
-      setDiscussions(await getDiscussions({ problemSlug: null, squadId, limit: 10 }));
-    } catch (err) {
-      setLoadError(dataErrorMessage(err, "Couldn't load feed. Retry."));
-    } finally {
-      setLoading(false);
-    }
-  }, [tab, squadId]);
+  // Every read below goes through the client cache (lib/cache/query.tsx): a
+  // revisit renders from cache at once and refreshes in the background; the
+  // skeleton only shows on the very first load.
 
-  // The squad scope needs the profile's squad; loading before auth resolves
-  // would flash the no-squad empty state.
-  useEffect(() => {
-    if (authLoading) return;
-    void load();
-  }, [load, authLoading]);
+  // Feed rows for the active scope. Platform is a separate read (announcements
+  // are not activity), so this query is off on that tab and with no squad.
+  const feedQuery = useCachedQuery(
+    tab !== "platform" && !noSquad ? ["ranked-feed", tab, squadId, 40] : null,
+    () => getRankedFeed(tab as Exclude<FeedScope, "platform">, { squadId, limit: 40 }),
+    { freshForMs: 10_000 }
+  );
+  const events = feedQuery.data ?? NO_EVENTS;
+
+  // The rail's week counts always describe the squad scope, even while another
+  // tab is open. Same key as the squad tab, so the two share one request.
+  const squadEventsQuery = useCachedQuery(
+    squadId ? ["ranked-feed", "squad", squadId, 40] : null,
+    () => getRankedFeed("squad", { squadId, limit: 40 }),
+    { freshForMs: 10_000 }
+  );
+  const squadEvents = squadEventsQuery.data ?? NO_EVENTS;
+
+  const platformQuery = useCachedQuery(
+    tab === "platform" ? ["platform-posts"] : null,
+    getPlatformPosts
+  );
+  const platform = platformQuery.data ?? NO_PLATFORM;
+
+  const discussionsQuery = useCachedQuery(
+    tab !== "platform" && !noSquad ? ["discussions", squadId, 10] : null,
+    () => getDiscussions({ problemSlug: null, squadId, limit: 10 }),
+    { freshForMs: 10_000 }
+  );
+  const discussions = discussionsQuery.data ?? NO_DISCUSSIONS;
+
+  // Catalog facts (number, title, difficulty) for the slugs on screen. Best
+  // effort: a failed lookup leaves rows exactly as the event describes them.
+  const catalogSlugs = useMemo(
+    () => Array.from(new Set(events.map((e) => e.problem_slug).filter((s): s is string => !!s))).sort(),
+    [events]
+  );
+  const catalogQuery = useCachedQuery(
+    catalogSlugs.length > 0 ? ["catalog-by-slugs", catalogSlugs.join(",")] : null,
+    () => getCatalogBySlugs(catalogSlugs),
+    { freshForMs: 10 * 60_000 }
+  );
+  const catalogRows = catalogQuery.data ?? NO_CATALOG_ROWS;
+  const catalog = useMemo(
+    () =>
+      new Map<string, ProblemMeta>(
+        catalogRows.map(
+          (r) =>
+            [
+              r.title_slug,
+              {
+                title: r.title,
+                number: r.question_id ? String(r.question_id) : null,
+                difficulty: r.difficulty ?? null,
+              },
+            ] as const
+        )
+      ),
+    [catalogRows]
+  );
+
+  // The Discuss composer needs the caller's logged solve count; read it only
+  // while that modal is open and keep it cached for the next opening.
+  const solveCountQuery = useCachedQuery(
+    discussOpen ? ["my-logged-solve-count"] : null,
+    getMyLoggedSolveCount
+  );
+  const solveCount = solveCountQuery.data ?? 0;
+
+  const loading =
+    tab === "platform"
+      ? platformQuery.isLoading
+      : noSquad
+        ? false
+        : feedQuery.isLoading || discussionsQuery.isLoading;
+
+  const activeError = tab === "platform" ? platformQuery.error : feedQuery.error;
+  const activeData = tab === "platform" ? platformQuery.data : feedQuery.data;
+  const loadError =
+    activeError && activeData === undefined
+      ? dataErrorMessage(activeError, "Couldn't load feed. Retry.")
+      : null;
+
+  const handleRetry = () => {
+    void feedQuery.refresh();
+    void squadEventsQuery.refresh();
+    void platformQuery.refresh();
+    void discussionsQuery.refresh();
+    void catalogQuery.refresh();
+  };
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
   }, [tab]);
 
-  // Catalog facts (number, title, difficulty) for the slugs on screen. Best
-  // effort: a failed lookup leaves rows exactly as the event describes them.
+  // Analytics, not a read: one view event per tab load, including cache hits.
   useEffect(() => {
-    const slugs = Array.from(
-      new Set(events.map((e) => e.problem_slug).filter((s): s is string => !!s && !catalog.has(s)))
-    );
-    if (slugs.length === 0) return;
-    let cancelled = false;
-    getCatalogBySlugs(slugs)
-      .then((rows) => {
-        if (cancelled || rows.length === 0) return;
-        setCatalog((prev) => {
-          const next = new Map(prev);
-          for (const r of rows) {
-            next.set(r.title_slug, {
-              title: r.title,
-              number: r.question_id ? String(r.question_id) : null,
-              difficulty: r.difficulty ?? null,
-            });
-          }
-          return next;
-        });
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-    // `catalog` is read only to skip known slugs; re-running on its own update would loop.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events]);
+    if (tab === "platform" || feedQuery.data === undefined) return;
+    track("feed_view", { scope: tab, rows: feedQuery.data.length });
+  }, [tab, feedQuery.data]);
 
   const openComposer = () => {
     track("composer_opened", { surface: "feed" });
     setComposerOpen(true);
   };
 
-  const noSquad = tab === "squad" && !squadId;
   const visibleEvents = events.slice(0, visibleCount);
   const stats = useMemo(() => weekStats(squadEvents), [squadEvents]);
   const squadLabel = pulse.name ?? "your squad";
@@ -207,7 +247,7 @@ export default function FeedPage() {
             </button>
           </div>
 
-          {loadError && <ErrorCard message={loadError} onRetry={() => void load()} />}
+          {loadError && <ErrorCard message={loadError} onRetry={handleRetry} />}
 
           {loading ? (
             <FeedListSkeleton />
@@ -293,7 +333,7 @@ export default function FeedPage() {
                   ev={ev}
                   meta={ev.problem_slug ? catalog.get(ev.problem_slug) : undefined}
                   viewerId={user?.id ?? null}
-                  onChanged={() => void load()}
+                  onChanged={() => void invalidate("ranked-feed", "discussions", "home-squad", "squad-pulse")}
                 />
               ))}
 
@@ -345,9 +385,8 @@ export default function FeedPage() {
         <FeedComposer
           squadName={pulse.name}
           onClose={() => setComposerOpen(false)}
-          onPosted={() => void load()}
+          onPosted={() => void invalidate("ranked-feed", "discussions", "home-squad", "squad-pulse")}
           onDiscuss={() => {
-            void getMyLoggedSolveCount().then(setSolveCount).catch(() => setSolveCount(0));
             setComposerOpen(false);
             setDiscussOpen(true);
           }}
@@ -361,7 +400,7 @@ export default function FeedPage() {
           onClose={() => setDiscussOpen(false)}
           onPosted={() => {
             track("discuss_posted", { visibility: "squad" });
-            void load();
+            void invalidate("ranked-feed", "discussions", "home-squad", "squad-pulse");
           }}
         />
       )}

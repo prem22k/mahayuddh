@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   X,
   Check,
@@ -46,6 +47,14 @@ import { formatDuration, titleFromSlug } from "@/lib/format";
 import { getCatalogBySlugs } from "@/lib/data/problems";
 import { track } from "@/lib/analytics";
 import { LEVEL_LABEL, STUCK_LEVELS } from "@/lib/stuckLadder";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
+
+const NO_BATTLES: PickableBattle[] = [];
+const NO_TEACHING: PickableTeaching[] = [];
+const NO_PEOPLE: PickablePerson[] = [];
+const NO_PROBLEMS: { slug: string; title: string }[] = [];
+const NO_RESOURCES: PickableTeaching[] = [];
+const NO_CATALOG_ROWS: Awaited<ReturnType<typeof getCatalogBySlugs>> = [];
 
 /**
  * The structured composer (Step 21, Bible §18, §64).
@@ -114,6 +123,8 @@ export function FeedComposer({
   squadName?: string | null;
 }) {
   const { profile, user } = useAuth();
+  const router = useRouter();
+  const invalidate = useInvalidate();
   const squadId = profile?.active_squad_id ?? null;
 
   const [tile, setTile] = useState<Tile>("solve");
@@ -123,11 +134,77 @@ export function FeedComposer({
   const [caption, setCaption] = useState("");
   const [audience, setAudience] = useState<"squad" | "everyone">("squad");
 
-  const [battles, setBattles] = useState<PickableBattle[]>([]);
-  const [teaching, setTeaching] = useState<PickableTeaching[]>([]);
-  const [people, setPeople] = useState<PickablePerson[]>([]);
-  const [problems, setProblems] = useState<{ slug: string; title: string }[]>([]);
-  const [resources, setResources] = useState<PickableTeaching[]>([]);
+  const battlesQuery = useCachedQuery(
+    tile === "solve" ? ["my-shareable-battles"] : null,
+    getMyShareableBattles
+  );
+  const battles = battlesQuery.data ?? NO_BATTLES;
+
+  const teachingQuery = useCachedQuery(
+    tile === "teach" ? ["my-public-teaching"] : null,
+    getMyPublicTeaching
+  );
+  const teaching = teachingQuery.data ?? NO_TEACHING;
+
+  const resourcesQuery = useCachedQuery(
+    tile === "resource" ? ["my-vault-resources"] : null,
+    getMyVaultResources
+  );
+  const resources = resourcesQuery.data ?? NO_RESOURCES;
+
+  const peopleQuery = useCachedQuery(
+    tile === "challenge" ? ["challengeable-people", squadId] : null,
+    () => getChallengeablePeople(squadId)
+  );
+  const people = peopleQuery.data ?? NO_PEOPLE;
+
+  const problemsQuery = useCachedQuery(
+    tile === "challenge" || tile === "stuck" ? ["my-solved-problems"] : null,
+    getMySolvedProblems
+  );
+  const problems = problemsQuery.data ?? NO_PROBLEMS;
+
+  const battleSlugs = useMemo(
+    () => Array.from(new Set(battles.slice(0, 5).map((b) => b.problem_slug))).sort(),
+    [battles]
+  );
+  const battleMetaQuery = useCachedQuery(
+    battleSlugs.length > 0 ? ["catalog-by-slugs", battleSlugs.join(",")] : null,
+    () => getCatalogBySlugs(battleSlugs),
+    { freshForMs: 10 * 60_000 }
+  );
+  const battleMetaRows = battleMetaQuery.data ?? NO_CATALOG_ROWS;
+  const battleMeta = useMemo(
+    () =>
+      new Map(
+        battleMetaRows.map((r) => [
+          r.title_slug,
+          { title: r.title, number: r.question_id ? String(r.question_id) : null },
+        ])
+      ),
+    [battleMetaRows]
+  );
+  const battleTitle = useCallback(
+    (slug: string) => battleMeta.get(slug)?.title ?? titleFromSlug(slug),
+    [battleMeta]
+  );
+
+  const tileLoading =
+    (tile === "solve" && battlesQuery.isLoading) ||
+    (tile === "teach" && teachingQuery.isLoading) ||
+    (tile === "resource" && resourcesQuery.isLoading) ||
+    (tile === "challenge" && (peopleQuery.isLoading || problemsQuery.isLoading)) ||
+    (tile === "stuck" && problemsQuery.isLoading);
+
+  const queryError =
+    (tile === "solve" && battlesQuery.error) ||
+    (tile === "teach" && teachingQuery.error) ||
+    (tile === "resource" && resourcesQuery.error) ||
+    (tile === "challenge" && (peopleQuery.error || problemsQuery.error)) ||
+    (tile === "stuck" && problemsQuery.error) ||
+    null;
+  const displayError =
+    error ?? (queryError ? dataErrorMessage(queryError, "Couldn't load your options.") : null);
 
   // Per-tile form state.
   const [pickedBattle, setPickedBattle] = useState<string>("");
@@ -137,58 +214,6 @@ export function FeedComposer({
   const [pickedResource, setPickedResource] = useState<string>("");
   const [level, setLevel] = useState<string>("nudge");
   const [myTimeSec, setMyTimeSec] = useState<string>("");
-
-  // Loaded only for the tile that needs them. Five round trips on every open
-  // would make the composer feel slow for no reason.
-  useEffect(() => {
-    const load = async () => {
-      try {
-        if (tile === "solve") setBattles(await getMyShareableBattles());
-        if (tile === "teach") setTeaching(await getMyPublicTeaching());
-        if (tile === "resource") setResources(await getMyVaultResources());
-        if (tile === "challenge") {
-          const [p, probs] = await Promise.all([
-            getChallengeablePeople(squadId),
-            getMySolvedProblems(),
-          ]);
-          setPeople(p);
-          setProblems(probs);
-        }
-        if (tile === "stuck") setProblems(await getMySolvedProblems());
-      } catch (err) {
-        setError(dataErrorMessage(err, "Couldn't load your options."));
-      }
-    };
-    void load();
-  }, [tile, squadId]);
-
-  // Catalog title and number for the battles on screen. The battle row only
-  // has a slug; a failed lookup falls back to a title made from it.
-  const [battleMeta, setBattleMeta] = useState<Map<string, { title: string; number: string | null }>>(
-    new Map()
-  );
-  useEffect(() => {
-    const slugs = Array.from(new Set(battles.slice(0, 5).map((b) => b.problem_slug)));
-    if (slugs.length === 0) return;
-    let cancelled = false;
-    getCatalogBySlugs(slugs)
-      .then((rows) => {
-        if (cancelled) return;
-        setBattleMeta(
-          new Map(
-            rows.map((r) => [r.title_slug, { title: r.title, number: r.question_id ? String(r.question_id) : null }])
-          )
-        );
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [battles]);
-  const battleTitle = useCallback(
-    (slug: string) => battleMeta.get(slug)?.title ?? titleFromSlug(slug),
-    [battleMeta]
-  );
 
   // A callback rather than a plain function: the submit handlers are callbacks
   // too, and leaving this out of their deps is a lint warning rather than a
@@ -214,11 +239,12 @@ export function FeedComposer({
         setError(res.error ?? "Couldn't share that.");
         return;
       }
+      void invalidate("ranked-feed", "recent-feed", "home-squad", "squad-pulse");
       finish(`Shared ${battle.problem_slug.replace(/-/g, " ")}.`);
     } finally {
       setBusy(false);
     }
-  }, [battles, pickedBattle, caption, finish]);
+  }, [battles, pickedBattle, caption, finish, invalidate]);
 
   const submitTeach = useCallback(async () => {
     const item = teaching.find((t) => t.id === pickedTeach);
@@ -231,11 +257,12 @@ export function FeedComposer({
         setError(res.error ?? "Couldn't share that.");
         return;
       }
+      void invalidate("ranked-feed", "recent-feed", "home-squad", "my-public-teaching", "squad-pulse");
       finish(`Shared ${item.label}.`);
     } finally {
       setBusy(false);
     }
-  }, [teaching, pickedTeach, squadId, audience, caption, finish]);
+  }, [teaching, pickedTeach, squadId, audience, caption, finish, invalidate]);
 
   const submitChallenge = useCallback(async () => {
     const person = people.find((p) => p.id === pickedPerson);
@@ -274,11 +301,21 @@ export function FeedComposer({
         objectId: res.suggestion?.id ?? null,
         metadata: captionMetadata({}, caption),
       });
+      void invalidate(
+        "suggestions",
+        "first-incoming-challenge",
+        "incoming-suggestion-count",
+        "challenges-for-slug",
+        "ranked-feed",
+        "recent-feed",
+        "home-squad",
+        "squad-pulse"
+      );
       finish(`Challenged @${person.username} with ${problem.title}.`);
     } finally {
       setBusy(false);
     }
-  }, [people, problems, pickedPerson, pickedProblem, myTimeSec, user, squadId, audience, caption, finish]);
+  }, [people, problems, pickedPerson, pickedProblem, myTimeSec, user, squadId, audience, caption, finish, invalidate]);
 
   const submitStuck = useCallback(async () => {
     const problem = problems.find((p) => p.slug === pickedProblem);
@@ -305,11 +342,12 @@ export function FeedComposer({
         objectId: res.request.id,
         metadata: captionMetadata({ level }, caption),
       });
+      void invalidate("ranked-feed", "recent-feed", "home-squad", "squad-pulse");
       finish("Asked for help.");
     } finally {
       setBusy(false);
     }
-  }, [problems, pickedProblem, level, squadId, audience, caption, finish]);
+  }, [problems, pickedProblem, level, squadId, audience, caption, finish, invalidate]);
 
   const submitResource = useCallback(async () => {
     const item = resources.find((r) => r.id === pickedResource);
@@ -322,11 +360,12 @@ export function FeedComposer({
         setError(res.error ?? "Couldn't share that.");
         return;
       }
+      void invalidate("ranked-feed", "recent-feed", "home-squad", "my-vault-resources", "squad-pulse");
       finish(`Shared ${item.label}.`);
     } finally {
       setBusy(false);
     }
-  }, [resources, pickedResource, squadId, audience, caption, finish]);
+  }, [resources, pickedResource, squadId, audience, caption, finish, invalidate]);
 
 
   const selectCls =
@@ -337,15 +376,27 @@ export function FeedComposer({
       <div className="rounded-md border border-hairline bg-well px-3 py-4 text-center">
         <p className="text-xs leading-5 text-text-secondary">{msg}</p>
         {cta && (
-          <a
-            href={cta.href}
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              router.push(cta.href);
+            }}
             className="mt-2 inline-flex min-h-[44px] items-center rounded-md px-3 text-xs font-medium text-text-primary underline underline-offset-4"
           >
             {cta.label}
-          </a>
+          </button>
         )}
       </div>
     );
+
+    if (tileLoading) {
+      return (
+        <div className="rounded-md border border-hairline bg-well px-3 py-4 text-center">
+          <p className="text-xs leading-5 text-text-secondary">Loading options…</p>
+        </div>
+      );
+    }
 
     const radioRow = (
       id: string,
@@ -526,7 +577,7 @@ export function FeedComposer({
     }
 
     return null;
-  }, [tile, battles, teaching, people, problems, resources, pickedBattle, pickedTeach, pickedPerson, pickedProblem, pickedResource, myTimeSec, level, selectCls, battleMeta, battleTitle]);
+  }, [tile, tileLoading, battles, teaching, people, problems, resources, pickedBattle, pickedTeach, pickedPerson, pickedProblem, pickedResource, myTimeSec, level, selectCls, battleMeta, battleTitle, router, onClose]);
 
   const canSubmit =
     (tile === "solve" && pickedBattle !== "") ||
@@ -760,9 +811,9 @@ export function FeedComposer({
             {note}
           </p>
         )}
-        {error && (
+        {displayError && (
           <div role="alert" className="rounded-md border border-error/30 bg-error-tint px-3 py-2 text-xs leading-5 text-error">
-            {error}
+            {displayError}
           </div>
         )}
       </div>

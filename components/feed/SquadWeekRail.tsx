@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import Link from "next/link";
 import { ArrowRight, ChartSpline, ChevronRight, Users } from "lucide-react";
 import { getMemberWeekGrid, getSquadName, getSquadStreak } from "@/lib/data/squadActivity";
 import { getActiveGoalPattern, getSquadMemberIds } from "@/lib/data/squads";
 import { getRecaps } from "@/lib/data/recap";
+import { useCachedQuery } from "@/lib/cache/query";
 
 /** Counts for the rail, derived from the squad feed the page already loaded. */
 export interface WeekStats {
@@ -44,48 +45,54 @@ const EMPTY: SquadPulse = {
 };
 
 export function useSquadPulse(squadId: string | null): SquadPulse {
-  const [pulse, setPulse] = useState<SquadPulse>(EMPTY);
+  const query = useCachedQuery(
+    squadId ? ["squad-pulse", squadId] : null,
+    async (): Promise<SquadPulse> => {
+      const sid = squadId as string;
+      const [name, goalPattern, recaps, ids] = await Promise.all([
+        getSquadName(sid).catch(() => null),
+        getActiveGoalPattern(sid).catch(() => null),
+        getRecaps(sid, 1).catch(() => []),
+        getSquadMemberIds(sid).catch(() => [] as string[]),
+      ]);
 
-  useEffect(() => {
-    setPulse(EMPTY);
-    if (!squadId) return;
-    let cancelled = false;
-    const patch = (p: Partial<SquadPulse>) => {
-      if (!cancelled) setPulse((prev) => ({ ...prev, ...p }));
-    };
+      const latestRecap = recaps[0]
+        ? { weekStart: recaps[0].week_start, weekEnd: recaps[0].week_end }
+        : null;
 
-    getSquadName(squadId).then((name) => patch({ name })).catch(() => {});
-    getActiveGoalPattern(squadId).then((goalPattern) => patch({ goalPattern })).catch(() => {});
-    getRecaps(squadId, 1)
-      .then((rows) =>
-        patch({
-          latestRecap: rows[0] ? { weekStart: rows[0].week_start, weekEnd: rows[0].week_end } : null,
-        })
-      )
-      .catch(() => {});
-    getSquadMemberIds(squadId)
-      .then(async (ids) => {
-        patch({ memberCount: ids.length });
-        if (ids.length === 0) return;
+      let week: number[] | null = null;
+      let solvedToday: number | null = null;
+      let streakDays: number | null = null;
+
+      if (ids.length > 0) {
         const [grid, streak] = await Promise.all([
           getMemberWeekGrid(ids, 7).catch(() => null),
           getSquadStreak(ids).catch(() => null),
         ]);
         if (grid) {
           const rows = ids.map((id) => grid[id] ?? []);
-          const week = Array.from({ length: 7 }, (_, i) => rows.filter((r) => r[i]).length / ids.length);
-          patch({ week, solvedToday: rows.filter((r) => r[6]).length });
+          week = Array.from({ length: 7 }, (_, i) => rows.filter((r) => r[i]).length / ids.length);
+          solvedToday = rows.filter((r) => r[6]).length;
         }
-        if (streak) patch({ streakDays: streak.days });
-      })
-      .catch(() => {});
+        if (streak) {
+          streakDays = streak.days;
+        }
+      }
 
-    return () => {
-      cancelled = true;
-    };
-  }, [squadId]);
+      return {
+        name,
+        memberCount: ids.length,
+        week,
+        solvedToday,
+        streakDays,
+        goalPattern,
+        latestRecap,
+      };
+    },
+    { freshForMs: 10_000 }
+  );
 
-  return pulse;
+  return query.data ?? EMPTY;
 }
 
 function shortDate(iso: string): string {
