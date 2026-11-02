@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Archive, ArrowLeft, ArrowRight, CalendarDays, ChevronRight, Lock, NotebookPen } from "lucide-react";
@@ -15,6 +15,9 @@ import { dataErrorMessage } from "@/lib/data/errors";
 import { recapShareText } from "@/lib/recap";
 import { formatRange, isoWeek, serialOf } from "@/components/recap/recapFormat";
 import type { SquadRecap } from "@/types/database";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
+
+const NO_RECAPS: SquadRecap[] = [];
 
 /**
  * Weekly recaps (Step 20, Bible §31/§32).
@@ -27,32 +30,22 @@ export default function SquadRecapsPage() {
   const params = useParams<{ id: string }>();
   const squadId = params.id ?? "";
 
-  const [recaps, setRecaps] = useState<SquadRecap[]>([]);
-  const [squadName, setSquadName] = useState("Squad");
-  const [squadSince, setSquadSince] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const squadDetail = useCachedQuery(
+    squadId ? ["squad-detail", squadId] : null,
+    () => getSquadDetail(squadId)
+  );
+  const recapsQuery = useCachedQuery(
+    squadId ? ["recaps", squadId] : null,
+    () => getRecaps(squadId)
+  );
+  const invalidate = useInvalidate();
+
+  const recaps = recapsQuery.data ?? NO_RECAPS;
+  const squadName = squadDetail.data?.squad.name ?? "Squad";
+  const squadSince = squadDetail.data?.squad.created_at ?? null;
+
   const [generating, setGenerating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const [rows, detail] = await Promise.all([getRecaps(squadId), getSquadDetail(squadId)]);
-      setRecaps(rows);
-      setSquadName(detail.squad.name);
-      setSquadSince(detail.squad.created_at ?? null);
-    } catch (err) {
-      setLoadError(dataErrorMessage(err, "Couldn't load recaps. Retry."));
-    } finally {
-      setLoading(false);
-    }
-  }, [squadId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   const generate = async () => {
     setGenerating(true);
@@ -64,7 +57,8 @@ export default function SquadRecapsPage() {
           ? "Generated. It is a quiet week, the recap says so rather than padding."
           : `Generated: ${body.solves} solves.`
       );
-      await load();
+      await recapsQuery.refresh();
+      void invalidate("recaps", "wall");
     } catch (err) {
       setNotice(dataErrorMessage(err, "Couldn't generate a recap. Try again."));
     } finally {
@@ -72,10 +66,24 @@ export default function SquadRecapsPage() {
     }
   };
 
+  const loading = squadDetail.isLoading || recapsQuery.isLoading;
   if (loading) return <SquadRecapsSkeleton />;
 
+  const loadError =
+    (squadDetail.error && !squadDetail.data) || (recapsQuery.error && !recapsQuery.data)
+      ? dataErrorMessage(squadDetail.error || recapsQuery.error, "Couldn't load recaps. Retry.")
+      : null;
+
   if (loadError) {
-    return <ErrorCard message={loadError} onRetry={() => void load()} />;
+    return (
+      <ErrorCard
+        message={loadError}
+        onRetry={() => {
+          void squadDetail.refresh();
+          void recapsQuery.refresh();
+        }}
+      />
+    );
   }
 
   const week = currentWeek();

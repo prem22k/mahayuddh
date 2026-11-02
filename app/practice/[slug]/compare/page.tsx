@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, BookOpen, Check, ChevronRight, Copy, ExternalLink, Info, Zap } from "lucide-react";
@@ -9,6 +9,7 @@ import { getApproachesForProblem } from "@/lib/data/approaches";
 import { getCatalogBySlugs } from "@/lib/data/problems";
 import { getOwnProblemTimeline, getProblemTimeline } from "@/lib/data/problemEvents";
 import { getSquadProfiles } from "@/lib/data/profiles";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
 import { daysBetween, formatDuration, relativeDays } from "@/lib/format";
@@ -29,9 +30,14 @@ import { PatternChip } from "@/components/ui/Badge";
 import { problemUrl } from "@/components/ui/ProblemLink";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { SendChallengeModal } from "@/components/modals/SendChallengeModal";
-import type { Approach, Difficulty, Problem, ProblemEvent, Profile } from "@/types/database";
+import type { Approach, Difficulty, ProblemEvent, Profile } from "@/types/database";
 
 const SOLVE_KINDS = new Set(["solved", "revisited", "challenge_completed"]);
+
+// Stable empty values: a fresh [] per render would re-run every memo.
+const NO_APPROACHES: Approach[] = [];
+const NO_EVENTS: ProblemEvent[] = [];
+const NO_PROFILES: Profile[] = [];
 
 /** Measured facts about an author's own solves of this problem (public event log). */
 interface AuthorStat {
@@ -69,58 +75,85 @@ export default function ComparePage() {
   const slug = (params.slug ?? "").toLowerCase();
   const { user } = useAuth();
   const { startSolving } = useSolving();
+  const invalidate = useInvalidate();
 
-  const [problem, setProblem] = useState<Problem | null>(null);
-  const [approaches, setApproaches] = useState<Approach[]>([]);
-  const [slugEvents, setSlugEvents] = useState<ProblemEvent[]>([]);
-  const [attempted, setAttempted] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+
+  // Every read below goes through the client cache (lib/cache/query.tsx): a
+  // revisit renders from cache at once and refreshes in the background; the
+  // skeleton only shows on the very first load.
+
+  // Catalog row for the header chips (shared with the problem page).
+  const catalogQ = useCachedQuery(
+    slug ? ["catalog-by-slugs", slug] : null,
+    () => getCatalogBySlugs([slug]),
+    { freshForMs: 10 * 60_000 }
+  );
+  // The key holds getCatalogBySlugs' raw rows everywhere it is used.
+  const problem = catalogQ.data?.[0] ?? null;
+
+  // Squad approaches on this problem (shared with the problem page).
+  const approachesQ = useCachedQuery(
+    slug ? ["approaches-for-problem", slug] : null,
+    () => getApproachesForProblem(slug),
+    { freshForMs: 10_000 }
+  );
+  const approaches = approachesQ.data ?? NO_APPROACHES;
+
+  // Have you attempted this problem yourself? (newest own event)
+  const ownTimelineQ = useCachedQuery(
+    slug ? ["own-problem-timeline", slug, 1] : null,
+    () => getOwnProblemTimeline(slug, 1).catch(() => [] as ProblemEvent[])
+  );
+  const attempted = ownTimelineQ.data !== undefined ? ownTimelineQ.data.length > 0 : true;
+
+  // Every visible event on this slug for the measured solve times.
+  const slugEventsQ = useCachedQuery(
+    slug ? ["slug-events", slug] : null,
+    () => getProblemTimeline(slug).catch(() => [] as ProblemEvent[]),
+    { freshForMs: 10_000 }
+  );
+  const slugEvents = slugEventsQ.data ?? NO_EVENTS;
+
+  // The modal's recipient picker needs full profiles.
+  const profilesQ = useCachedQuery(["squad-profiles"], () => getSquadProfiles());
+  const profiles = profilesQ.data ?? NO_PROFILES;
 
   // Challenge-to-rematch modal state. The target is the first squad mate with
   // a visible approach; their best measured duration prefills "beat my time".
   // When nothing is measurable, the modal opens with the problem only.
-  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [challengeOpen, setChallengeOpen] = useState(false);
   const [challengeTargetId, setChallengeTargetId] = useState<string | undefined>(undefined);
   const [challengeBeatSec, setChallengeBeatSec] = useState<number | null>(null);
   const [challengeBusy, setChallengeBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const [catalog, rows, timeline, events] = await Promise.all([
-        getCatalogBySlugs([slug]).catch(() => []),
-        getApproachesForProblem(slug),
-        getOwnProblemTimeline(slug, 1).catch(() => []),
-        getProblemTimeline(slug).catch(() => [] as ProblemEvent[]),
-      ]);
-      setProblem(catalog[0] ?? null);
-      setApproaches(rows);
-      setSlugEvents(events);
-      setAttempted(timeline.length > 0);
-      setSelectedId(rows[0]?.id ?? null);
-      if (rows.length >= 2) {
-        track("compare_viewed", { problem_slug: slug, count: rows.length });
-      }
-    } catch (err) {
-      setLoadError(dataErrorMessage(err, "Couldn't load approaches."));
-    } finally {
-      setLoading(false);
+  // The old loader logged this once per view after its rows arrived; the cache
+  // serves the rows again on a revisit, so log once per view here too.
+  const trackedSlugRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (trackedSlugRef.current === slug) return;
+    const rows = approachesQ.data;
+    if (!rows) return;
+    trackedSlugRef.current = slug;
+    if (rows.length >= 2) {
+      track("compare_viewed", { problem_slug: slug, count: rows.length });
     }
-  }, [slug]);
+  }, [slug, approachesQ.data]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    getSquadProfiles().then(setProfiles).catch(() => setProfiles([]));
-  }, []);
+  const loading =
+    catalogQ.isLoading || approachesQ.isLoading || ownTimelineQ.isLoading || slugEventsQ.isLoading;
+  const loadError =
+    approachesQ.error && approachesQ.data === undefined
+      ? dataErrorMessage(approachesQ.error, "Couldn't load approaches.")
+      : null;
+  const handleRetryLoad = () => {
+    void catalogQ.refresh();
+    void approachesQ.refresh();
+    void ownTimelineQ.refresh();
+    void slugEventsQ.refresh();
+  };
 
   useEffect(() => {
     if (!toast) return;
@@ -131,7 +164,7 @@ export default function ComparePage() {
   if (loading) return <CompareSkeleton />;
 
   if (loadError) {
-    return <ErrorCard message={loadError} onRetry={load} />;
+    return <ErrorCard message={loadError} onRetry={handleRetryLoad} />;
   }
 
   const title = problem?.title ?? slug;
@@ -221,6 +254,8 @@ export default function ComparePage() {
   const handleChallengeSent = () => {
     setChallengeOpen(false);
     setToast("Challenge sent.");
+    // A sent challenge surfaces on the problem page and in the challenges count.
+    void invalidate("challenges-for-slug", "incoming-suggestion-count", "first-incoming-challenge");
   };
 
   const firstMateName = firstMate ? authorName(firstMate.approach) : null;

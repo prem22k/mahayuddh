@@ -1,30 +1,33 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, BookMarked, BookOpen, ChevronRight, RotateCcw, Swords } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { useCachedQuery } from "@/lib/cache/query";
 import { Button } from "@/components/ui/Button";
-import { EmptyState, ErrorCard } from "@/components/ui/States";
+import { EmptyState } from "@/components/ui/States";
 import { PracticeHubSkeleton } from "@/components/skeletons/PracticeSkeleton";
 import { DifficultyBadgeNew, PatternChip } from "@/components/ui/Badge";
 import { ProblemRow, StatusGlyph, ProblemStatus } from "@/components/ui/ProblemRow";
 import { getCatalogBySlugs } from "@/lib/data/problems";
 import { listPrimers } from "@/lib/data/primers";
-import {
-  refreshReviewQueue,
-  getSnapshot,
-  computePatternStats,
-  PatternStat,
-} from "@/lib/data/review";
+import { refreshReviewQueue, getSnapshot, computePatternStats, PatternStat } from "@/lib/data/review";
 import { buildRevengeOffer, RevengeOffer } from "@/lib/revenge";
 import { getOpenRevenges } from "@/lib/data/revenge";
 import { getPinnedSheetProgress, PINNED_SHEETS, SheetProgress } from "@/lib/data/sheetProgress";
-import { dataErrorMessage } from "@/lib/data/errors";
 import { daysBetween, formatDuration } from "@/lib/format";
 import { Primer, Problem, ReviewItem, ReviewReason } from "@/types/database";
+
+// Stable empty values: a fresh [] or Map per render would re-run every memo.
+const NO_REVIEWS: ReviewItem[] = [];
+const NO_PRIMERS: Primer[] = [];
+const NO_PATTERNS: PatternStat[] = [];
+const NO_TITLES = new Map<string, Problem>();
+const NO_OFFERS = new Map<string, RevengeOffer>();
+const NO_SHEET_PROGRESS: Record<string, SheetProgress | null> = {};
 
 type OwnStatus = { status: string; solved_at: string };
 
@@ -136,75 +139,94 @@ function glyphFor(own: OwnStatus | undefined, failed: boolean): ProblemStatus {
 export function PracticeHub() {
   const { user, loading: authLoading } = useAuth();
   const { startSolving } = useSolving();
-  const [reviews, setReviews] = useState<ReviewItem[]>([]);
-  const [patterns, setPatterns] = useState<PatternStat[]>([]);
-  const [titles, setTitles] = useState<Map<string, Problem>>(new Map());
-  const [ownStatus, setOwnStatus] = useState<Map<string, OwnStatus>>(new Map());
-  const [primers, setPrimers] = useState<Primer[]>([]);
-  const [revenges, setRevenges] = useState<Map<string, RevengeOffer>>(new Map());
-  const [sheetProgress, setSheetProgress] = useState<Record<string, SheetProgress | null>>({});
+  const userId = user?.id ?? null;
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Until auth resolves there is no user yet; keep the skeleton up rather
-    // than flashing the logged-out prompt.
-    if (authLoading) return;
-    if (!user) {
-      setLoading(false);
-      return;
+  // Every read below goes through the client cache (lib/cache/query.tsx): a
+  // revisit renders from cache at once and refreshes in the background; the
+  // skeleton only shows on the very first load.
+
+  // The review queue: reconciled against reality, then read.
+  const reviewsQ = useCachedQuery(userId ? ["review-queue"] : null, () => refreshReviewQueue());
+
+  // Snapshot of your own statuses, battles and events (feeds pattern stats).
+  const snapshotQ = useCachedQuery(userId ? ["snapshot"] : null, () => getSnapshot());
+
+  // Primers to learn before retrying (catalog-like data).
+  const primersQ = useCachedQuery(userId ? ["list-primers"] : null, () => listPrimers(), {
+    freshForMs: 10 * 60_000,
+  });
+
+  const reviews = reviewsQ.data ?? NO_REVIEWS;
+  const snap = snapshotQ.data ?? null;
+  const primers = primersQ.data ?? NO_PRIMERS;
+
+  // Catalog rows for the reviewed problems' titles and meta.
+  const titleSlugs = useMemo(
+    () => Array.from(new Set(reviews.map((r) => r.problem_slug))).slice(0, 60),
+    [reviews]
+  );
+  const titlesQ = useCachedQuery(
+    titleSlugs.length > 0 ? ["catalog-by-slugs", titleSlugs.join(",")] : null,
+    () => getCatalogBySlugs(titleSlugs),
+    { freshForMs: 10 * 60_000 }
+  );
+
+  // Revenge (Step 17): a failed problem with its real failure time on it,
+  // rather than a bare "Failed" label.
+  const failedSlugs = useMemo(
+    () => reviews.filter((r) => r.reason === "failed").map((r) => r.problem_slug),
+    [reviews]
+  );
+  const revengesQ = useCachedQuery(
+    failedSlugs.length > 0 ? ["open-revenges", failedSlugs.join(",")] : null,
+    async () => {
+      const battlesBySlug = await getOpenRevenges(failedSlugs).catch(() => new Map());
+      const offers = new Map<string, RevengeOffer>();
+      for (const slug of failedSlugs) {
+        const offer = buildRevengeOffer(slug, battlesBySlug.get(slug) ?? []);
+        if (offer) offers.set(slug, offer);
+      }
+      return offers;
     }
-    Promise.all([refreshReviewQueue().catch(() => [] as ReviewItem[]), getSnapshot().catch(() => null), listPrimers().catch(() => [] as Primer[])])
-      .then(async ([rows, snap, prim]) => {
-        setReviews(rows);
-        setPrimers(prim);
-        if (snap) {
-          setPatterns(computePatternStats(snap));
-          setOwnStatus(
-            new Map(snap.statuses.map((s) => [s.problem_slug, { status: s.status, solved_at: s.solved_at }]))
-          );
-          const slugs = Array.from(new Set(rows.map((r) => r.problem_slug))).slice(0, 60);
-          const catalog = await getCatalogBySlugs(slugs).catch(() => []);
-          setTitles(new Map(catalog.map((c) => [c.title_slug, c])));
-
-          // Revenge (Step 17): a failed problem with its real failure time on it,
-          // rather than a bare "Failed" label.
-          const failedSlugs = rows.filter((r) => r.reason === "failed").map((r) => r.problem_slug);
-          if (failedSlugs.length > 0) {
-            const battlesBySlug = await getOpenRevenges(failedSlugs).catch(() => new Map());
-            const offers = new Map<string, RevengeOffer>();
-            for (const slug of failedSlugs) {
-              const offer = buildRevengeOffer(slug, battlesBySlug.get(slug) ?? []);
-              if (offer) offers.set(slug, offer);
-            }
-            setRevenges(offers);
-          } else {
-            setRevenges(new Map());
-          }
-        }
-      })
-      .catch((err) => setLoadError(dataErrorMessage(err, "Couldn't load practice data.")))
-      .finally(() => setLoading(false));
-  }, [user?.id, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   // Sheet progress is honest measured data only: list size plus your own
   // solved marks. When either fetch fails the row renders without counts.
-  // Shared (and cached) with the sidebar's pinned sheets.
-  useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-    getPinnedSheetProgress(user.id)
-      .then((out) => {
-        if (!cancelled) setSheetProgress(out);
-      })
-      .catch(() => {
-        if (!cancelled) setSheetProgress({});
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Shared (and cached) with the sidebar's pinned sheets; its own module TTL
+  // is five minutes.
+  const sheetProgressQ = useCachedQuery(
+    userId ? ["pinned-sheet-progress"] : null,
+    () => getPinnedSheetProgress(userId as string),
+    { freshForMs: 5 * 60_000 }
+  );
+
+  // The key holds getCatalogBySlugs' raw rows everywhere it is used; the map is derived here.
+  const titleRows = titlesQ.data;
+  const titles = useMemo(
+    () => (titleRows ? new Map(titleRows.map((c) => [c.title_slug, c])) : NO_TITLES),
+    [titleRows]
+  );
+  const revenges = revengesQ.data ?? NO_OFFERS;
+  const sheetProgress = sheetProgressQ.data ?? NO_SHEET_PROGRESS;
+  const patterns = useMemo(() => (snap ? computePatternStats(snap) : NO_PATTERNS), [snap]);
+  const ownStatus = useMemo(
+    () =>
+      new Map(
+        (snap?.statuses ?? []).map((s) => [s.problem_slug, { status: s.status, solved_at: s.solved_at }])
+      ),
+    [snap]
+  );
+
+  // The old loader held the skeleton until every chained read settled; the
+  // cache keeps that on the first load of each key and skips it while data is
+  // already cached.
+  const loading =
+    reviewsQ.isLoading ||
+    snapshotQ.isLoading ||
+    primersQ.isLoading ||
+    titlesQ.isLoading ||
+    revengesQ.isLoading;
 
   if (authLoading) return <PracticeHubSkeleton />;
   if (!user) {
@@ -224,9 +246,6 @@ export function PracticeHub() {
     );
   }
   if (loading) return <PracticeHubSkeleton />;
-  if (loadError) {
-    return <ErrorCard message={loadError} />;
-  }
 
   const weak = patterns.filter((p) => p.status === "Weak").slice(0, 6);
   const visible = reviews.filter((r) => !skipped.has(r.id)).slice(0, 12);

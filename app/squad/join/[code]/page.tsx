@@ -16,6 +16,7 @@ import { InviteCardSkeleton, InviteLinesSkeleton } from "@/components/skeletons/
 import { getMySquads, joinSquad, switchActiveSquad } from "@/lib/data/squads";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
 interface Preview {
   squad: { id: string; name: string; description: string | null; created_at?: string };
@@ -43,48 +44,48 @@ export default function SquadJoinPage() {
   // The referral token identifies who sent the link. It survives signup: this
   // is the difference between "you joined a squad" and "Priya brought you here".
   const ref = search.get("ref") ?? "";
-  const [preview, setPreview] = useState<Preview | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const userId = user?.id ?? null;
+  const invalidate = useInvalidate();
+
+  const previewQuery = useCachedQuery(
+    code ? ["squad-preview", code, ref] : null,
+    async () => {
+      const res = await fetch(`/api/squads/preview/${code}${ref ? `?ref=${encodeURIComponent(ref)}` : ""}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json.error || "No squad found for that code.");
+      }
+      return json as Preview;
+    }
+  );
+
+  const mySquadsQuery = useCachedQuery(
+    userId ? ["my-squads"] : null,
+    () => getMySquads(userId as string, profile?.active_squad_id ?? null)
+  );
+
+  const preview = previewQuery.data ?? null;
+  const previewSquadId = preview?.squad.id ?? null;
+  const alreadyMember = Boolean(
+    user &&
+    previewSquadId &&
+    mySquadsQuery.data?.squads.some((s) => s.id === previewSquadId)
+  );
+
+  const [actionError, setActionError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
   const [copied, setCopied] = useState(false);
-  // Signed-in members get "Open squad" instead of a join they already made.
-  // Unknown (or a failed lookup) falls back to the ordinary, idempotent join.
-  const [alreadyMember, setAlreadyMember] = useState(false);
 
   useEffect(() => {
     track("invite_opened", { invite_code: code, referred: Boolean(ref) });
-    fetch(`/api/squads/preview/${code}${ref ? `?ref=${encodeURIComponent(ref)}` : ""}`)
-      .then(async (res) => {
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setError(json.error || "No squad found for that code.");
-          return;
-        }
-        setPreview(json as Preview);
-      })
-      .catch(() => setError("Couldn't load this invite. Check your connection."))
-      .finally(() => setLoading(false));
   }, [code, ref]);
 
-  const previewSquadId = preview?.squad.id ?? null;
-  useEffect(() => {
-    if (!user || !previewSquadId) {
-      setAlreadyMember(false);
-      return;
-    }
-    let cancelled = false;
-    getMySquads(user.id)
-      .then((mine) => {
-        if (!cancelled) setAlreadyMember(mine.squads.some((s) => s.id === previewSquadId));
-      })
-      .catch(() => {
-        if (!cancelled) setAlreadyMember(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [user, previewSquadId]);
+  const previewError = previewQuery.error
+    ? previewQuery.error instanceof Error
+      ? previewQuery.error.message
+      : "Couldn't load this invite. Check your connection."
+    : null;
+  const error = actionError || (previewQuery.error && !preview ? previewError : null);
 
   const handleJoin = async () => {
     if (!user) {
@@ -96,15 +97,16 @@ export default function SquadJoinPage() {
       return;
     }
     setJoining(true);
-    setError(null);
+    setActionError(null);
     try {
       const joined = await joinSquad(code, ref || null);
+      await invalidate("my-squads", "squad-detail", "home-squad");
       await refreshProfile();
       router.push("/squad");
       track("referral_join_completed", { squad_id: joined?.squad.id, referred: Boolean(ref) });
       track("squad_joined", { via: "invite", squad_id: joined?.squad.id, referred: Boolean(ref) });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't join. Try again.");
+      setActionError(err instanceof Error ? err.message : "Couldn't join. Try again.");
     } finally {
       setJoining(false);
     }
@@ -114,15 +116,16 @@ export default function SquadJoinPage() {
   const handleOpen = async () => {
     if (!preview) return;
     setJoining(true);
-    setError(null);
+    setActionError(null);
     try {
       if (profile?.active_squad_id !== preview.squad.id) {
         await switchActiveSquad(preview.squad.id);
+        await invalidate("my-squads", "squad-detail", "home-squad");
         await refreshProfile();
       }
       router.push("/squad");
     } catch (err) {
-      setError(dataErrorMessage(err, "Couldn't open this squad. Try again."));
+      setActionError(dataErrorMessage(err, "Couldn't open this squad. Try again."));
     } finally {
       setJoining(false);
     }
@@ -152,7 +155,7 @@ export default function SquadJoinPage() {
 
   // Hold the skeleton until auth resolves too: the join button, the
   // already-a-member branch and the page chrome all depend on who is looking.
-  const pending = loading || authLoading;
+  const pending = previewQuery.isLoading || (Boolean(user) && mySquadsQuery.isLoading) || authLoading;
 
   const card = pending ? (
     <InviteCardSkeleton />

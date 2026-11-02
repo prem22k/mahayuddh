@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Play, Sparkles, X } from "lucide-react";
 import { useSolving } from "@/components/providers/SolvingProvider";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 import {
   getRecommendation,
   logRecommendationDecision,
@@ -12,7 +13,6 @@ import {
 } from "@/lib/data/recommend";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
-import type { Recommendation } from "@/lib/recommend";
 import { RecommendationStats } from "./RecommendationStats";
 import { Button } from "@/components/ui/Button";
 import { DifficultyBadgeNew, PatternChip } from "@/components/ui/Badge";
@@ -55,35 +55,35 @@ export function NextBattle({
   className?: string;
 }) {
   const { startSolving } = useSolving();
-  const [rec, setRec] = useState<Recommendation | null>(null);
-  const [loading, setLoading] = useState(true);
+  const invalidate = useInvalidate();
   const [dismissed, setDismissed] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const r = await getRecommendation({ goalPattern });
-      setRec(r);
-      // Logged after it renders, and never awaited: logging is best-effort and
-      // must not delay or fail the surface.
-      if (r) void logRecommendationShown(r, surface).catch(() => {});
-    } catch (err) {
-      setError(dataErrorMessage(err, "Couldn't build a recommendation."));
-    } finally {
-      setLoading(false);
-    }
-  }, [surface, goalPattern]);
+  // The engine's pick for this goalPattern (lib/cache/query.tsx): the same
+  // key serves every card mounted with the same pattern, one request; a
+  // revisit renders the cached card and quietly refreshes.
+  const recQ = useCachedQuery(
+    ["recommendation", goalPattern ?? null],
+    () => getRecommendation({ goalPattern }),
+    { freshForMs: 10_000 }
+  );
+  // undefined = still loading/unfetched; null = loaded, nothing to recommend.
+  const rec = recQ.data;
 
+  const shownLoggedRef = useRef(false);
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (shownLoggedRef.current || rec === undefined) return;
+    // Logged after it renders, and never awaited: logging is best-effort and
+    // must not delay or fail the surface.
+    if (rec) void logRecommendationShown(rec, surface).catch(() => {});
+    shownLoggedRef.current = true;
+  }, [rec, surface]);
 
   const decide = async (decision: "accepted" | "dismissed") => {
     if (!rec) return;
     void logRecommendationDecision(rec, surface, decision).catch(() => {});
     track("recommendation_decided", { decision, signal_count: rec.reasonCount });
+    // The stats card reads the log back; a decision changes those rates.
+    void invalidate("recommendation-stats");
     if (decision === "accepted") {
       startSolving({
         id: rec.problem.titleSlug,
@@ -97,7 +97,13 @@ export function NextBattle({
     }
   };
 
-  if (loading) {
+  const askAgain = () => {
+    setDismissed(false);
+    shownLoggedRef.current = false;
+    void recQ.refresh();
+  };
+
+  if (recQ.isLoading) {
     return (
       <section className={cn(CARD, "flex flex-col gap-4", className)} aria-label="Next battle" aria-busy>
         <Header />
@@ -117,13 +123,16 @@ export function NextBattle({
     );
   }
 
-  if (error) {
+  // Only an error with nothing cached blocks the card; cached data stays up.
+  if (recQ.error && rec === undefined) {
     return (
       <section className={cn(CARD, className)} aria-label="Next battle">
         <Header />
         <div className="mt-2 flex items-center justify-between gap-3">
-          <p className="text-xs leading-5 text-text-secondary">{error}</p>
-          <Button variant="secondary" className="shrink-0 border border-hairline" onClick={() => void load()}>
+          <p className="text-xs leading-5 text-text-secondary">
+            {dataErrorMessage(recQ.error, "Couldn't build a recommendation.")}
+          </p>
+          <Button variant="secondary" className="shrink-0 border border-hairline" onClick={() => void recQ.refresh()}>
             Retry
           </Button>
         </div>
@@ -154,10 +163,7 @@ export function NextBattle({
             <Button
               variant="secondary"
               className="mt-4 border border-hairline"
-              onClick={() => {
-                setDismissed(false);
-                void load();
-              }}
+              onClick={askAgain}
             >
               Ask again
             </Button>
