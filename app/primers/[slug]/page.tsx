@@ -42,6 +42,31 @@ const TOC = [
   { id: "starters", label: "Starter problems" },
 ] as const;
 
+function SectionHeading({
+  id,
+  label,
+  aside,
+  numberOf,
+}: {
+  id: string;
+  label: string;
+  aside?: React.ReactNode;
+  numberOf: (id: string) => string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-hairline pb-2 md:border-b-0 md:pb-0">
+      <h2 className="flex items-center gap-2 text-lg font-semibold leading-[26px] tracking-[-0.01em] text-text-primary">
+        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-pattern md:hidden" />
+        <span aria-hidden className="hidden font-mono text-sm font-medium text-pattern tnum md:inline">
+          {numberOf(id)}.
+        </span>
+        {label}
+      </h2>
+      {aside}
+    </div>
+  );
+}
+
 export default function PrimerPage() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug || "";
@@ -172,19 +197,6 @@ export default function PrimerPage() {
   const toc = TOC.filter((t) => present[t.id]);
   const numberOf = (id: string) => String(toc.findIndex((t) => t.id === id) + 1).padStart(2, "0");
 
-  const SectionHeading = ({ id, label, aside }: { id: string; label: string; aside?: React.ReactNode }) => (
-    <div className="flex items-center justify-between gap-3 border-b border-hairline pb-2 md:border-b-0 md:pb-0">
-      <h2 className="flex items-center gap-2 text-lg font-semibold leading-[26px] tracking-[-0.01em] text-text-primary">
-        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-pattern md:hidden" />
-        <span aria-hidden className="hidden font-mono text-sm font-medium text-pattern tnum md:inline">
-          {numberOf(id)}.
-        </span>
-        {label}
-      </h2>
-      {aside}
-    </div>
-  );
-
   const actionBtn =
     "inline-flex h-9 min-h-[44px] items-center gap-1.5 rounded-md border border-hairline bg-surface px-3 text-sm font-medium leading-5 text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0";
 
@@ -310,7 +322,7 @@ export default function PrimerPage() {
         </header>
 
         <section id="recognize" aria-label="Recognize it when" className="flex scroll-mt-24 flex-col gap-3">
-          <SectionHeading id="recognize" label="Recognize it when" />
+          <SectionHeading id="recognize" label="Recognize it when" numberOf={numberOf} />
           <ol className="mt-1 flex flex-col gap-2.5">
             {primer.recognize_when.map((r, i) => (
               <li key={i} className="flex items-start gap-3 rounded-lg border border-hairline bg-surface p-3.5">
@@ -330,7 +342,7 @@ export default function PrimerPage() {
 
         {primer.mental_model && (
           <section id="mental-model" aria-label="Mental model" className="flex scroll-mt-24 flex-col gap-4">
-            <SectionHeading id="mental-model" label="Mental model" />
+            <SectionHeading id="mental-model" label="Mental model" numberOf={numberOf} />
             <div className="flex flex-col gap-4 rounded-lg border border-hairline bg-surface p-4 md:border-0 md:bg-transparent md:p-0">
               {primer.mental_model
                 .split(/\n{2,}/)
@@ -346,14 +358,14 @@ export default function PrimerPage() {
 
         {primer.template_md && (
           <section id="template" aria-label="Template" className="flex scroll-mt-24 flex-col gap-3">
-            <SectionHeading id="template" label="Template" />
+            <SectionHeading id="template" label="Template" numberOf={numberOf} />
             <CodeBlock code={primer.template_md} label="template" lineNumbers={false} />
           </section>
         )}
 
         {primer.complexity && (
           <section id="complexity" aria-label="Complexity" className="flex scroll-mt-24 flex-col gap-3">
-            <SectionHeading id="complexity" label="Complexity" />
+            <SectionHeading id="complexity" label="Complexity" numberOf={numberOf} />
             <div className="flex items-center gap-4 rounded-xl border border-hairline bg-surface p-4">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-hairline bg-well text-pattern">
                 <Gauge className="h-5 w-5" strokeWidth={1.5} aria-hidden />
@@ -365,7 +377,7 @@ export default function PrimerPage() {
 
         {primer.mistakes.length > 0 && (
           <section id="mistakes" aria-label="Common mistakes" className="flex scroll-mt-24 flex-col gap-3">
-            <SectionHeading id="mistakes" label="Common mistakes" />
+            <SectionHeading id="mistakes" label="Common mistakes" numberOf={numberOf} />
             <ul className="mt-1 flex flex-col gap-2.5">
               {primer.mistakes.map((m, i) => (
                 <li key={i} className="flex items-start gap-3 rounded-lg border border-hairline bg-surface p-3.5">
@@ -388,6 +400,7 @@ export default function PrimerPage() {
           <SectionHeading
             id="starters"
             label="Starter problems"
+            numberOf={numberOf}
             aside={
               user && starters.length > 0 ? (
                 <span className="font-mono text-xs font-medium leading-4 text-text-tertiary tnum">

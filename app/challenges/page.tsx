@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Plus, Play, Forward, BellRing } from "lucide-react";
 import { copyText } from "@/lib/clipboard";
@@ -62,7 +62,7 @@ export default function SuggestionsPage() {
   const [remindId, setRemindId] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   // ?to= / ?problem= / ?pass= prefill, applied once the data it may need is loaded.
-  const urlPrefill = useRef<(ComposerSeed & { passId?: string }) | null>(null);
+  const [urlPrefill, setUrlPrefill] = useState<(ComposerSeed & { passId?: string }) | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -75,12 +75,6 @@ export default function SuggestionsPage() {
       setSuggestions(suggestionsData);
       setProfiles(profilesData);
       setProfilesReady(true);
-      const prefill = urlPrefill.current;
-      if (prefill && user?.id) {
-        urlPrefill.current = null;
-        const parent = prefill.passId ? suggestionsData.find((s) => s.id === prefill.passId) : undefined;
-        setComposer(parent ? { passParent: parent } : prefill);
-      }
     } catch (err) {
       console.error("Error loading suggestions:", err);
       setLoadError("Couldn't load challenges. Check your connection and retry.");
@@ -122,8 +116,18 @@ export default function SuggestionsPage() {
       if (Number.isFinite(secs) && secs >= 0) seed.initialBeatSec = secs;
     }
     if (passId) seed.passId = passId;
-    if (to || (slug && title) || passId) urlPrefill.current = seed;
+    if (to || (slug && title) || passId) setUrlPrefill(seed);
   }, []);
+
+  // Apply the prefill once the load that may supply its parent has finished,
+  // then clear it so a later reload does not reopen a closed composer.
+  useEffect(() => {
+    if (!urlPrefill || loading || !profilesReady || !user?.id) return;
+    const prefill = urlPrefill;
+    const parent = prefill.passId ? suggestions.find((s) => s.id === prefill.passId) : undefined;
+    setComposer(parent ? { passParent: parent } : prefill);
+    setUrlPrefill(null);
+  }, [urlPrefill, loading, profilesReady, user?.id, suggestions]);
 
   // No. and pattern for every listed problem, one batched catalog read.
   // Decoration only: a failed lookup leaves them off.
