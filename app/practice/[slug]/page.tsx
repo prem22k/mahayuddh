@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { copyText } from "@/lib/clipboard";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
-import { PageLoader } from "@/components/ui/PageLoader";
+import { ProblemSkeleton } from "@/components/skeletons/ProblemSkeleton";
 import { NextBattle } from "@/components/recommend/NextBattle";
 import { problemUrl } from "@/components/ui/ProblemLink";
 import { getCatalogBySlugs } from "@/lib/data/problems";
@@ -56,7 +56,7 @@ const labelCls = "text-xs font-medium leading-4 text-text-secondary";
 export default function ProblemPage() {
   const params = useParams<{ slug: string }>();
   const slug = (params.slug || "").toLowerCase();
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const { startSolving } = useSolving();
 
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -154,9 +154,12 @@ export default function ProblemPage() {
     }
   }, [slug, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // One load once auth resolves; an anonymous first pass would render the
+  // page without your battles and then swap them in.
   useEffect(() => {
+    if (authLoading) return;
     load();
-  }, [load]);
+  }, [load, authLoading]);
 
   // Battle cards and the compare page link here with #explain: land on the
   // write-up tab instead of a dead anchor.
@@ -230,7 +233,7 @@ export default function ProblemPage() {
     }
   };
 
-  if (loading) return <PageLoader label="Loading problem..." />;
+  if (loading) return <ProblemSkeleton />;
   if (loadError) {
     return (
       <div className="space-y-3 p-12 text-center" role="alert">

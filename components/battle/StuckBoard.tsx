@@ -17,7 +17,7 @@ import {
   Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PageLoader } from "@/components/ui/PageLoader";
+import { StuckBoardSkeleton } from "@/components/skeletons/StuckSkeleton";
 import { Button } from "@/components/ui/Button";
 import { EmptyState, ErrorCard } from "@/components/ui/States";
 import { Avatar } from "@/components/ui/Avatar";
@@ -92,7 +92,7 @@ export function StuckBoard() {
     load();
   }, [load]);
 
-  if (loading) return <PageLoader label="Loading requests..." className="h-40" />;
+  if (loading) return <StuckBoardSkeleton />;
 
   if (loadError) {
     return <ErrorCard message={loadError} onRetry={load} />;

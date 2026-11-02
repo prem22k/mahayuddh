@@ -21,7 +21,8 @@ import {
 } from "@/lib/approachCompare";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
-import { ErrorCard, Skeleton } from "@/components/ui/States";
+import { ErrorCard } from "@/components/ui/States";
+import { CompareSkeleton } from "@/components/skeletons/CompareSkeleton";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { PatternChip } from "@/components/ui/Badge";
@@ -127,19 +128,7 @@ export default function ComparePage() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  if (loading) {
-    return (
-      <div className="space-y-6" aria-hidden>
-        <Skeleton className="h-4 w-48" />
-        <Skeleton className="h-10 w-2/3" />
-        <Skeleton className="h-32 w-full" />
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <Skeleton className="h-72 w-full" />
-          <Skeleton className="h-72 w-full" />
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <CompareSkeleton />;
 
   if (loadError) {
     return <ErrorCard message={loadError} onRetry={load} />;

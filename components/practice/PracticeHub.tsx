@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
-import { EmptyState, ErrorCard, Skeleton } from "@/components/ui/States";
+import { EmptyState, ErrorCard } from "@/components/ui/States";
+import { PracticeHubSkeleton } from "@/components/skeletons/PracticeSkeleton";
 import { DifficultyBadgeNew, PatternChip } from "@/components/ui/Badge";
 import { ProblemRow, StatusGlyph, ProblemStatus } from "@/components/ui/ProblemRow";
 import { getCatalogBySlugs } from "@/lib/data/problems";
@@ -133,7 +134,7 @@ function glyphFor(own: OwnStatus | undefined, failed: boolean): ProblemStatus {
 }
 
 export function PracticeHub() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { startSolving } = useSolving();
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [patterns, setPatterns] = useState<PatternStat[]>([]);
@@ -147,6 +148,9 @@ export function PracticeHub() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Until auth resolves there is no user yet; keep the skeleton up rather
+    // than flashing the logged-out prompt.
+    if (authLoading) return;
     if (!user) {
       setLoading(false);
       return;
@@ -182,7 +186,7 @@ export function PracticeHub() {
       })
       .catch((err) => setLoadError(dataErrorMessage(err, "Couldn't load practice data.")))
       .finally(() => setLoading(false));
-  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.id, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sheet progress is honest measured data only: list size plus your own
   // solved marks. When either fetch fails the row renders without counts.
@@ -202,6 +206,7 @@ export function PracticeHub() {
     };
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  if (authLoading) return <PracticeHubSkeleton />;
   if (!user) {
     return (
       <EmptyState
@@ -218,30 +223,7 @@ export function PracticeHub() {
       />
     );
   }
-  if (loading) {
-    return (
-      <div className="space-y-6 md:space-y-12" aria-hidden>
-        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12 lg:gap-8">
-          <div className="space-y-3 lg:col-span-8">
-            <Skeleton className="h-6 w-40" />
-            <Skeleton className="h-44 w-full" />
-            <Skeleton className="h-14 w-full" />
-            <Skeleton className="h-14 w-full" />
-          </div>
-          <div className="space-y-3 lg:col-span-4">
-            <Skeleton className="h-6 w-36" />
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
-          </div>
-        </div>
-        <div className="space-y-3">
-          <Skeleton className="h-6 w-48" />
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <PracticeHubSkeleton />;
   if (loadError) {
     return <ErrorCard message={loadError} />;
   }

@@ -92,9 +92,25 @@ export function BattleCard({
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-hairline bg-surface p-4 md:p-5" aria-hidden>
-        <div className="skeleton h-3 w-24" />
-        <div className="skeleton mt-3 h-6 w-48" />
+      <div className="flex flex-col gap-4 rounded-lg border border-hairline bg-surface p-4 md:p-5" aria-hidden>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="skeleton h-3 w-24 rounded-xs" />
+            <div className="skeleton mt-2 h-5 w-48 rounded-xs" />
+            <div className="skeleton mt-3 h-6 w-28 rounded-full" />
+          </div>
+          <div className="flex shrink-0 flex-col items-end">
+            <div className="skeleton h-6 w-16 rounded-xs" />
+            <div className="skeleton mt-1.5 h-3 w-20 rounded-xs" />
+          </div>
+        </div>
+        <div className="border-t border-hairline pt-3">
+          <div className="skeleton h-3 w-56 max-w-full rounded-xs" />
+        </div>
+        <div className="flex gap-2">
+          <div className="skeleton h-9 w-28 rounded-md" />
+          <div className="skeleton h-9 w-24 rounded-md" />
+        </div>
       </div>
     );
   }
