@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   Play,
@@ -33,6 +33,15 @@ interface NowSolvingBarProps {
   onSearchOpen?: () => void;
 }
 
+/** Which problem the stored battle id belongs to (resume-after-refresh guard). */
+const BATTLE_SLUG_KEY = "mahayuddh_battle_slug";
+
+interface BattleOutcome {
+  kind: "solved" | "failed";
+  title: string;
+  seconds: number;
+}
+
 export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
   const { user, profile, session } = useAuth();
   const {
@@ -53,10 +62,15 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
 
   const [isScratchpadOpen, setIsScratchpadOpen] = useState(false);
   const [scratchpadNote, setScratchpadNote] = useState("");
-  const [isCompleted, setIsCompleted] = useState(false);
+  // A solve or fail is in flight: the buttons lock so it can't be sent twice.
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  // The write was rejected: the battle stays open and the dock says so.
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // How the last battle ended. Shown in the dock for a moment after it clears.
+  const [outcome, setOutcome] = useState<BattleOutcome | null>(null);
   const [battleId, setBattleId] = useState<string | null>(null);
   const [stuckOpen, setStuckOpen] = useState(false);
-  const [ending, setEnding] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [isHeartbeatLeader, setIsHeartbeatLeader] = useState(true);
   // Step 17: closes the "failed -> solved" loop with the real before/after.
@@ -71,7 +85,8 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
     if (activeProblem?.slug) {
       const savedNote = localStorage.getItem(`mahayuddh_notes_${activeProblem.slug}`) || "";
       setScratchpadNote(savedNote);
-      setIsCompleted(false);
+      setSaveError(null);
+      setOutcome(null);
       setStuckOpen(false);
 
       // Resume the existing server session after a refresh. Without this the
@@ -93,7 +108,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
 
       const storedSlug = (() => {
         try {
-          const raw = localStorage.getItem("mahayuddh_battle_slug");
+          const raw = localStorage.getItem(BATTLE_SLUG_KEY);
           return raw;
         } catch {
           return null;
@@ -116,7 +131,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
             setBattleId(res.battle.id);
             try {
               localStorage.setItem(BATTLE_ID_STORAGE_KEY, res.battle.id);
-              localStorage.setItem("mahayuddh_battle_slug", activeProblem.slug);
+              localStorage.setItem(BATTLE_SLUG_KEY, activeProblem.slug);
             } catch {
               // ignore
             }
@@ -235,102 +250,141 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
     };
   }, [isPlaying, battleId, isHeartbeatLeader, sessionExpired, elapsedSec, setIsPlaying]);
 
-  const handleComplete = useCallback(async (evidence: "leetcode" | "none" = "none") => {
-    if (!activeProblem) return;
-
-    // Persist first: only celebrate + notify when the write lands, so open
-    // views never show a solve the database rejected.
-    if (user) {
-      let saved = false;
-      // Revisit detection: solving an already-solved problem logs "revisited".
-      let wasSolved = false;
-      try {
-        const { createClient } = await import("@/lib/supabase/client");
-        const supabase = createClient();
-        const { data: prev } = await supabase
-          .from("user_problem_status")
-          .select("status")
-          .eq("user_id", user.id)
-          .eq("problem_slug", activeProblem.slug.toLowerCase())
-          .maybeSingle();
-        wasSolved = (prev as { status: string } | null)?.status === "solved";
-        saved = await toggleProblemStatus(user.id, activeProblem.slug, true);
-      } catch (err) {
-        console.error("Error marking problem as solved in Supabase:", err);
-      }
-      if (!saved) return;
-      track("battle_solved", { problem_slug: activeProblem.slug });
-      if (wasSolved) track("revisit_done", { problem_slug: activeProblem.slug, via: "dock" });
-      if (battleId) {
-        endBattle(battleId, "solved", { duration_sec: elapsedSec, evidence })
-          .then((res) => {
-            if (res.expired) {
-              setSessionExpired(true);
-              setIsPlaying(false);
-            }
-          })
-          .catch(() => {});
-      }
-      logProblemEvent({
-        problemSlug: activeProblem.slug,
-        kind: wasSolved ? "revisited" : "solved",
-        battleId,
-        durationSec: elapsedSec,
-        source: evidence === "leetcode" ? "leetcode" : "self",
-      }).catch(() => {});
-      // Squad activity: solves generate feed without requiring prose (§50).
-      logFeedEvent({
-        eventType: "solve",
-        squadId: profile?.active_squad_id ?? null,
-        problemTitle: activeProblem.title,
-        problemSlug: activeProblem.slug,
-        difficulty: activeProblem.difficulty,
-        metadata: { duration_sec: elapsedSec, source: evidence },
-      }).catch(() => {});
-
-      // Revenge (Step 17): a solve that answers a recorded failure is a
-      // different event from a solve — it closes a loop the user opened.
-      if (battleId) {
-        detectRevengeCompletion(activeProblem.slug, battleId, activeProblem.title)
-          .then((result) => {
-            if (!result) return;
-            track("revenge_completed", {
-              problem_slug: activeProblem.slug,
-              improved: result.improved,
-            });
-            setRevengeResult(result);
-          })
-          .catch(() => {});
-      }
-      // Notify open sheet views so their solved status refreshes immediately.
-      window.dispatchEvent(
-        new CustomEvent("problem-status-changed", {
-          detail: { slug: activeProblem.slug, status: "solved" },
-        })
-      );
-    }
-
-    setIsCompleted(true);
-    setIsPlaying(false);
-
+  // A battle that has ended (solved or failed) leaves the dock. Before this the
+  // problem stayed loaded after a solve, so the dock sat on "Solved" and a
+  // refresh resumed a battle that was already over.
+  const clearBattle = useCallback(() => {
     try {
-      const confetti = (await import("canvas-confetti")).default;
-      confetti({
-        particleCount: 60,
-        spread: 70,
-        origin: { y: 0.9 },
-        colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
-      });
+      localStorage.removeItem(BATTLE_SLUG_KEY);
     } catch {
       // ignore
     }
+    setBattleId(null);
+    setStuckOpen(false);
+    setIsScratchpadOpen(false);
+    setCapsuleMenuOpen(false);
+    setSaveError(null);
+    resetSolving();
+    // Also drops the persisted active problem, timer and battle id.
+    setActiveProblem(null);
+  }, [resetSolving, setActiveProblem]);
 
-    setTimeout(() => setIsCompleted(false), 4000);
-  }, [activeProblem, setIsPlaying, user, battleId, elapsedSec, profile?.active_squad_id]);
+  // The outcome line is a confirmation, not a state: it steps aside on its own.
+  useEffect(() => {
+    if (!outcome) return;
+    const t = setTimeout(() => setOutcome(null), 4000);
+    return () => clearTimeout(t);
+  }, [outcome]);
+
+  const handleComplete = useCallback(async (evidence: "leetcode" | "none" = "none") => {
+    if (!activeProblem || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setSaveError(null);
+    // Snapshot: the dock clears below, so nothing after this reads live state.
+    const problem = activeProblem;
+    const duration = elapsedSec;
+    const endedBattleId = battleId;
+
+    try {
+      // Persist first: only celebrate + notify when the write lands, so open
+      // views never show a solve the database rejected.
+      if (user) {
+        let saved = false;
+        // Revisit detection: solving an already-solved problem logs "revisited".
+        let wasSolved = false;
+        try {
+          const { createClient } = await import("@/lib/supabase/client");
+          const supabase = createClient();
+          const { data: prev } = await supabase
+            .from("user_problem_status")
+            .select("status")
+            .eq("user_id", user.id)
+            .eq("problem_slug", problem.slug.toLowerCase())
+            .maybeSingle();
+          wasSolved = (prev as { status: string } | null)?.status === "solved";
+          saved = await toggleProblemStatus(user.id, problem.slug, true);
+        } catch (err) {
+          console.error("Error marking problem as solved in Supabase:", err);
+        }
+        if (!saved) {
+          // Keep the battle and the timer: nothing was recorded, so nothing ends.
+          setSaveError("Solve not saved. Check your connection and try again.");
+          return;
+        }
+        track("battle_solved", { problem_slug: problem.slug });
+        if (wasSolved) track("revisit_done", { problem_slug: problem.slug, via: "dock" });
+        if (endedBattleId) {
+          endBattle(endedBattleId, "solved", { duration_sec: duration, evidence }).catch(() => {});
+        }
+        logProblemEvent({
+          problemSlug: problem.slug,
+          kind: wasSolved ? "revisited" : "solved",
+          battleId: endedBattleId,
+          durationSec: duration,
+          source: evidence === "leetcode" ? "leetcode" : "self",
+        }).catch(() => {});
+        // Squad activity: solves generate feed without requiring prose (§50).
+        logFeedEvent({
+          eventType: "solve",
+          squadId: profile?.active_squad_id ?? null,
+          problemTitle: problem.title,
+          problemSlug: problem.slug,
+          difficulty: problem.difficulty,
+          metadata: { duration_sec: duration, source: evidence },
+        }).catch(() => {});
+
+        // Revenge (Step 17): a solve that answers a recorded failure is a
+        // different event from a solve — it closes a loop the user opened.
+        if (endedBattleId) {
+          detectRevengeCompletion(problem.slug, endedBattleId, problem.title)
+            .then((result) => {
+              if (!result) return;
+              track("revenge_completed", {
+                problem_slug: problem.slug,
+                improved: result.improved,
+              });
+              setRevengeResult(result);
+            })
+            .catch(() => {});
+        }
+        // Notify open sheet views so their solved status refreshes immediately.
+        window.dispatchEvent(
+          new CustomEvent("problem-status-changed", {
+            detail: { slug: problem.slug, status: "solved" },
+          })
+        );
+      }
+
+      setIsPlaying(false);
+      clearBattle();
+      setOutcome({ kind: "solved", title: problem.title, seconds: duration });
+
+      try {
+        const confetti = (await import("canvas-confetti")).default;
+        confetti({
+          particleCount: 60,
+          spread: 70,
+          origin: { y: 0.9 },
+          colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
+        });
+      } catch {
+        // ignore
+      }
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  }, [activeProblem, setIsPlaying, user, battleId, elapsedSec, profile?.active_squad_id, clearBattle]);
 
   const handleFail = useCallback(async () => {
-    if (!activeProblem || !user) return;
-    setEnding(true);
+    if (!activeProblem || !user || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setSaveError(null);
+    const problem = activeProblem;
+    const duration = elapsedSec;
+    const endedBattleId = battleId;
     try {
       // Failed ≠ unsolved: record an honest attempt, never downgrade a prior solve.
       const { createClient } = await import("@/lib/supabase/client");
@@ -339,54 +393,52 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
         .from("user_problem_status")
         .select("status")
         .eq("user_id", user.id)
-        .eq("problem_slug", activeProblem.slug.toLowerCase())
+        .eq("problem_slug", problem.slug.toLowerCase())
         .maybeSingle();
       if ((existing as { status: string } | null)?.status !== "solved") {
-        await setProblemStatus(user.id, activeProblem.slug, "attempted");
+        const saved = await setProblemStatus(user.id, problem.slug, "attempted");
+        if (!saved) {
+          setSaveError("Attempt not saved. Check your connection and try again.");
+          return;
+        }
         window.dispatchEvent(
           new CustomEvent("problem-status-changed", {
-            detail: { slug: activeProblem.slug, status: "attempted" },
+            detail: { slug: problem.slug, status: "attempted" },
           })
         );
       }
-      if (battleId) {
-        await endBattle(battleId, "failed", { duration_sec: elapsedSec })
-          .then((res) => {
-            if (res.expired) {
-              setSessionExpired(true);
-              setIsPlaying(false);
-            }
-          })
-          .catch(() => {});
+      if (endedBattleId) {
+        await endBattle(endedBattleId, "failed", { duration_sec: duration }).catch(() => {});
       }
       await logProblemEvent({
-        problemSlug: activeProblem.slug,
+        problemSlug: problem.slug,
         kind: "failed",
-        battleId,
-        durationSec: elapsedSec,
+        battleId: endedBattleId,
+        durationSec: duration,
       }).catch(() => {});
-      track("battle_failed", { problem_slug: activeProblem.slug });
+      track("battle_failed", { problem_slug: problem.slug });
       // No feed event: failed battles stay private until revenge (Phase 3).
-      setBattleId(null);
       setIsPlaying(false);
-      setStuckOpen(false);
+      clearBattle();
+      setOutcome({ kind: "failed", title: problem.title, seconds: duration });
+    } catch (err) {
+      console.error("Error recording failed battle:", err);
+      setSaveError("Attempt not saved. Check your connection and try again.");
     } finally {
-      setEnding(false);
+      submittingRef.current = false;
+      setSubmitting(false);
     }
-  }, [activeProblem, user, battleId, elapsedSec, setIsPlaying]);
+  }, [activeProblem, user, battleId, elapsedSec, setIsPlaying, clearBattle]);
 
   const handleAbandon = useCallback(async () => {
-    if (!activeProblem) return;
+    if (!activeProblem || submittingRef.current) return;
     if (!window.confirm("Abandon this battle? The timer stops; nothing is recorded as attempted.")) return;
     if (battleId) {
-      const res = await endBattle(battleId, "abandoned", { duration_sec: elapsedSec }).catch(() => null);
-      if (res?.expired) setSessionExpired(true);
+      await endBattle(battleId, "abandoned", { duration_sec: elapsedSec }).catch(() => null);
     }
-    setBattleId(null);
-    setActiveProblem(null);
     setIsPlaying(false);
-    setStuckOpen(false);
-  }, [activeProblem, battleId, elapsedSec, setActiveProblem, setIsPlaying]);
+    clearBattle();
+  }, [activeProblem, battleId, elapsedSec, setIsPlaying, clearBattle]);
 
   // Background auto-detection: check if active problem was accepted on LeetCode while solving
   useEffect(() => {
@@ -534,9 +586,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
             <button
               onClick={() => {
                 setSessionExpired(false);
-                setBattleId(null);
-                resetSolving();
-                setActiveProblem(null);
+                clearBattle();
               }}
               className="inline-flex min-h-[44px] shrink-0 items-center rounded-md bg-primary px-4 text-sm font-medium text-on-primary transition-colors hover:bg-primary-hover"
             >
@@ -549,7 +599,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
         {activeProblem ? (
           <>
             {/* Desktop S1 dock */}
-            <div className="solve-dock hidden justify-between md:flex">
+            <div className="solve-dock hidden justify-between md:flex" aria-busy={submitting}>
               <div className="flex shrink-0 items-center gap-3 pl-1">
                 <span
                   className={cn(
@@ -564,15 +614,23 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
               </div>
 
               <div className="flex min-w-0 items-center gap-2.5 px-3">
-                <span className="truncate text-sm font-semibold text-text-primary">
-                  {activeProblem.title}
-                </span>
-                {activeProblem.difficulty && (
-                  <DifficultyBadgeNew difficulty={activeProblem.difficulty} size="sm" />
+                {saveError ? (
+                  <span role="alert" className="truncate text-sm font-medium text-error">
+                    {saveError}
+                  </span>
+                ) : (
+                  <>
+                    <span className="truncate text-sm font-semibold text-text-primary">
+                      {activeProblem.title}
+                    </span>
+                    {activeProblem.difficulty && (
+                      <DifficultyBadgeNew difficulty={activeProblem.difficulty} size="sm" />
+                    )}
+                    <span className="hidden shrink-0 font-mono text-xs text-text-tertiary tnum lg:block">
+                      No. {activeProblem.id}
+                    </span>
+                  </>
                 )}
-                <span className="hidden shrink-0 font-mono text-xs text-text-tertiary tnum lg:block">
-                  No. {activeProblem.id}
-                </span>
               </div>
 
               <div className="flex shrink-0 items-center gap-1.5">
@@ -607,16 +665,16 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                 />
                 <button
                   onClick={() => handleComplete()}
-                  disabled={isCompleted}
-                  className="h-9 rounded-md bg-primary px-4 text-[13px] font-medium text-on-primary transition-colors hover:bg-primary-hover active:bg-primary-pressed disabled:bg-surface-overlay disabled:text-text-disabled"
+                  disabled={submitting}
+                  className="h-9 min-w-[112px] rounded-md bg-primary px-4 text-[13px] font-medium text-on-primary transition-colors hover:bg-primary-hover active:bg-primary-pressed disabled:cursor-wait disabled:bg-surface-overlay disabled:text-text-secondary"
                 >
-                  {isCompleted ? "Solved" : "Submit solve"}
+                  {submitting ? "Saving…" : saveError ? "Retry solve" : "Submit solve"}
                 </button>
                 <BattleMenu
                   onFail={handleFail}
                   onAbandon={handleAbandon}
                   onReset={() => resetSolving()}
-                  ending={ending}
+                  busy={submitting}
                 />
               </div>
             </div>
@@ -644,34 +702,47 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                     Stuck?
                   </button>
                   <button
-                    onClick={() => setIsPlaying(!isPlaying)}
+                    onClick={() => {
+                      setCapsuleMenuOpen(false);
+                      setIsPlaying(!isPlaying);
+                    }}
                     className="flex min-h-[44px] items-center gap-2 rounded-md px-3 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
                   >
                     {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                     {isPlaying ? "Pause" : "Resume"}
                   </button>
                   <button
-                    onClick={handleFail}
-                    disabled={ending}
+                    onClick={() => {
+                      setCapsuleMenuOpen(false);
+                      handleFail();
+                    }}
+                    disabled={submitting}
                     className="flex min-h-[44px] items-center rounded-md px-3 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary disabled:opacity-40"
                   >
                     Mark failed
                   </button>
                   <button
-                    onClick={handleAbandon}
-                    className="flex min-h-[44px] items-center rounded-md px-3 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+                    onClick={() => {
+                      setCapsuleMenuOpen(false);
+                      handleAbandon();
+                    }}
+                    disabled={submitting}
+                    className="flex min-h-[44px] items-center rounded-md px-3 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary disabled:opacity-40"
                   >
                     Abandon
                   </button>
                   <button
-                    onClick={() => resetSolving()}
+                    onClick={() => {
+                      setCapsuleMenuOpen(false);
+                      resetSolving();
+                    }}
                     className="flex min-h-[44px] items-center gap-2 rounded-md px-3 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
                   >
                     <RotateCcw className="h-3.5 w-3.5" /> Reset timer
                   </button>
                 </div>
               )}
-              <div className="solve-capsule">
+              <div className="solve-capsule" aria-busy={submitting}>
                 <span
                   className={cn(
                     "h-2 w-2 shrink-0 rounded-full",
@@ -687,19 +758,76 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                   onClick={() => setCapsuleMenuOpen((v) => !v)}
                   aria-expanded={capsuleMenuOpen}
                   aria-label={`${activeProblem.title}: battle options`}
-                  className="flex min-h-[44px] min-w-0 flex-1 items-center justify-center truncate px-1 text-sm text-text-secondary"
+                  className={cn(
+                    "flex min-h-[44px] min-w-0 flex-1 items-center justify-center truncate px-1 text-sm",
+                    saveError ? "text-error" : "text-text-secondary"
+                  )}
                 >
-                  <span className="truncate">{activeProblem.title}</span>
+                  <span className="truncate" role={saveError ? "alert" : undefined}>
+                    {saveError ? "Not saved, tap ✓ to retry" : activeProblem.title}
+                  </span>
                 </button>
                 <button
                   onClick={() => handleComplete()}
-                  disabled={isCompleted}
-                  aria-label={isCompleted ? "Solved" : "Submit solve"}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary transition-colors hover:bg-primary-hover active:bg-primary-pressed disabled:bg-surface-overlay disabled:text-text-disabled"
+                  disabled={submitting}
+                  aria-label={submitting ? "Saving solve" : saveError ? "Retry solve" : "Submit solve"}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary transition-colors hover:bg-primary-hover active:bg-primary-pressed disabled:cursor-wait disabled:bg-surface-overlay disabled:text-text-secondary"
                 >
-                  <Check className="h-5 w-5" strokeWidth={2} />
+                  {submitting ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden />
+                  ) : (
+                    <Check className="h-5 w-5" strokeWidth={2} />
+                  )}
                 </button>
               </div>
+            </div>
+          </>
+        ) : outcome ? (
+          <>
+            {/* The battle just ended: say how, then step aside for the idle dock. */}
+            <div
+              role="status"
+              aria-live="polite"
+              className="solve-dock solve-dock-idle hidden justify-between gap-3 pl-4 pr-2 md:flex"
+            >
+              <span className="flex min-w-0 items-center gap-3 text-sm">
+                {outcome.kind === "solved" ? (
+                  <Check className="h-4 w-4 shrink-0 text-verified" strokeWidth={2.25} aria-hidden />
+                ) : (
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-text-tertiary" aria-hidden />
+                )}
+                <span className={cn("shrink-0 font-medium", outcome.kind === "solved" ? "text-verified" : "text-text-secondary")}>
+                  {outcome.kind === "solved" ? "Solved" : "Attempt logged"}
+                </span>
+                <span className="truncate text-text-primary">{outcome.title}</span>
+                <span className="shrink-0 font-mono text-xs text-text-tertiary tnum">
+                  {formatTime(outcome.seconds)}
+                </span>
+              </span>
+              <button
+                onClick={() => {
+                  setOutcome(null);
+                  onSearchOpen?.();
+                }}
+                className="flex h-9 shrink-0 items-center gap-2 rounded-md border border-hairline px-3 text-sm font-medium text-text-primary transition-colors hover:border-hairline-strong hover:bg-surface-overlay"
+              >
+                Next battle
+                <ArrowUp className="h-3.5 w-3.5" strokeWidth={1.75} />
+              </button>
+            </div>
+            <div role="status" aria-live="polite" className="solve-capsule md:hidden">
+              {outcome.kind === "solved" ? (
+                <Check className="h-4 w-4 shrink-0 text-verified" strokeWidth={2.25} aria-hidden />
+              ) : (
+                <span className="h-2 w-2 shrink-0 rounded-full bg-text-tertiary" aria-hidden />
+              )}
+              <span className={cn("shrink-0 text-sm font-medium", outcome.kind === "solved" ? "text-verified" : "text-text-secondary")}>
+                {outcome.kind === "solved" ? "Solved" : "Attempt logged"}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm text-text-primary">{outcome.title}</span>
+              <span className="shrink-0 pr-3 font-mono text-xs text-text-tertiary tnum">
+                {formatTime(outcome.seconds)}
+              </span>
             </div>
           </>
         ) : (
@@ -727,42 +855,78 @@ function BattleMenu({
   onFail,
   onAbandon,
   onReset,
-  ending,
+  busy,
 }: {
   onFail: () => void;
   onAbandon: () => void;
   onReset: () => void;
-  ending: boolean;
+  busy: boolean;
 }) {
+  // Controlled, not <details>: a native disclosure stayed open after a choice,
+  // so the menu hung over the dock once the battle had already ended.
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const choose = (fn: () => void) => () => {
+    setOpen(false);
+    fn();
+  };
+
   return (
-    <details className="relative">
-      <summary
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
         aria-label="More battle options"
-        className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface-overlay hover:text-text-primary [&::-webkit-details-marker]:hidden"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-8 w-8 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface-overlay hover:text-text-primary"
       >
         <MoreHorizontal className="h-4 w-4" strokeWidth={1.75} />
-      </summary>
-      <div className="popover-panel absolute bottom-11 right-0 flex w-44 flex-col p-2">
-        <button
-          onClick={onFail}
-          disabled={ending}
-          className="rounded-md px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary disabled:opacity-40"
-        >
-          Mark failed
-        </button>
-        <button
-          onClick={onAbandon}
-          className="rounded-md px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
-        >
-          Abandon
-        </button>
-        <button
-          onClick={onReset}
-          className="flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
-        >
-          <RotateCcw className="h-3.5 w-3.5" /> Reset timer
-        </button>
-      </div>
-    </details>
+      </button>
+      {open && (
+        <div role="menu" className="popover-panel absolute bottom-11 right-0 flex w-44 flex-col p-2">
+          <button
+            role="menuitem"
+            onClick={choose(onFail)}
+            disabled={busy}
+            className="rounded-md px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary disabled:opacity-40"
+          >
+            Mark failed
+          </button>
+          <button
+            role="menuitem"
+            onClick={choose(onAbandon)}
+            disabled={busy}
+            className="rounded-md px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary disabled:opacity-40"
+          >
+            Abandon
+          </button>
+          <button
+            role="menuitem"
+            onClick={choose(onReset)}
+            className="flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+          >
+            <RotateCcw className="h-3.5 w-3.5" /> Reset timer
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
