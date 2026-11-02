@@ -36,7 +36,7 @@
 import { SYSTEM_PREAMBLE } from "./policy.ts";
 import type { StuckLevel } from "@/types/database";
 
-export type ProviderName = "openai" | "anthropic" | "gemini";
+export type ProviderName = "openai" | "anthropic" | "gemini" | "kilo";
 
 export interface ProviderConfig {
   name: ProviderName;
@@ -50,10 +50,13 @@ export function readProviderConfig(): ProviderConfig | null {
   const openaiKey = process.env.OPENAI_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
+  // Kilo AI Gateway (https://ai-gateway.kilo.ai): OpenAI-compatible, one key
+  // for many models, including the free `kilo-auto/free` router.
+  const kiloKey = process.env.KILO_API_KEY;
 
   const name = (process.env.AI_PROVIDER ?? "").toLowerCase();
   const chosen: ProviderName | null =
-    name === "openai" || name === "anthropic" || name === "gemini"
+    name === "openai" || name === "anthropic" || name === "gemini" || name === "kilo"
       ? name
       : openaiKey
         ? "openai"
@@ -61,11 +64,19 @@ export function readProviderConfig(): ProviderConfig | null {
           ? "anthropic"
           : geminiKey
             ? "gemini"
-            : null;
+            : kiloKey
+              ? "kilo"
+              : null;
   if (!chosen) return null;
 
   const key =
-    chosen === "openai" ? openaiKey : chosen === "anthropic" ? anthropicKey : geminiKey;
+    chosen === "openai"
+      ? openaiKey
+      : chosen === "anthropic"
+        ? anthropicKey
+        : chosen === "gemini"
+          ? geminiKey
+          : kiloKey;
   if (!key) return null;
 
   // AI_BASE_URL exists so an OpenAI-compatible endpoint (a gateway, a local
@@ -77,15 +88,19 @@ export function readProviderConfig(): ProviderConfig | null {
       ? "https://api.openai.com/v1"
       : chosen === "anthropic"
         ? "https://api.anthropic.com/v1"
-        : "https://generativelanguage.googleapis.com/v1beta/openai");
+        : chosen === "gemini"
+          ? "https://generativelanguage.googleapis.com/v1beta/openai"
+          : "https://ai-gateway.kilo.ai/api/v1");
 
   const model =
     process.env.AI_MODEL ??
     (chosen === "openai"
       ? "gpt-4o-mini"
       : chosen === "anthropic"
-        ? "claude-3-5-haiku-latest"
-        : "gemini-2.5-flash");
+        ? "claude-haiku-5-5"
+        : chosen === "gemini"
+          ? "gemini-2.5-flash"
+          : "kilo-auto/free");
 
   return { name: chosen, apiKey: key, baseUrl: baseUrl.replace(/\/+$/, ""), model };
 }
@@ -104,6 +119,30 @@ export function providerConfigForTest(overrides: Partial<ProviderConfig>): Provi
 
 const TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS ?? 20000);
 const MAX_TOKENS = Number(process.env.AI_MAX_TOKENS ?? 400);
+
+/**
+ * Tokens allowed for reasoning on top of the answer budget.
+ *
+ * Reasoning models count their hidden reasoning against `max_tokens`. Measured
+ * 2026-11-03: `kilo-auto/free` routed a one-line question to a reasoning model
+ * that spent 395 of a 400-token cap thinking and returned empty content
+ * (finish_reason "length"); with 4000 it used ~450 reasoning + ~45 answer
+ * tokens. The answer itself stays bounded by the prompt and sanitizeAnswer.
+ */
+const REASONING_HEADROOM: Partial<Record<ProviderName, number>> = {
+  kilo: 3600,
+  anthropic: 2048,
+};
+
+/** The free router is slower (9-11 s measured for a short answer). */
+function timeoutFor(config: ProviderConfig): number {
+  if (process.env.AI_TIMEOUT_MS) return TIMEOUT_MS;
+  return config.name === "kilo" ? 45000 : TIMEOUT_MS;
+}
+
+function wireMaxTokens(config: ProviderConfig, answerTokens: number): number {
+  return answerTokens + (REASONING_HEADROOM[config.name] ?? 0);
+}
 
 export class ProviderError extends Error {
   // Written out rather than as a TS parameter property: the test runner loads
@@ -232,25 +271,29 @@ async function callOpenAiCompatible(
     },
     body: JSON.stringify({
       model: config.model,
-      max_tokens: maxTokens,
+      max_tokens: wireMaxTokens(config, maxTokens),
       temperature: 0.4,
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
       ],
     }),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutFor(config)),
   });
 
   if (!res.ok) throw await providerFailure(res, config);
   const json = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
+    model?: string;
+    choices?: { finish_reason?: string; message?: { content?: string } }[];
   };
-  const text = json.choices?.[0]?.message?.content;
+  const choice = json.choices?.[0];
+  const text = choice?.message?.content;
   if (typeof text !== "string" || text.length === 0) {
     throw new ProviderError(
       "The model returned an empty answer.",
-      `openai-compatible response had no content (model=${config.model})`,
+      `openai-compatible response had no content (model=${config.model}` +
+        (json.model && json.model !== config.model ? `, routed to ${json.model}` : "") +
+        `, finish_reason=${choice?.finish_reason ?? "none"})`,
     );
   }
   return text;
@@ -269,14 +312,17 @@ async function callAnthropic(
       "x-api-key": config.apiKey,
       "anthropic-version": "2023-06-01",
     },
+    // No temperature: current Claude models reject a non-default sampling value
+    // with a 400. Claude Haiku 5.5 thinks by default and thinking counts against
+    // max_tokens, hence the headroom and low effort for these short replies.
     body: JSON.stringify({
       model: config.model,
-      max_tokens: maxTokens,
-      temperature: 0.4,
+      max_tokens: wireMaxTokens(config, maxTokens),
+      output_config: { effort: "low" },
       system,
       messages: [{ role: "user", content: user }],
     }),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutFor(config)),
   });
 
   if (!res.ok) throw await providerFailure(res, config);

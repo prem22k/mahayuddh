@@ -18,7 +18,7 @@
  */
 import http from "node:http";
 import assert from "node:assert/strict";
-import { askLadder, askBounded, parseEnvelope, providerConfigForTest } from "../../lib/ai/provider.ts";
+import { askLadder, askBounded, parseEnvelope, providerConfigForTest, readProviderConfig } from "../../lib/ai/provider.ts";
 
 let passed = 0;
 const failures = [];
@@ -151,6 +151,56 @@ async function main() {
       assert.equal(seen[0].headers["authorization"], "Bearer test-key");
       assert.equal(seen[0].body.messages[0].role, "system");
     }, { provider: "gemini" });
+  });
+
+  await check("KILO_API_KEY alone selects the Kilo gateway and kilo-auto/free", async () => {
+    const saved = { ...process.env };
+    try {
+      for (const k of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "AI_PROVIDER", "AI_MODEL", "AI_BASE_URL"]) delete process.env[k];
+      process.env.KILO_API_KEY = "kilo-test";
+      const cfg = readProviderConfig();
+      assert.equal(cfg?.name, "kilo");
+      assert.equal(cfg?.baseUrl, "https://ai-gateway.kilo.ai/api/v1");
+      assert.equal(cfg?.model, "kilo-auto/free");
+      assert.equal(cfg?.apiKey, "kilo-test");
+    } finally {
+      for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+      Object.assign(process.env, saved);
+    }
+  });
+
+  await check("kilo rides the OpenAI-compatible wire with room for reasoning tokens", async () => {
+    await withMock(OK_REPLY, async (cfg, seen) => {
+      await askLadder({ config: cfg, requestedLevel: "nudge" });
+      assert.equal(seen[0].url, "/v1/chat/completions");
+      assert.equal(seen[0].headers["authorization"], "Bearer test-key");
+      // 400 answer tokens alone came back empty from a reasoning model.
+      assert.ok(seen[0].body.max_tokens >= 4000, `max_tokens ${seen[0].body.max_tokens} leaves no reasoning room`);
+    }, { provider: "kilo" });
+  });
+
+  await check("a reasoning model that runs out of tokens is reported, not parsed", async () => {
+    await withMock({ model: "stealth/glyph-cluster", choices: [{ finish_reason: "length", message: { content: "" } }] },
+      async (cfg) => {
+        await assert.rejects(
+          () => askLadder({ config: cfg, requestedLevel: "nudge" }),
+          (e) => {
+            assert.match(e.message, /empty answer/i);
+            assert.match(e.detail, /finish_reason=length/);
+            return true;
+          },
+        );
+      }, { provider: "kilo" });
+  });
+
+  await check("anthropic: no temperature (current Claude models reject it)", async () => {
+    await withMock({ content: [{ type: "thinking", thinking: "" }, { type: "text", text: OK_REPLY.choices[0].message.content }] },
+      async (cfg, seen) => {
+        const out = await askLadder({ config: cfg, requestedLevel: "nudge" });
+        assert.ok(!("temperature" in seen[0].body), "temperature was sent");
+        assert.ok(seen[0].body.max_tokens > 400, "no thinking headroom");
+        assert.equal(out.level, "nudge", "a thinking block before the text must not break parsing");
+      }, { provider: "anthropic" });
   });
 
   console.log("\nthe failures a provider actually has\n");

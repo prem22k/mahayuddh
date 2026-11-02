@@ -106,8 +106,9 @@ const sections: LegalSection[] = [
           <li>
             <strong>AI providers.</strong> When you use an AI feature (the stuck assistant, explain-back, mistake
             explanations or the interview simulation) in a squad that has AI turned on, the problem and the text you
-            submit are sent to the provider we have configured (OpenAI, Anthropic or Google) to write the reply.
-            Do not put personal information in that text.
+            submit are sent to the AI service we have configured to write the reply: currently the Kilo AI Gateway,
+            which passes it to the model it selects. With the free models we use, the model&rsquo;s provider may keep
+            that text to improve its service. Do not put personal information in that text.
           </li>
           <li><strong>LeetCode</strong>: we read public data for the LeetCode username you connect, and your history if you give us a session.</li>
           <li><strong>Browser push services</strong> (from Google, Mozilla or Apple) deliver push alerts if you turn them on.</li>
