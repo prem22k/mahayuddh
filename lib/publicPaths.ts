@@ -46,6 +46,10 @@ export function isPublicSharePath(pathname: string): boolean {
   // account — "here is a login form" is not context.
   const isWelcomePath = p === "/welcome";
 
+  // The Privacy Policy and Terms must be readable before anyone signs up: the
+  // signup form and the landing page footer link to them.
+  const isLegalPath = p === "/privacy" || p === "/terms";
+
   // One frozen recap is public (Step 20) so a shared week renders for a
   // logged-out visitor. Matched precisely: the *list* at /squad/[id]/recaps
   // still requires auth, because it offers the generate button.
@@ -68,6 +72,7 @@ export function isPublicSharePath(pathname: string): boolean {
     isPublicPrimerPath ||
     isPublicSeasonPath ||
     isWelcomePath ||
+    isLegalPath ||
     isSocialCard ||
     isCrawlerOrResiliencePath
   );

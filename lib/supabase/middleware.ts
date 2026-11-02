@@ -19,6 +19,22 @@ function createRedirect(url: URL, sourceResponse: NextResponse) {
 }
 
 /** Login URL that remembers where the visitor was heading (Bible §42). */
+/**
+ * Where a signed-out visitor goes instead of a protected page. The bare root is
+ * the front door: someone typing the address should meet the landing page, not
+ * a login form. Its query string (?from=, campaign tags) rides along for
+ * attribution. Every other path goes to /login with ?next= so the visitor comes
+ * back to what they asked for.
+ */
+function signedOutRedirect(request: NextRequest, sourceResponse: NextResponse) {
+  if (request.nextUrl.pathname === "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/welcome";
+    return createRedirect(url, sourceResponse);
+  }
+  return loginUrlFor(request, sourceResponse);
+}
+
 function loginUrlFor(request: NextRequest, sourceResponse: NextResponse) {
   const url = request.nextUrl.clone();
   const target = `${request.nextUrl.pathname}${request.nextUrl.search}`;
@@ -79,7 +95,7 @@ export async function updateSession(request: NextRequest) {
     if (isLoginPage || isAuthCallback || isApiRequest || isPublicSharePath) {
       return supabaseResponse;
     }
-    return loginUrlFor(request, supabaseResponse);
+    return signedOutRedirect(request, supabaseResponse);
   }
 
   try {
@@ -121,7 +137,7 @@ export async function updateSession(request: NextRequest) {
 
     // If user is not authenticated and trying to access protected route
     if (!user && !isLoginPage && !isAuthCallback && !isApiRequest && !isPublicSharePath) {
-      return loginUrlFor(request, supabaseResponse);
+      return signedOutRedirect(request, supabaseResponse);
     }
 
     // Authenticated visitor on /login: honour ?next= so a challenge deep link

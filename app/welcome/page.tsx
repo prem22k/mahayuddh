@@ -606,6 +606,12 @@ function FooterLinks({ className }: { className?: string }) {
       <Link href="/primers" className={cls}>
         Primers
       </Link>
+      <Link href="/privacy" className={cls}>
+        Privacy
+      </Link>
+      <Link href="/terms" className={cls}>
+        Terms
+      </Link>
       <Link href="/login" className={cls}>
         Sign in
       </Link>

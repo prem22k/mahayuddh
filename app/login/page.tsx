@@ -899,6 +899,19 @@ function LoginForm() {
                   >
                     {!loading && primaryLabel}
                   </Button>
+                  {mode === "signup" && (
+                    <p className="mt-3 text-center text-[11px] leading-4 text-text-tertiary">
+                      By joining you confirm you&apos;re 18 or over and agree to the{" "}
+                      <Link href="/terms" className="whitespace-nowrap text-text-secondary underline underline-offset-2 hover:text-text-primary">
+                        Terms
+                      </Link>{" "}
+                      and{" "}
+                      <Link href="/privacy" className="whitespace-nowrap text-text-secondary underline underline-offset-2 hover:text-text-primary">
+                        Privacy Policy
+                      </Link>
+                      .
+                    </p>
+                  )}
                 </div>
               </form>
             )}
