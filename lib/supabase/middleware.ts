@@ -104,18 +104,23 @@ export async function updateSession(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet: CookieToSet[]) {
+        setAll(cookiesToSet: CookieToSet[], headers?: Record<string, string>) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
           supabaseResponse = NextResponse.next({
             request,
           });
+          // @supabase/ssr >= 0.10 passes no-store cache headers alongside a
+          // refreshed session so no CDN caches a response carrying it.
+          Object.entries(headers ?? {}).forEach(([key, value]) =>
+            supabaseResponse.headers.set(key, value)
+          );
           cookiesToSet.forEach(({ name, value, options }) =>
-            // Flags enforced here, not taken from the library's defaults:
-            // @supabase/ssr 0.5.2 sets no `secure` at all. See
-            // SESSION_COOKIE_OPTIONS in lib/supabase/server.ts for the full
-            // reasoning, including why httpOnly stays false.
+            // Flags enforced here, not taken from the library's defaults
+            // (the library sets no `secure`). See SESSION_COOKIE_OPTIONS in
+            // lib/supabase/server.ts for the full reasoning, including why
+            // httpOnly stays false.
             supabaseResponse.cookies.set(name, value, {
               ...options,
               path: "/",
