@@ -7,6 +7,6 @@ export const LEGAL = {
   operatorHandle: "github.com/prem22k",
   contactEmail: "premsai224k@gmail.com",
   /** Shown as "Last updated" on both documents. Bump it when either changes. */
-  effectiveDate: "2 November 2026",
+  effectiveDate: "3 November 2026",
   jurisdiction: "India",
 } as const;

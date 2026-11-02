@@ -6,6 +6,10 @@ import { readJsonBounded } from "@/lib/security/body";
 import { logSecurityEvent } from "@/lib/security/log";
 import type { StuckLevel } from "@/types/database";
 
+// The free Kilo router takes ~10 s for a short answer; the provider timeout is
+// 45 s, so the function must be allowed to outlive it.
+export const maxDuration = 60;
+
 export const dynamic = "force-dynamic";
 
 /**

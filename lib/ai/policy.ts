@@ -285,6 +285,9 @@ export function practiceNextFromRecommendation(reasonCount: number): {
  */
 export function isProviderConfigured(): boolean {
   return Boolean(
-    process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY
+    process.env.OPENAI_API_KEY ||
+      process.env.ANTHROPIC_API_KEY ||
+      process.env.GEMINI_API_KEY ||
+      process.env.KILO_API_KEY
   );
 }

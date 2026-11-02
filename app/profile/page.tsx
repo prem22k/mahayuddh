@@ -7,6 +7,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { syncUserProfileStats } from "@/lib/data/profiles";
 import { getMySquads } from "@/lib/data/squads";
 import { dataErrorMessage } from "@/lib/data/errors";
+import { LEGAL } from "@/lib/legal";
 import { ConnectLeetCodeModal } from "@/components/modals/ConnectLeetCodeModal";
 import { DEFAULT_PREFS, getPrefs, savePrefs, type NotificationPrefs } from "@/lib/data/notificationPrefs";
 import { pushPermissionState, requestPushPermission, type PushPermissionState } from "@/lib/pushPermission";
@@ -847,8 +848,14 @@ export default function ProfilePage() {
             without you. This can&apos;t be undone.
           </p>
           <p className="mt-3 rounded-lg border border-hairline bg-well p-3 text-xs leading-5 text-text-tertiary">
-            Self-serve deletion isn&apos;t available yet — signing out keeps everything
-            as it is. To request deletion, reply to any product email.
+            Self-serve deletion isn&apos;t available yet. To delete your account, email{" "}
+            <a
+              href={`mailto:${LEGAL.contactEmail}`}
+              className="font-medium underline underline-offset-2 hover:text-text-primary"
+            >
+              {LEGAL.contactEmail}
+            </a>{" "}
+            from the address you signed up with. We reply within 30 days.
           </p>
           <div className="mt-5 flex flex-col-reverse gap-2 md:flex-row md:justify-end">
             <Button variant="ghost" onClick={() => setDeleteOpen(false)} className="min-h-[44px]">
@@ -857,6 +864,18 @@ export default function ProfilePage() {
             <Button variant="secondary" onClick={() => void signOut()} className="min-h-[44px]">
               Sign out instead
             </Button>
+            <a
+              href={`mailto:${LEGAL.contactEmail}?subject=${encodeURIComponent(
+                "Delete my Mahayuddh account"
+              )}&body=${encodeURIComponent(
+                profile?.username
+                  ? `Please delete my Mahayuddh account.\n\nUsername: ${profile.username}`
+                  : "Please delete my Mahayuddh account."
+              )}`}
+              className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium leading-5 transition-colors focus-visible:outline-none select-none bg-surface-overlay text-text-primary hover:bg-[#272830] h-10 px-4 min-h-[44px]"
+            >
+              Email a deletion request
+            </a>
           </div>
         </ModalShell>
       )}
