@@ -71,11 +71,18 @@ function today(): string {
  * Falls back to the freshly computed pick when the user is anonymous or the
  * insert fails — the cache is an optimisation, never a gate.
  */
+const writtenPicks = new Set<string>();
+
 export async function cacheDailyBattle(
   userId: string | null,
   pick: DailyPick
 ): Promise<void> {
   if (!userId) return;
+  // One write per user, day and pick per tab. The home page calls this on
+  // every visit; without the guard each revisit was a database write.
+  const writeKey = `${userId}|${today()}|${pick.problem.title_slug.toLowerCase()}`;
+  if (writtenPicks.has(writeKey)) return;
+  writtenPicks.add(writeKey);
   const supabase = createClient();
   try {
     await supabase.from("daily_battles").upsert(
@@ -89,7 +96,8 @@ export async function cacheDailyBattle(
     );
   } catch {
     // Cache is an optimisation, never a gate: the computed pick is already
-    // correct, so only stability across refreshes is lost.
+    // correct, so only stability across refreshes is lost. Allow a retry.
+    writtenPicks.delete(writeKey);
   }
 }
 
