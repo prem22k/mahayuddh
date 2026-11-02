@@ -12,6 +12,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
 
   const staticRoutes: MetadataRoute.Sitemap = [
+    { url: `${base}/welcome`, lastModified: now, priority: 1 },
     { url: `${base}/home`, lastModified: now, priority: 1 },
     { url: `${base}/practice`, lastModified: now, priority: 0.9 },
     { url: `${base}/primers`, lastModified: now, priority: 0.9 },
@@ -20,6 +21,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/sheets/neetcode-150`, lastModified: now, priority: 0.7 },
     { url: `${base}/sheets/blind-75`, lastModified: now, priority: 0.7 },
     { url: `${base}/sheets/striver-sde`, lastModified: now, priority: 0.7 },
+    { url: `${base}/privacy`, lastModified: now, priority: 0.2 },
+    { url: `${base}/terms`, lastModified: now, priority: 0.2 },
   ];
 
   // Public primers are the teaching surface. If the DB is unreachable we still
