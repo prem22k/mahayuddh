@@ -1,7 +1,7 @@
 "use client";
 
 import { decodePathSegment } from "@/lib/pathSegment";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowRight, BookOpen, Bookmark, Copy, Send, Swords, TriangleAlert } from "lucide-react";
@@ -28,6 +28,16 @@ import { TeacherList } from "@/components/profile/TeacherList";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { daysBetween, relativeDays, titleFromSlug } from "@/lib/format";
 import { Primer, Problem, Approach, SharedResource, StuckRequest, StuckLevel } from "@/types/database";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
+
+const NO_STARTERS: Problem[] = [];
+const NO_CATALOG = new Map<string, Problem>();
+const NO_APPROACHES: Approach[] = [];
+const NO_ASKS: StuckRequest[] = [];
+const NO_VAULT: SharedResource[] = [];
+const NO_STATUS_REC: Record<string, "solved" | "attempted"> = {};
+const NO_VERIFIED_REC: Record<string, boolean> = {};
+const NO_POOL: string[] = [];
 
 // Pattern hub (08): primer + ordered starters + stuck rail + teachers +
 // mistakes + vault + community approaches. All projections over existing tables.
@@ -35,108 +45,113 @@ export default function PatternPage() {
   const params = useParams<{ topic: string }>();
   const topic = decodePathSegment(params.topic);
   const { startSolving } = useSolving();
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+  const invalidate = useInvalidate();
 
-  const [primer, setPrimer] = useState<Primer | null>(null);
-  const [starters, setStarters] = useState<Problem[]>([]);
-  const [catalogBySlug, setCatalogBySlug] = useState<Map<string, Problem>>(new Map());
-  const [approaches, setApproaches] = useState<Approach[]>([]);
-  const [asks, setAsks] = useState<StuckRequest[]>([]);
-  const [vaultPicks, setVaultPicks] = useState<SharedResource[]>([]);
-  const [ownStatus, setOwnStatus] = useState<Record<string, "solved" | "attempted">>({});
-  const [ownVerified, setOwnVerified] = useState<Record<string, boolean>>({});
-  const [squadSolves, setSquadSolves] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
   const [showAllApproaches, setShowAllApproaches] = useState(false);
 
-  useEffect(() => {
-    // The load reads the caller's statuses; running it before auth resolves
-    // would leave the hub without them.
-    if (!topic || authLoading) return;
-    Promise.all([
-      getPrimersForPatterns([topic]).catch(() => []),
-      getCatalogByTopic(topic, 30).catch(() => []),
-      getSharedResources().catch(() => []),
-    ])
-      .then(async ([primers, catalog, vault]) => {
-        const p = primers[0] ?? null;
-        setPrimer(p);
-        const starterSlugs = p?.starter_slugs?.length ? p.starter_slugs : catalog.slice(0, 3).map((c) => c.title_slug);
-        const bySlug = new Map(catalog.map((c) => [c.title_slug, c]));
-        setCatalogBySlug(bySlug);
-        const ordered = starterSlugs.slice(0, 6).map(
-          (s) =>
-            bySlug.get(s) ?? {
-              title_slug: s,
-              title: s.split("-").map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(" "),
-              difficulty: "Medium" as Problem["difficulty"],
-              question_id: s,
-              paid_only: false,
-              topics: [topic],
-              updated_at: new Date().toISOString(),
-            }
-        );
-        setStarters(ordered);
-        const pool = Array.from(new Set([...starterSlugs, ...catalog.slice(0, 30).map((c) => c.title_slug)]));
-        setApproaches(await getApproachesForSlugs(pool, 10).catch(() => []));
-        const t = topic.toLowerCase();
+  const patternHubQ = useCachedQuery(
+    topic ? ["pattern-hub", topic] : null,
+    async () => {
+      const [primers, catalog, vault] = await Promise.all([
+        getPrimersForPatterns([topic]).catch(() => []),
+        getCatalogByTopic(topic, 30).catch(() => []),
+        getSharedResources().catch(() => []),
+      ]);
+      const p = primers[0] ?? null;
+      const starterSlugs = p?.starter_slugs?.length ? p.starter_slugs : catalog.slice(0, 3).map((c) => c.title_slug);
+      const bySlug = new Map(catalog.map((c) => [c.title_slug, c]));
+      const ordered = starterSlugs.slice(0, 6).map(
+        (s) =>
+          bySlug.get(s) ?? {
+            title_slug: s,
+            title: s.split("-").map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(" "),
+            difficulty: "Medium" as Problem["difficulty"],
+            question_id: s,
+            paid_only: false,
+            topics: [topic],
+            updated_at: new Date().toISOString(),
+          }
+      );
+      const pool = Array.from(new Set([...starterSlugs, ...catalog.slice(0, 30).map((c) => c.title_slug)]));
+      const approaches = await getApproachesForSlugs(pool, 10).catch(() => []);
+      const t = topic.toLowerCase();
+      const vaultPicks = vault.filter(
+        (r) => r.title.toLowerCase().includes(t) || r.content.toLowerCase().includes(t)
+      ).slice(0, 3);
 
-        // Open "I'm stuck" asks on this pattern's problems. Fetched with
-        // everything else and never allowed to fail the page.
-        getStuckRequestsForPattern(pool.slice(0, 40))
-          .then(setAsks)
-          .catch(() => setAsks([]));
+      return {
+        primer: p,
+        starters: ordered,
+        catalogBySlug: bySlug,
+        approaches,
+        vaultPicks,
+        pool,
+      };
+    },
+    { freshForMs: 10 * 60_000 }
+  );
 
-        setVaultPicks(
-          vault.filter(
-            (r) => r.title.toLowerCase().includes(t) || r.content.toLowerCase().includes(t)
-          ).slice(0, 3)
-        );
+  const hubData = patternHubQ.data;
+  const primer = hubData?.primer ?? null;
+  const starters = hubData?.starters ?? NO_STARTERS;
+  const catalogBySlug = hubData?.catalogBySlug ?? NO_CATALOG;
+  const approaches = hubData?.approaches ?? NO_APPROACHES;
+  const vaultPicks = hubData?.vaultPicks ?? NO_VAULT;
+  const pool = hubData?.pool ?? NO_POOL;
 
-        // Honest progress over the starter list: your own marks plus the
-        // squad total, both from shared statuses.
-        getSquadProblemStatuses(ordered.map((s) => s.title_slug))
-          .then((rows) => {
-            const mine: Record<string, "solved" | "attempted"> = {};
-            const pairs = new Set<string>();
-            for (const r of rows) {
-              if (user && r.user_id === user.id && (r.status === "solved" || r.status === "attempted")) {
-                mine[r.problem_slug] = r.status;
-              }
-              if (r.status === "solved") pairs.add(`${r.user_id}:${r.problem_slug}`);
-            }
-            setOwnStatus(mine);
-            setSquadSolves(pairs.size);
-          })
-          .catch(() => {
-            setOwnStatus({});
-            setSquadSolves(null);
-          });
+  // Open "I'm stuck" asks on this pattern's problems.
+  const asksQ = useCachedQuery(
+    topic && pool.length > 0 ? ["stuck-requests-for-pattern", topic] : null,
+    () => getStuckRequestsForPattern(pool.slice(0, 40)),
+    { freshForMs: 10_000 }
+  );
+  const asks = asksQ.data ?? NO_ASKS;
 
-        // Verified overlay: LeetCode-sourced solve events for the viewer. A
-        // failed read keeps every solved starter self-reported, never emerald.
-        if (user) {
-          getVerifiedSolvers(ordered.map((s) => s.title_slug), [user.id])
-            .then((map) => {
-              const rec: Record<string, boolean> = {};
-              for (const [slug, set] of map) if (set.has(user.id)) rec[slug] = true;
-              setOwnVerified(rec);
-            })
-            .catch(() => setOwnVerified({}));
-        }
-      })
-      .catch((err) => setLoadError(dataErrorMessage(err, "Couldn't load this pattern hub.")))
-      .finally(() => setLoading(false));
-  }, [topic, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Honest progress over the starter list: your own marks plus the
+  // squad total, both from shared statuses.
+  const squadStatusesQ = useCachedQuery(
+    topic && starters.length > 0 ? ["pattern-squad-statuses", topic] : null,
+    () => getSquadProblemStatuses(starters.map((s) => s.title_slug))
+  );
 
-  if (loading || authLoading) return <PatternHubSkeleton />;
-  if (loadError) {
+  const { ownStatus, squadSolves } = useMemo(() => {
+    const rows = squadStatusesQ.data;
+    if (!rows) return { ownStatus: NO_STATUS_REC, squadSolves: null };
+    const mine: Record<string, "solved" | "attempted"> = {};
+    const pairs = new Set<string>();
+    for (const r of rows) {
+      if (user && r.user_id === user.id && (r.status === "solved" || r.status === "attempted")) {
+        mine[r.problem_slug] = r.status;
+      }
+      if (r.status === "solved") pairs.add(`${r.user_id}:${r.problem_slug}`);
+    }
+    return { ownStatus: mine, squadSolves: pairs.size };
+  }, [squadStatusesQ.data, user]);
+
+  // Verified overlay: LeetCode-sourced solve events for the viewer.
+  const verifiedQ = useCachedQuery(
+    userId && topic && starters.length > 0 ? ["pattern-verified-solvers", topic] : null,
+    async () => {
+      const map = await getVerifiedSolvers(starters.map((s) => s.title_slug), [userId as string]);
+      const rec: Record<string, boolean> = {};
+      for (const [slug, set] of map) if (set.has(userId as string)) rec[slug] = true;
+      return rec;
+    }
+  );
+  const ownVerified = verifiedQ.data ?? NO_VERIFIED_REC;
+
+  if (patternHubQ.isLoading) return <PatternHubSkeleton />;
+  if (patternHubQ.error && !patternHubQ.data) {
     return (
       <div className="max-w-2xl">
-        <ErrorCard message={loadError} />
+        <ErrorCard
+          message={dataErrorMessage(patternHubQ.error, "Couldn't load this pattern hub.")}
+          onRetry={() => void patternHubQ.refresh()}
+        />
       </div>
     );
   }
@@ -173,6 +188,7 @@ export default function PatternPage() {
     try {
       await copyVaultToNotebook(id);
       setNotice("Copied to your notebook.");
+      void invalidate("my-notes");
     } catch {
       setNotice("Couldn't copy that. Try again.");
     } finally {

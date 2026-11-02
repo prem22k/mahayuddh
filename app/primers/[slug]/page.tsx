@@ -11,17 +11,18 @@ import { PatternChip, DifficultyBadgeNew, SelfReportedBadge } from "@/components
 import { StatusGlyph, type ProblemStatus } from "@/components/ui/ProblemRow";
 import { CodeBlock } from "@/components/approach/CodeBlock";
 import { InlineText } from "@/components/notebook/RichText";
-import { EmptyState } from "@/components/ui/States";
+import { EmptyState, ErrorCard } from "@/components/ui/States";
 import { PrimerSkeleton } from "@/components/skeletons/PrimersSkeleton";
 import { ShareRow } from "@/components/ui/ShareRow";
 import { TrackVisit } from "@/components/ui/TrackVisit";
 import { getPrimer, primerReadMinutes } from "@/lib/data/primers";
 import { getCatalogBySlugs } from "@/lib/data/problems";
-import { getUserStatusesBySlugs } from "@/lib/data/sheets";
+import { getUserStatusesBySlugs, toStatusMap } from "@/lib/data/sheets";
 import { copyPrimerToNotebook } from "@/lib/data/notebook";
 import { track } from "@/lib/analytics";
-import { Primer, Problem } from "@/types/database";
+import { Primer, Problem, TriState } from "@/types/database";
 import { cn } from "@/lib/utils";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
 /** A starter row; `inCatalog` false means the slug has no catalog row, so no number or difficulty is shown. */
 type Starter = Omit<Problem, "difficulty"> & { difficulty: Problem["difficulty"] | ""; inCatalog: boolean };
@@ -67,70 +68,63 @@ function SectionHeading({
   );
 }
 
+const NO_STARTERS: Starter[] = [];
+const NO_STATUSES: Record<string, TriState> = {};
+
 export default function PrimerPage() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug || "";
   const { startSolving } = useSolving();
   const { user } = useAuth();
-  const [primer, setPrimer] = useState<Primer | null>(null);
-  const [starters, setStarters] = useState<Starter[]>([]);
-  const [statusBySlug, setStatusBySlug] = useState<Record<string, ProblemStatus>>({});
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+  const userId = user?.id ?? null;
+  const invalidate = useInvalidate();
+
   const [copied, setCopied] = useState(false);
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
   const [jumpTo, setJumpTo] = useState<string>("recognize");
 
-  useEffect(() => {
-    getPrimer(slug)
-      .then(async (p) => {
-        if (!p) {
-          setNotFound(true);
-          return;
-        }
-        setPrimer(p);
-        track("primer_read", { primer_slug: slug });
-        const catalog = await getCatalogBySlugs(p.starter_slugs).catch(() => []);
-        const bySlug = new Map(catalog.map((c) => [c.title_slug, c]));
-        // A slug missing from the catalog keeps its row (title from the slug)
-        // but shows no number and no difficulty rather than a guessed one.
-        setStarters(
-          p.starter_slugs.map((s) => {
-            const hit = bySlug.get(s);
-            if (hit) return { ...hit, inCatalog: true };
-            return {
-              title_slug: s,
-              title: prettify(s),
-              difficulty: "",
-              question_id: "",
-              paid_only: false,
-              topics: [p.pattern],
-              updated_at: new Date().toISOString(),
-              inCatalog: false,
-            };
-          })
-        );
-      })
-      .catch(() => setNotFound(true))
-      .finally(() => setLoading(false));
-  }, [slug]);
+  const primerQuery = useCachedQuery(
+    slug ? ["primer", slug] : null,
+    async () => {
+      const p = await getPrimer(slug);
+      if (!p) return null;
+      const catalog = await getCatalogBySlugs(p.starter_slugs).catch(() => []);
+      const bySlug = new Map(catalog.map((c) => [c.title_slug, c]));
+      // A slug missing from the catalog keeps its row (title from the slug)
+      // but shows no number and no difficulty rather than a guessed one.
+      const starters: Starter[] = p.starter_slugs.map((s) => {
+        const hit = bySlug.get(s);
+        if (hit) return { ...hit, inCatalog: true };
+        return {
+          title_slug: s,
+          title: prettify(s),
+          difficulty: "",
+          question_id: "",
+          paid_only: false,
+          topics: [p.pattern],
+          updated_at: new Date().toISOString(),
+          inCatalog: false,
+        };
+      });
+      return { primer: p, starters };
+    },
+    { freshForMs: 10 * 60_000 }
+  );
 
-  // Honest starter glyphs from the reader's own solve history. The status
-  // table carries no verification source, so a solved starter renders as a
-  // neutral check — never the emerald verified glyph.
+  const myStatuses = useCachedQuery(
+    userId ? ["my-statuses"] : null,
+    async () => toStatusMap(await getUserStatusesBySlugs(userId as string))
+  );
+
+  const primer = primerQuery.data?.primer ?? null;
+  const starters = primerQuery.data?.starters ?? NO_STARTERS;
+  const statusMap = myStatuses.data ?? NO_STATUSES;
+
   useEffect(() => {
-    if (!user || starters.length === 0) return;
-    getUserStatusesBySlugs(user.id)
-      .then((rows) => {
-        const map: Record<string, ProblemStatus> = {};
-        for (const r of rows) {
-          const key = r.problem_slug.toLowerCase();
-          map[key] = r.status === "solved" ? "self-reported" : "attempted";
-        }
-        setStatusBySlug(map);
-      })
-      .catch(() => {});
-  }, [user, starters]);
+    if (primer) {
+      track("primer_read", { primer_slug: slug });
+    }
+  }, [primer, slug]);
 
   // Reading pages keep the solve dock out of the way: it is hidden while
   // this page is mounted and restored on unmount.
@@ -144,13 +138,15 @@ export default function PrimerPage() {
     };
   }, []);
 
-  const statusOf = (titleSlug: string): ProblemStatus =>
-    statusBySlug[titleSlug.toLowerCase()] ?? "none";
+  const statusOf = (titleSlug: string): ProblemStatus => {
+    const st = statusMap[titleSlug.toLowerCase()];
+    return st === "solved" ? "self-reported" : st === "attempted" ? "attempted" : "none";
+  };
 
   const nextStarter = useMemo(
     () => starters.find((s) => statusOf(s.title_slug) !== "self-reported") ?? starters[0] ?? null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [starters, statusBySlug]
+    [starters, statusMap]
   );
 
   // Honest, measurable progress only: read minutes estimated from content
@@ -160,11 +156,21 @@ export default function PrimerPage() {
   const solvedStarters = useMemo(
     () => starters.filter((s) => statusOf(s.title_slug) === "self-reported").length,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [starters, statusBySlug]
+    [starters, statusMap]
   );
 
-  if (loading) return <PrimerSkeleton />;
-  if (notFound || !primer) {
+  if (primerQuery.isLoading) return <PrimerSkeleton />;
+  if (primerQuery.error && !primerQuery.data) {
+    return (
+      <div className="mx-auto max-w-reading">
+        <ErrorCard
+          message="Couldn't load primer. Check your connection and retry."
+          onRetry={() => void primerQuery.refresh()}
+        />
+      </div>
+    );
+  }
+  if (!primer) {
     return (
       <div className="mx-auto max-w-reading">
         <EmptyState
@@ -286,6 +292,7 @@ export default function PrimerPage() {
                     await copyPrimerToNotebook(primer.slug);
                     setCopied(true);
                     setCopyMsg("Copied to your notebook.");
+                    void invalidate("my-notes");
                     setTimeout(() => setCopied(false), 2000);
                   } catch {
                     setCopyMsg("Log in to copy this primer.");

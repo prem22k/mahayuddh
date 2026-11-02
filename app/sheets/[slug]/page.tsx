@@ -18,11 +18,13 @@ import {
   getSquadProblemStatuses,
   setProblemStatus,
   batchSetProblemStatuses,
+  getUserStatusesBySlugs,
+  toStatusMap,
 } from "@/lib/data/sheets";
 import { parseProblemStatusEvent, applyStatusChange } from "@/lib/problemStatusEvent";
 import { DifficultyBadgeNew, PatternChip } from "@/components/ui/Badge";
 import { ProblemLink } from "@/components/ui/ProblemLink";
-import { EmptyState } from "@/components/ui/States";
+import { EmptyState, ErrorCard } from "@/components/ui/States";
 import { SheetSkeleton } from "@/components/skeletons/SheetSkeleton";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
@@ -34,9 +36,17 @@ import { getVerifiedSolvers } from "@/lib/data/squadActivity";
 import { getActiveSquadId, getSquadMemberIds } from "@/lib/data/squads";
 import { track } from "@/lib/analytics";
 import { CustomList, ListProblem, Problem, TriState } from "@/types/database";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
 const STATUS_FILTERS = ["All", "Solved", "Attempted", "To do"] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
+
+const NO_PROBLEMS: ListProblem[] = [];
+const NO_CATALOG = new Map<string, Problem>();
+const NO_STATUSES: Record<string, TriState> = {};
+const NO_SQUAD_SOLVERS: Record<string, number> = {};
+const NO_VIEWER_VERIFIED: Record<string, boolean> = {};
+const NO_SQUAD_VERIFIED: Record<string, number> = {};
 
 function SheetContent() {
   const params = useParams();
@@ -44,12 +54,6 @@ function SheetContent() {
   const slug = (params?.slug as string) || "neetcode-150";
   const initialCat = searchParams.get("category");
   const initialTopic = searchParams.get("topic");
-
-  const [list, setList] = useState<CustomList | null>(null);
-  const [problems, setProblems] = useState<ListProblem[]>([]);
-  const [catalogBySlug, setCatalogBySlug] = useState<Map<string, Problem>>(new Map());
-  const [statuses, setStatuses] = useState<Record<string, TriState>>({});
-  const [loading, setLoading] = useState(true);
 
   // Filters & State
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
@@ -59,18 +63,12 @@ function SheetContent() {
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
   const [showAllCategories, setShowAllCategories] = useState(false);
   const [showSquad, setShowSquad] = useState(false);
-  const [squadSolvers, setSquadSolvers] = useState<Record<string, number>>({});
-  const [squadError, setSquadError] = useState<string | null>(null);
-  // Verified overlay (honest data): slug -> viewer verified + squad verified
-  // solver count. Solved + verified renders emerald; solved without it renders
-  // the neutral self-reported state. Never inferred, only from problem_events
-  // rows with metadata source 'leetcode'.
-  const [viewerVerified, setViewerVerified] = useState<Record<string, boolean>>({});
-  const [squadVerified, setSquadVerified] = useState<Record<string, number>>({});
   const [highlightedSlug, setHighlightedSlug] = useState<string | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+  const invalidate = useInvalidate();
   const { activeProblem, startSolving } = useSolving();
 
   useEffect(() => {
@@ -78,102 +76,75 @@ function SheetContent() {
     if (initialTopic) setSelectedTopic(initialTopic);
   }, [initialCat, initialTopic]);
 
-  useEffect(() => {
-    // One load with the caller's statuses, not an anonymous pass first.
-    if (authLoading) return;
-    async function loadSheetData() {
-      setLoading(true);
-      try {
-        const result = await getSheetWithCatalog(slug, user?.id);
-        setList(result.list);
-        setProblems(result.problems);
-        setCatalogBySlug(result.catalogBySlug);
-        setStatuses(result.statusMap);
-      } catch (err) {
-        console.error("Error loading sheet:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadSheetData();
-  }, [slug, user?.id, authLoading]);
+  const sheetQuery = useCachedQuery(
+    slug ? ["sheet-with-catalog", slug] : null,
+    () => getSheetWithCatalog(slug),
+    { freshForMs: 10 * 60_000 }
+  );
+
+  const myStatuses = useCachedQuery(
+    userId ? ["my-statuses"] : null,
+    async () => toStatusMap(await getUserStatusesBySlugs(userId as string))
+  );
+
+  const list = sheetQuery.data?.list ?? null;
+  const problems = sheetQuery.data?.problems ?? NO_PROBLEMS;
+  const catalogBySlug = sheetQuery.data?.catalogBySlug ?? NO_CATALOG;
+  const statuses = myStatuses.data ?? NO_STATUSES;
 
   // Squad overlay: distinct solvers per problem from shared statuses. When
   // the read fails (or RLS scopes it away) the toggle stays honest about it
   // instead of rendering confident zeros.
-  useEffect(() => {
-    if (!showSquad || problems.length === 0) return;
-    let cancelled = false;
-    setSquadError(null);
-    getSquadProblemStatuses(problems.map((p) => p.title_slug))
-      .then((rows) => {
-        if (cancelled) return;
-        const counts: Record<string, Set<string>> = {};
-        for (const r of rows) {
-          if (r.status !== "solved") continue;
-          (counts[r.problem_slug] ??= new Set()).add(r.user_id);
-        }
-        setSquadSolvers(
-          Object.fromEntries(Object.entries(counts).map(([k, v]) => [k, v.size]))
-        );
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setSquadSolvers({});
-          setSquadError("Couldn't load squad progress. Cells show your progress.");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [showSquad, problems]);
+  const squadSolversQuery = useCachedQuery(
+    showSquad && problems.length > 0 ? ["sheet-squad-statuses", slug] : null,
+    async () => {
+      const rows = await getSquadProblemStatuses(problems.map((p) => p.title_slug));
+      const counts: Record<string, Set<string>> = {};
+      for (const r of rows) {
+        if (r.status !== "solved") continue;
+        (counts[r.problem_slug] ??= new Set()).add(r.user_id);
+      }
+      return Object.fromEntries(Object.entries(counts).map(([k, v]) => [k, v.size]));
+    }
+  );
 
   // Verified overlay: LeetCode-sourced solve/revisit events per slug. Loaded
   // for the viewer always (personal cells), and for the whole active squad
   // when the squad overlay is on. Failures keep the honest fallback: every
   // solved cell renders self-reported, never emerald.
-  const viewerId = user?.id ?? null;
-  useEffect(() => {
-    if (!viewerId || problems.length === 0) {
-      setViewerVerified({});
-      setSquadVerified({});
-      return;
+  const viewerVerifiedQuery = useCachedQuery(
+    userId && problems.length > 0 ? ["sheet-verified-solvers", slug] : null,
+    async () => {
+      const slugs = problems.map((p) => p.title_slug);
+      const map = await getVerifiedSolvers(slugs, [userId as string]);
+      const rec: Record<string, boolean> = {};
+      for (const [s, set] of map) {
+        if (set.has(userId as string)) rec[s] = true;
+      }
+      return rec;
     }
-    let cancelled = false;
-    const slugs = problems.map((p) => p.title_slug);
-    getVerifiedSolvers(slugs, [viewerId])
-      .then((map) => {
-        if (cancelled) return;
-        const rec: Record<string, boolean> = {};
-        for (const [slug, set] of map) {
-          if (set.has(viewerId)) rec[slug] = true;
-        }
-        setViewerVerified(rec);
-      })
-      .catch(() => {
-        if (!cancelled) setViewerVerified({});
-      });
-    if (showSquad) {
-      (async () => {
-        try {
-          const squadId = await getActiveSquadId(viewerId);
-          const memberIds = squadId ? await getSquadMemberIds(squadId) : [viewerId];
-          const map = await getVerifiedSolvers(slugs, memberIds);
-          if (cancelled) return;
-          setSquadVerified(
-            Object.fromEntries([...map.entries()].map(([k, v]) => [k, v.size]))
-          );
-        } catch {
-          if (!cancelled) setSquadVerified({});
-        }
-      })();
-    } else {
-      setSquadVerified({});
+  );
+
+  const squadVerifiedQuery = useCachedQuery(
+    userId && showSquad && problems.length > 0 ? ["squad-verified-solvers", slug] : null,
+    async () => {
+      const slugs = problems.map((p) => p.title_slug);
+      const squadId = await getActiveSquadId(userId as string);
+      const memberIds = squadId ? await getSquadMemberIds(squadId) : [userId as string];
+      const map = await getVerifiedSolvers(slugs, memberIds);
+      return Object.fromEntries([...map.entries()].map(([k, v]) => [k, v.size]));
     }
-    return () => {
-      cancelled = true;
-    };
-  }, [problems, viewerId, showSquad]);
+  );
+
+  const squadSolvers = squadSolversQuery.data ?? NO_SQUAD_SOLVERS;
+  const viewerVerified = viewerVerifiedQuery.data ?? NO_VIEWER_VERIFIED;
+  const squadVerified = squadVerifiedQuery.data ?? NO_SQUAD_VERIFIED;
+
+  const squadError = squadSolversQuery.error
+    ? "Couldn't load squad progress. Cells show your progress."
+    : null;
+
+  const loading = sheetQuery.isLoading || (userId !== null && myStatuses.isLoading);
 
   useEffect(() => {
     return () => {
@@ -183,26 +154,27 @@ function SheetContent() {
 
   // Refresh status when the dock marks a problem done. Payloads are
   // validated — junk events are ignored, never merged.
+  const setMyStatuses = myStatuses.setData;
   useEffect(() => {
     const onStatusChanged = (e: Event) => {
       const parsed = parseProblemStatusEvent(e);
       if (parsed) {
-        setStatuses((prev) => applyStatusChange(prev, parsed.slug, parsed.status));
+        void setMyStatuses((prev) => applyStatusChange(prev ?? {}, parsed.slug, parsed.status));
       }
     };
     window.addEventListener("problem-status-changed", onStatusChanged);
     return () => window.removeEventListener("problem-status-changed", onStatusChanged);
-  }, []);
+  }, [setMyStatuses]);
 
   const handleToggle = async (problemSlug: string, next: TriState): Promise<boolean> => {
     // Optimistic UI update, rolled back when the write fails.
     const prev = statuses[problemSlug];
-    setStatuses((p) => applyStatusChange(p, problemSlug, next));
+    void myStatuses.setData((p) => applyStatusChange(p ?? {}, problemSlug, next));
     if (!user) return true;
     const ok = await setProblemStatus(user.id, problemSlug, next);
     if (!ok) {
-      setStatuses((p) => {
-        const rolled = { ...p };
+      void myStatuses.setData((p) => {
+        const rolled = { ...(p ?? {}) };
         if (prev) rolled[problemSlug] = prev;
         else delete rolled[problemSlug];
         return rolled;
@@ -214,6 +186,7 @@ function SheetContent() {
       logProblemEvent({ problemSlug, kind }).catch(() => {});
       if (next === "solved") track("battle_solved", { problem_slug: problemSlug, via: "roadmap" });
       if (kind === "revisited") track("revisit_done", { problem_slug: problemSlug, via: "roadmap" });
+      void invalidate("problem-history", "home-squad-activity");
     }
     return ok;
   };
@@ -228,12 +201,12 @@ function SheetContent() {
       if (next === "unsolved") delete optimistic[slug];
       else optimistic[slug] = next;
     });
-    setStatuses(optimistic);
+    void myStatuses.setData(optimistic);
 
     if (!user) return;
     const ok = await batchSetProblemStatuses(user.id, slugs, next);
     if (!ok) {
-      setStatuses(snapshot);
+      void myStatuses.setData(snapshot);
       return;
     }
 
@@ -251,6 +224,7 @@ function SheetContent() {
     if (next === "solved") {
       track("battle_solved", { via: "roadmap_batch", count: slugs.length });
     }
+    void invalidate("problem-history", "home-squad-activity");
 
     // Celebrate only persisted solves (confetti lazy-loaded at celebration time).
     if (next === "solved") {
@@ -375,6 +349,19 @@ function SheetContent() {
   };
 
   if (loading) return <SheetSkeleton />;
+  if (sheetQuery.error && !sheetQuery.data) {
+    return (
+      <div className="max-w-2xl py-6">
+        <ErrorCard
+          message="Couldn't load this sheet. Check your connection and retry."
+          onRetry={() => {
+            void sheetQuery.refresh();
+            void myStatuses.refresh();
+          }}
+        />
+      </div>
+    );
+  }
 
   const title = list?.title || slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
   const clearFilters = () => {

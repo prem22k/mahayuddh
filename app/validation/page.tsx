@@ -39,6 +39,7 @@ import {
   TriageLabel,
   triageCompleteness,
 } from "@/lib/validation/gates";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
 /**
  * Stitch "Quality gates" (internal). A pass is a neutral check, not emerald:
@@ -132,54 +133,71 @@ function SelectField({
   );
 }
 
+const NO_SQUADS: SquadOption[] = [];
+const NO_OBSERVATIONS: Observation[] = [];
+const NO_TRIAGE: TriageEntry[] = [];
+
 export default function ValidationPage() {
   const { user, loading: authLoading } = useAuth();
-  const [board, setBoard] = useState<GateBoard | null>(null);
-  const [status, setStatus] = useState<TestStatus | null>(null);
-  const [squads, setSquads] = useState<SquadOption[]>([]);
+  const userId = user?.id ?? null;
+  const invalidate = useInvalidate();
+
   const [squadId, setSquadId] = useState<string>("");
-  const [observations, setObservations] = useState<Observation[]>([]);
-  const [triage, setTriage] = useState<TriageEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [readAt, setReadAt] = useState<Date | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  const squadsQuery = useCachedQuery(
+    userId ? ["squads-for-validation"] : null,
+    getSquadsForValidation
+  );
+
+  const validationDataQuery = useCachedQuery(
+    userId ? ["validation-board", squadId || null] : null,
+    async () => {
       const scope = squadId || null;
-      const [b, st, o, t] = await Promise.all([
+      const [b, st, o] = await Promise.all([
         getGateBoard(scope),
         getTestStatus(scope),
         listObservations(scope),
-        listTriage(),
       ]);
-      setBoard(b);
-      setStatus(st);
-      setObservations(o);
-      setTriage(t);
-      setReadAt(new Date());
-    } catch (e) {
-      setError(dataErrorMessage(e, "Something went wrong. Retry."));
-    } finally {
-      setLoading(false);
+      return { board: b, status: st, observations: o };
     }
-  }, [squadId]);
+  );
+
+  const triageQuery = useCachedQuery(
+    userId ? ["list-triage"] : null,
+    listTriage
+  );
+
+  const squads = squadsQuery.data ?? NO_SQUADS;
+  const board = validationDataQuery.data?.board ?? null;
+  const status = validationDataQuery.data?.status ?? null;
+  const observations = validationDataQuery.data?.observations ?? NO_OBSERVATIONS;
+  const triage = triageQuery.data ?? NO_TRIAGE;
 
   useEffect(() => {
-    // Wait for auth: with no user yet this would drop `loading` and show the
-    // sign-in note (or an empty board) before the real read starts.
-    if (authLoading) return;
-    if (!user) {
-      setLoading(false);
-      return;
+    if (validationDataQuery.data || triageQuery.data) {
+      setReadAt(new Date());
     }
-    getSquadsForValidation()
-      .then(setSquads)
-      .catch((e) => setError(dataErrorMessage(e, "Couldn't load squads. Retry.")))
-      .finally(() => void load());
-  }, [user, authLoading, load]);
+  }, [validationDataQuery.data, triageQuery.data]);
+
+  const handleRefresh = useCallback(async () => {
+    await Promise.all([
+      validationDataQuery.refresh(),
+      triageQuery.refresh(),
+      squadsQuery.refresh(),
+    ]);
+    setReadAt(new Date());
+  }, [validationDataQuery, triageQuery, squadsQuery]);
+
+  const handleObservationSaved = useCallback(async () => {
+    await validationDataQuery.refresh();
+    void invalidate("validation-board");
+  }, [validationDataQuery, invalidate]);
+
+  const handleTriageChanged = useCallback(async () => {
+    await triageQuery.refresh();
+    void invalidate("list-triage");
+  }, [triageQuery, invalidate]);
 
   if (authLoading) return <ValidationSkeleton />;
 
@@ -199,7 +217,13 @@ export default function ValidationPage() {
   }
 
   // First read shows the loader; a refresh keeps the board on screen.
-  const firstLoad = loading && !board;
+  const firstLoad = (validationDataQuery.isLoading && !board) || (triageQuery.isLoading && !triage);
+  const isRefreshing = validationDataQuery.isRefreshing || triageQuery.isRefreshing || squadsQuery.isRefreshing;
+  const queryError = validationDataQuery.error || triageQuery.error || squadsQuery.error;
+  const error =
+    queryError && !board
+      ? dataErrorMessage(queryError, "Something went wrong. Retry.")
+      : null;
 
   return (
     <div className="space-y-8 pb-8 md:space-y-10 md:pb-12">
@@ -225,13 +249,13 @@ export default function ValidationPage() {
           )}
           <button
             type="button"
-            onClick={() => void load()}
-            disabled={loading}
+            onClick={() => void handleRefresh()}
+            disabled={firstLoad || isRefreshing}
             aria-label="Read the gates again"
             title="Read the gates again"
             className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface hover:text-text-primary disabled:cursor-wait md:h-8 md:w-8"
           >
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} strokeWidth={1.5} />
+            <RefreshCw className={cn("h-4 w-4", (firstLoad || isRefreshing) && "animate-spin")} strokeWidth={1.5} />
           </button>
         </div>
       </header>
@@ -251,7 +275,7 @@ export default function ValidationPage() {
           <span>{error}</span>
           <button
             type="button"
-            onClick={() => void load()}
+            onClick={() => void handleRefresh()}
             className="min-h-[44px] shrink-0 cursor-pointer text-xs font-medium underline underline-offset-2 hover:text-text-primary md:min-h-0"
           >
             Retry
@@ -270,9 +294,9 @@ export default function ValidationPage() {
               observations={observations}
               squads={squads}
               squadId={squadId}
-              onSaved={load}
+              onSaved={handleObservationSaved}
             />
-            <TriageSection triage={triage} onChanged={load} />
+            <TriageSection triage={triage} onChanged={handleTriageChanged} />
           </div>
         </>
       )}
