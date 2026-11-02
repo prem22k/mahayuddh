@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Space_Grotesk, Geist, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 import { AuthProvider } from "@/components/providers/AuthProvider";
@@ -9,26 +9,34 @@ import { PwaRegister } from "@/components/PwaRegister";
 /**
  * DESIGN.md v4 type: Space Grotesk for display (24px+), Geist for UI,
  * JetBrains Mono tabular for measurement and code.
+ *
+ * Self-hosted from app/fonts (the Google Fonts latin variable files, OFL
+ * licensed, licenses alongside). next/font/google downloads them during
+ * `next build`, so any odd Google response fails the whole deploy: on
+ * 2026-11-02 a Vercel build died in the loader with "Cannot read properties
+ * of null (reading '1')". Local files make the build offline-safe.
  */
-const display = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["600"],
+const display = localFont({
+  src: "./fonts/space-grotesk-latin.woff2",
+  weight: "300 700",
   variable: "--font-display-face",
   display: "swap",
 });
 
-const sans = Geist({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+const sans = localFont({
+  src: "./fonts/geist-latin.woff2",
+  weight: "100 900",
   variable: "--font-sans-face",
   display: "swap",
 });
 
-const mono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
+const mono = localFont({
+  src: "./fonts/jetbrains-mono-latin.woff2",
+  weight: "100 800",
   variable: "--font-mono-loaded",
   display: "swap",
+  fallback: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+  adjustFontFallback: false,
 });
 
 export const metadata: Metadata = {
