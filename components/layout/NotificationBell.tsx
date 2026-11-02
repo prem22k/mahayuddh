@@ -120,7 +120,11 @@ export function NotificationBell() {
     void notificationsQuery.setData((prev) => (prev ?? []).filter((x) => x.id !== n.id));
     void unreadCountQuery.setData((u) => Math.max(0, (u ?? 1) - 1));
     setOpen(false);
-    void markRead(n.id).then(() => {
+    // Refetch only after the write lands (success or failure), or the refetch
+    // reads the row as still unread and the item comes back.
+    void markRead(n.id).finally(() => {
+      void notificationsQuery.refresh();
+      void unreadCountQuery.refresh();
       void invalidate("notification-history");
     });
   };

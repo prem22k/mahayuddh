@@ -186,7 +186,7 @@ function SheetContent() {
       logProblemEvent({ problemSlug, kind }).catch(() => {});
       if (next === "solved") track("battle_solved", { problem_slug: problemSlug, via: "roadmap" });
       if (kind === "revisited") track("revisit_done", { problem_slug: problemSlug, via: "roadmap" });
-      void invalidate("problem-history", "home-squad-activity");
+      void invalidate("problem-history", "home-squad-activity", "pinned-sheet-progress");
     }
     return ok;
   };
@@ -224,7 +224,7 @@ function SheetContent() {
     if (next === "solved") {
       track("battle_solved", { via: "roadmap_batch", count: slugs.length });
     }
-    void invalidate("problem-history", "home-squad-activity");
+    void invalidate("problem-history", "home-squad-activity", "pinned-sheet-progress");
 
     // Celebrate only persisted solves (confetti lazy-loaded at celebration time).
     if (next === "solved") {

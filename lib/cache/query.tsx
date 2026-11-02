@@ -79,8 +79,10 @@ export interface CachedQuery<T> {
   /** Refetch now (pull-to-refresh, a Retry button). */
   refresh: () => Promise<T | undefined>;
   /**
-   * Replace the cached value locally, e.g. right after the user's own write,
-   * then refetch to confirm.
+   * Replace the cached value locally (an optimistic update). It does NOT
+   * refetch: a refetch fired before the write lands reads the old row and
+   * puts it back (the bell re-showed a notification it had just marked read).
+   * Call `refresh()` once the write has resolved, success or failure.
    */
   setData: (next: T | ((current: T | undefined) => T | undefined)) => Promise<T | undefined>;
 }
@@ -121,7 +123,7 @@ export function useCachedQuery<T>(
   const refresh = useCallback(() => mutate(), [mutate]);
   const setData = useCallback(
     (next: T | ((current: T | undefined) => T | undefined)) =>
-      mutate(next as T | ((current?: T) => T | undefined), { revalidate: true }),
+      mutate(next as T | ((current?: T) => T | undefined), { revalidate: false }),
     [mutate],
   );
 
