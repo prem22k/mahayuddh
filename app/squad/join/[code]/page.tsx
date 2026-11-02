@@ -3,6 +3,7 @@
 import { profileHref } from "@/lib/profiles/username";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { LogoMark } from "@/components/landing/Brand";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, CalendarDays, Copy, Check, Users } from "lucide-react";
 import { copyText } from "@/lib/clipboard";
@@ -380,9 +381,7 @@ export default function SquadJoinPage() {
     <div className="flex min-h-screen flex-col bg-canvas text-text-primary">
       <header className="mx-auto flex h-14 w-full max-w-[1120px] items-center justify-between border-b border-hairline px-4 sm:px-8">
         <Link href="/welcome" className="flex items-center gap-2.5">
-          <span className="flex h-7 w-7 items-center justify-center rounded-sm border border-hairline bg-surface-raised font-display text-sm font-semibold text-primary sm:text-text-primary">
-            M
-          </span>
+          <LogoMark className="h-[22px] w-[22px]" />
           <span className="font-display text-base font-semibold tracking-tight">Mahayuddh</span>
         </Link>
         <Link

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { Skeleton } from "@/components/ui/States";
 import { safeNext } from "@/lib/safeNext";
 import { LoadingStatus, Repeat, SkeletonLine } from "./parts";
+import { LogoMark } from "@/components/landing/Brand";
 
 /**
  * Public approach (/a/[id]) while the server reads it. The page brings its
@@ -20,7 +21,8 @@ export function PublicApproachSkeleton() {
   return (
     <div className="min-h-screen bg-canvas text-text-primary">
       <header className="mx-auto flex h-14 w-full max-w-reading items-center justify-between px-4">
-        <Link href="/welcome" className="font-display text-lg font-semibold tracking-tight">
+        <Link href="/welcome" className="flex items-center gap-2 font-display text-lg font-semibold tracking-tight">
+          <LogoMark className="h-5 w-5" />
           Mahayuddh
         </Link>
         <div className="flex items-center gap-2">

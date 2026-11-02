@@ -2,7 +2,8 @@
 
 import React from "react";
 import Link from "next/link";
-import { ArrowRight, Swords, Users } from "lucide-react";
+import { LogoMark } from "@/components/landing/Brand";
+import { ArrowRight, Users } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { cn } from "@/lib/utils";
 
@@ -37,7 +38,7 @@ export function ArtifactFrame({
               href="/"
               className="flex shrink-0 items-center gap-2 font-display text-lg font-semibold tracking-[-0.01em] text-text-primary"
             >
-              <Swords className="h-[18px] w-[18px] text-text-secondary" strokeWidth={1.5} aria-hidden />
+              <LogoMark className="h-5 w-5" />
               Mahayuddh
             </Link>
             {crumb && (
