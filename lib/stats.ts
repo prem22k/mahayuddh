@@ -1,4 +1,5 @@
 import { Profile } from "@/types/database";
+import { siteUrl } from "./siteUrl";
 
 export interface StreakStats {
   currentStreak: number;
@@ -211,5 +212,5 @@ export function generateDossierShareText(profile: Profile, powerLevel: number, t
 🔥 Power Level: ${powerLevel.toLocaleString()}
 ⚡ Rating: ${profile.contest_rating == null ? "Unranked" : Math.round(profile.contest_rating)} | Streak: ${profile.streak} Days
 🧩 Solved: ${total} (🟩 ${profile.total_easy} | 🟨 ${profile.total_medium} | 🟥 ${profile.total_hard})
-🚀 Track & Battle: https://mahayuddh.app`;
+🚀 Track & Battle: ${siteUrl()}`;
 }

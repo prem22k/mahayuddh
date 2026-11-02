@@ -8,6 +8,7 @@ import {
 } from "@/lib/security/crossOrigin";
 import { declaredBodyTooLarge, maxBodyBytesFor } from "@/lib/security/body";
 import { logSecurityEvent } from "@/lib/security/log";
+import { siteUrl } from "@/lib/siteUrl";
 
 /**
  * Per-path body ceiling, applied in middleware so an oversized request dies
@@ -31,7 +32,7 @@ const EXTRA_ALLOWED_ORIGINS = ["https://leetcode.com"];
 function allowedOrigins(): string[] {
   return [
     ...EXTRA_ALLOWED_ORIGINS,
-    ...(process.env.NEXT_PUBLIC_SITE_URL ? [process.env.NEXT_PUBLIC_SITE_URL] : []),
+    ...(process.env.NEXT_PUBLIC_SITE_URL ? [siteUrl()] : []),
     ...parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
   ];
 }

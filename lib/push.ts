@@ -1,5 +1,6 @@
 import webpush from "web-push";
 import { isAllowedPushHost } from "@/lib/security/pushEndpoint";
+import { LEGAL } from "./legal";
 
 /** Hostname or "" when the endpoint will not parse. Never throws. */
 function safeHostname(endpoint: string): string {
@@ -16,7 +17,7 @@ function safeHostname(endpoint: string): string {
 try {
   if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
     webpush.setVapidDetails(
-      process.env.VAPID_SUBJECT || "mailto:admin@mahayuddh.app",
+      process.env.VAPID_SUBJECT || `mailto:${LEGAL.contactEmail}`,
       process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
       process.env.VAPID_PRIVATE_KEY
     );

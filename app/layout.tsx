@@ -5,6 +5,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { SolvingProvider } from "@/components/providers/SolvingProvider";
 import { PwaRegister } from "@/components/PwaRegister";
+import { siteUrl } from "@/lib/siteUrl";
 
 /**
  * DESIGN.md v4 type: Space Grotesk for display (24px+), Geist for UI,
@@ -40,7 +41,7 @@ const mono = localFont({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+  metadataBase: new URL(siteUrl()),
   title: {
     default: "Mahayuddh | Practice DSA With Your People",
     template: "%s | Mahayuddh",
