@@ -100,7 +100,7 @@ export default function SquadJoinPage() {
     setActionError(null);
     try {
       const joined = await joinSquad(code, ref || null);
-      await invalidate("my-squads", "squad-detail", "home-squad");
+      await invalidate("my-squads", "squad-detail", "home-squad", "active-squad-members");
       await refreshProfile();
       router.push("/squad");
       track("referral_join_completed", { squad_id: joined?.squad.id, referred: Boolean(ref) });
@@ -120,7 +120,7 @@ export default function SquadJoinPage() {
     try {
       if (profile?.active_squad_id !== preview.squad.id) {
         await switchActiveSquad(preview.squad.id);
-        await invalidate("my-squads", "squad-detail", "home-squad");
+        await invalidate("my-squads", "squad-detail", "home-squad", "active-squad-members");
         await refreshProfile();
       }
       router.push("/squad");

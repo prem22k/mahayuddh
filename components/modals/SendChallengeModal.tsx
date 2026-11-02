@@ -17,8 +17,10 @@ import { notify } from "@/lib/data/notifications";
 import { useAuth } from "@/components/providers/AuthProvider";
 import type { Difficulty, Problem, Profile, Suggestion } from "@/types/database";
 import { track } from "@/lib/analytics";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
 const NOTE_MAX = 349;
+const NO_PROBLEMS: Problem[] = [];
 
 function parseMmSs(v: string): number | null {
   const m = v.trim().match(/^(?:(\d+):)?([0-5]?\d)$/);
@@ -84,11 +86,9 @@ export function SendChallengeModal({
   const [problem, setProblem] = useState<PickedProblem | null>(
     seed ? { ...seed, number: null, pattern: null, fromCatalog: !!seed.slug } : null
   );
+  const invalidate = useInvalidate();
   const [picking, setPicking] = useState(!seed);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Problem[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
 
   const [beatTime, setBeatTime] = useState(initialBeatSec != null);
   const [myTime, setMyTime] = useState(initialBeatSec != null ? fmtTime(initialBeatSec) : "");
@@ -107,23 +107,20 @@ export function SendChallengeModal({
   const seedSlug = seed?.slug ?? "";
   // Catalog facts (No. and pattern) for a prefilled problem. Decoration only:
   // a failed lookup leaves them off rather than guessing.
+  const seedCatalogQuery = useCachedQuery(
+    seedSlug ? ["catalog-by-slugs", seedSlug] : null,
+    () => getCatalogBySlugs([seedSlug]),
+    { freshForMs: 10 * 60_000 }
+  );
+  const seedCatalogRow = seedCatalogQuery.data?.[0];
   useEffect(() => {
-    if (!seedSlug) return;
-    let live = true;
-    getCatalogBySlugs([seedSlug])
-      .then(([row]) => {
-        if (!live || !row) return;
-        setProblem((p) =>
-          p && p.slug === row.title_slug
-            ? { ...p, number: String(row.question_id), pattern: row.topics?.[0] ?? null, fromCatalog: true }
-            : p
-        );
-      })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [seedSlug]);
+    if (!seedCatalogRow) return;
+    setProblem((p) =>
+      p && p.slug === seedCatalogRow.title_slug
+        ? { ...p, number: String(seedCatalogRow.question_id), pattern: seedCatalogRow.topics?.[0] ?? null, fromCatalog: true }
+        : p
+    );
+  }, [seedCatalogRow]);
 
   useEffect(() => {
     setIsMac(/Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent));
@@ -134,38 +131,34 @@ export function SendChallengeModal({
   }, []);
 
   // Debounced catalog search while the picker is open.
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   useEffect(() => {
-    if (!picking) return;
-    const q = query.trim();
-    if (q.length < 2) {
-      setResults([]);
-      setSearchError(null);
-      setSearching(false);
+    if (!picking) {
+      setDebouncedQuery("");
       return;
     }
-    let live = true;
-    setSearching(true);
-    const t = setTimeout(() => {
-      searchCatalogProblems(q, 6)
-        .then((rows) => {
-          if (!live) return;
-          setResults(rows);
-          setSearchError(null);
-        })
-        .catch(() => {
-          if (!live) return;
-          setResults([]);
-          setSearchError("Search failed. Retry, or use the title as typed.");
-        })
-        .finally(() => {
-          if (live) setSearching(false);
-        });
-    }, 250);
-    return () => {
-      live = false;
-      clearTimeout(t);
-    };
+    const q = query.trim();
+    if (q.length < 2) {
+      setDebouncedQuery("");
+      return;
+    }
+    const t = setTimeout(() => setDebouncedQuery(q), 250);
+    return () => clearTimeout(t);
   }, [query, picking]);
+
+  const searchQuery = useCachedQuery(
+    picking && debouncedQuery.length >= 2 ? ["search-catalog-problems", debouncedQuery, 6] : null,
+    () => searchCatalogProblems(debouncedQuery, 6),
+    { freshForMs: 10 * 60_000 }
+  );
+  const results = searchQuery.data ?? NO_PROBLEMS;
+  const searching = searchQuery.isLoading;
+  const searchError = searchQuery.error ? "Search failed. Retry, or use the title as typed." : null;
+
+  const latestBattleQuery = useCachedQuery(
+    beatTime && problem?.slug ? ["latest-battle", problem.slug] : null,
+    () => getLatestBattle(problem!.slug)
+  );
 
   useEffect(() => {
     if (createError) errorRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -222,7 +215,7 @@ export function SendChallengeModal({
 
   const fillLatest = async () => {
     if (!problem?.slug) return;
-    const latest = await getLatestBattle(problem.slug).catch(() => null);
+    const latest = latestBattleQuery.data ?? (await latestBattleQuery.refresh().catch(() => null));
     if (latest?.duration_sec != null) {
       setMyTime(fmtTime(latest.duration_sec));
       setTimeHint("Your latest on this problem");
@@ -291,6 +284,7 @@ export function SendChallengeModal({
           objectId: res.suggestion.id,
           metadata: passParent ? { parent_id: passParent.id } : {},
         }).catch(() => {});
+        await invalidate("suggestions", "incoming-suggestion-count", "first-incoming-challenge", "recent-feed");
         onSent(res.suggestion);
         onClose();
         try {

@@ -28,7 +28,13 @@ import { ModalShell } from "@/components/ui/ModalShell";
 import { Avatar } from "@/components/ui/Avatar";
 import { ListProblem, Primer, Problem } from "@/types/database";
 import { useSolving } from "@/components/providers/SolvingProvider";
+import { useCachedQuery } from "@/lib/cache/query";
 import { cn } from "@/lib/utils";
+
+const NO_PROBLEMS: ListProblem[] = [];
+const NO_CATALOG_ROWS: Problem[] = [];
+const NO_PRIMERS: Primer[] = [];
+const NO_MEMBERS: { id: string; username: string }[] = [];
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -105,72 +111,53 @@ function Highlight({ text, query }: { text: string; query: string }) {
 export function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [problems, setProblems] = useState<ListProblem[]>([]);
-  const [catalogResults, setCatalogResults] = useState<Problem[]>([]);
-  const [sheetNumbers, setSheetNumbers] = useState<Record<string, string>>({});
-  const [primers, setPrimers] = useState<Primer[]>([]);
-  const [members, setMembers] = useState<{ id: string; username: string }[]>([]);
-  const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [filter, setFilter] = useState<Filter>("all");
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const extrasLoaded = useRef(false);
   const restoreFocus = useRef<HTMLElement | null>(null);
   const { startSolving } = useSolving();
 
-  useEffect(() => {
-    async function loadAll() {
-      if (isOpen && problems.length === 0) {
-        setLoading(true);
-        try {
-          const data = await getAllProblems();
-          setProblems(data);
-        } catch (e) {
-          console.error("Error loading search index:", e);
-        } finally {
-          setLoading(false);
-        }
-      }
-    }
-    loadAll();
-  }, [isOpen, problems.length]);
+  const allProblemsQuery = useCachedQuery(
+    isOpen ? ["all-problems"] : null,
+    getAllProblems,
+    { freshForMs: 10 * 60_000 }
+  );
+  const problems = allProblemsQuery.data ?? NO_PROBLEMS;
+  const loading = allProblemsQuery.isLoading;
 
-  // Primers and squad mates load once, on first open. A failed read leaves
-  // that group out (and is retried next open) rather than inventing rows.
-  useEffect(() => {
-    if (!isOpen || extrasLoaded.current) return;
-    extrasLoaded.current = true;
-    listPrimers()
-      .then(setPrimers)
-      .catch((e) => {
-        extrasLoaded.current = false;
-        console.error("Palette primers error:", e);
-      });
-    getActiveSquadMembers()
-      .then(setMembers)
-      .catch((e) => {
-        extrasLoaded.current = false;
-        console.error("Palette people error:", e);
-      });
-  }, [isOpen]);
+  const primersQuery = useCachedQuery(
+    isOpen ? ["list-primers"] : null,
+    listPrimers,
+    { freshForMs: 10 * 60_000 }
+  );
+  const primers = primersQuery.data ?? NO_PRIMERS;
 
+  const membersQuery = useCachedQuery(
+    isOpen ? ["active-squad-members"] : null,
+    getActiveSquadMembers
+  );
+  const members = membersQuery.data ?? NO_MEMBERS;
+
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   useEffect(() => {
-    if (!query.trim()) {
-      setCatalogResults([]);
+    const q = query.trim();
+    if (!q) {
+      setDebouncedQuery("");
       return;
     }
-    const handler = setTimeout(async () => {
-      try {
-        const results = await searchCatalogProblems(query.trim(), 40);
-        setCatalogResults(results);
-      } catch (e) {
-        console.error("Catalog search error:", e);
-      }
+    const handler = setTimeout(() => {
+      setDebouncedQuery(q);
     }, 150);
-
     return () => clearTimeout(handler);
   }, [query]);
+
+  const catalogSearchQuery = useCachedQuery(
+    isOpen && debouncedQuery ? ["search-catalog-problems", debouncedQuery, 40] : null,
+    () => searchCatalogProblems(debouncedQuery, 40),
+    { freshForMs: 10 * 60_000 }
+  );
+  const catalogResults = catalogSearchQuery.data ?? NO_CATALOG_ROWS;
 
   useEffect(() => {
     if (isOpen) {
@@ -180,7 +167,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
       setActiveIndex(0);
     } else {
       setQuery("");
-      setCatalogResults([]);
+      setDebouncedQuery("");
       setFilter("all");
       // Hand focus back to whatever opened the palette (search button, page).
       const el = restoreFocus.current;
@@ -203,25 +190,26 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
 
   // LeetCode numbers for the sheet rows on screen (the catalog search only
   // covers rows that also matched it).
-  const filteredSlugKey = filtered.slice(0, 50).map((p) => p.title_slug).join(",");
-  useEffect(() => {
-    const missing = filteredSlugKey.split(",").filter((s) => s && !(s in sheetNumbers));
-    if (missing.length === 0) return;
-    let cancelled = false;
-    getCatalogBySlugs(missing)
-      .then((rows) => {
-        if (cancelled || rows.length === 0) return;
-        setSheetNumbers((prev) => {
-          const next = { ...prev };
-          for (const r of rows) if (r.question_id) next[r.title_slug] = r.question_id;
-          return next;
-        });
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [filteredSlugKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const filteredSlugKey = useMemo(
+    () =>
+      Array.from(new Set(filtered.slice(0, 50).map((p) => p.title_slug)))
+        .sort()
+        .join(","),
+    [filtered]
+  );
+  const catalogRowsQuery = useCachedQuery(
+    isOpen && filteredSlugKey ? ["catalog-by-slugs", filteredSlugKey] : null,
+    () => getCatalogBySlugs(filteredSlugKey.split(",")),
+    { freshForMs: 10 * 60_000 }
+  );
+  const catalogRows = catalogRowsQuery.data ?? NO_CATALOG_ROWS;
+  const sheetNumbers = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const r of catalogRows) {
+      if (r.question_id) map[r.title_slug] = r.question_id;
+    }
+    return map;
+  }, [catalogRows]);
 
   const combined = useMemo(() => {
     const map = new Map<string, ProblemHit>();

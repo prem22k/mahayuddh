@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { Plus, Copy, Check, Search, GitFork } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -18,6 +18,7 @@ import { getCatalogBySlugs } from "@/lib/data/problems";
 import {
   getMyNotes,
   getSharedWithMe,
+  getNoteById,
   createNote,
   updateNoteContent,
   setNoteVisibility,
@@ -28,9 +29,15 @@ import {
 import { dataErrorMessage } from "@/lib/data/errors";
 import { titleFromSlug } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { NotebookNoteSummary, SharedResource, NoteVisibility } from "@/types/database";
+import { NotebookNoteSummary, SharedResource, NoteVisibility, Problem } from "@/types/database";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
 type Tab = "mine" | "vault" | "shared" | "impact";
+
+const NO_NOTES: NotebookNoteSummary[] = [];
+const NO_SHARED: NotebookNoteSummary[] = [];
+const NO_VAULT: SharedResource[] = [];
+const NO_CATALOG_ROWS: Problem[] = [];
 
 /** Stitch filter chip: bordered pill, indigo dot for pattern filters, 44px hit area on mobile. */
 function FilterChip({
@@ -81,15 +88,29 @@ function CountChip({ n, active }: { n: number; active: boolean }) {
 
 export default function NotebookPage() {
   const { user, profile } = useAuth();
+  const invalidate = useInvalidate();
   const [tab, setTab] = useState<Tab>("mine");
-  const [notes, setNotes] = useState<NotebookNoteSummary[]>([]);
-  const [shared, setShared] = useState<NotebookNoteSummary[]>([]);
-  const [vault, setVault] = useState<SharedResource[]>([]);
-  const [loading, setLoading] = useState(true);
-  // Only the first load replaces the page with a skeleton; a reload after a
-  // save or delete refreshes the lists in place.
-  const [loadedOnce, setLoadedOnce] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const myNotesQuery = useCachedQuery(["my-notes"], getMyNotes);
+  const sharedWithMeQuery = useCachedQuery(["shared-with-me"], getSharedWithMe);
+  const vaultQuery = useCachedQuery(["shared-resources"], () => getSharedResources());
+
+  const notes = myNotesQuery.data ?? NO_NOTES;
+  const shared = sharedWithMeQuery.data ?? NO_SHARED;
+  const vault = vaultQuery.data ?? NO_VAULT;
+
+  const loading = myNotesQuery.isLoading || sharedWithMeQuery.isLoading || vaultQuery.isLoading;
+  const hasError =
+    (myNotesQuery.error && myNotesQuery.data === undefined) ||
+    (sharedWithMeQuery.error && sharedWithMeQuery.data === undefined) ||
+    (vaultQuery.error && vaultQuery.data === undefined);
+  const loadError = hasError ? "Couldn't load notebook. Retry." : null;
+
+  const handleRetry = () => {
+    void myNotesQuery.refresh();
+    void sharedWithMeQuery.refresh();
+    void vaultQuery.refresh();
+  };
 
   // Editor only needs id/visibility/fork_from/owner_id — all present on the
   // list shape. Body is fetched on open (lib/data/notebook.ts FULL_COLUMNS).
@@ -107,38 +128,13 @@ export default function NotebookPage() {
   const [patternFilter, setPatternFilter] = useState("All");
   const [vaultFilter, setVaultFilter] = useState("All");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [bodyCache, setBodyCache] = useState<Record<string, string>>({});
-  const [selectedLoading, setSelectedLoading] = useState(false);
-  const [bodyRetry, setBodyRetry] = useState(0);
-  // Linked-problem number + title for notes that carry a problem_slug. Purely
-  // decorative lookups: a failed fetch falls back to the slug-derived title.
-  const [problems, setProblems] = useState<Record<string, NoteProblem>>({});
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      // No per-call .catch(() => []) here: a silent [] would render as
-      // "you have no notes" instead of an honest retry (Step 0 hazard 4).
-      const [mine, sharedNotes, vaultItems] = await Promise.all([
-        getMyNotes(),
-        getSharedWithMe(),
-        getSharedResources(),
-      ]);
-      setNotes(mine);
-      setShared(sharedNotes);
-      setVault(vaultItems);
-    } catch (err) {
-      setLoadError(dataErrorMessage(err, "Couldn't load notebook. Retry."));
-    } finally {
-      setLoading(false);
-      setLoadedOnce(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const noteDetailQuery = useCachedQuery(
+    selectedId ? ["note-by-id", selectedId] : null,
+    () => getNoteById(selectedId as string)
+  );
+  const selectedBody = noteDetailQuery.data?.body_md ?? (noteDetailQuery.isLoading ? undefined : "");
+  const selectedLoading = noteDetailQuery.isLoading;
 
   // /vault redirects here (Step 4 + Step 13): deep-link straight to the tab.
   // Read from window in an effect rather than useSearchParams, which would
@@ -149,24 +145,30 @@ export default function NotebookPage() {
     }
   }, []);
 
-  useEffect(() => {
-    const slugs = Array.from(
-      new Set([...notes, ...shared].map((n) => n.problem_slug).filter((s): s is string => !!s))
-    );
-    if (slugs.length === 0) return;
-    let cancelled = false;
-    getCatalogBySlugs(slugs)
-      .then((rows) => {
-        if (cancelled) return;
-        const map: Record<string, NoteProblem> = {};
-        for (const r of rows) map[r.title_slug] = { number: r.question_id || null, title: r.title };
-        setProblems(map);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [notes, shared]);
+  const slugKey = useMemo(
+    () =>
+      Array.from(
+        new Set([...notes, ...shared].map((n) => n.problem_slug).filter((s): s is string => !!s))
+      )
+        .sort()
+        .join(","),
+    [notes, shared]
+  );
+  const catalogQuery = useCachedQuery(
+    slugKey ? ["catalog-by-slugs", slugKey] : null,
+    () => getCatalogBySlugs(slugKey.split(",")),
+    { freshForMs: 10 * 60_000 }
+  );
+  const catalogRows = catalogQuery.data ?? NO_CATALOG_ROWS;
+  const problems = useMemo(() => {
+    const map: Record<string, NoteProblem> = {};
+    for (const r of catalogRows) {
+      const p = { number: r.question_id || null, title: r.title };
+      map[r.title_slug] = p;
+      map[r.title_slug.toLowerCase()] = p;
+    }
+    return map;
+  }, [catalogRows]);
 
   const problemFor = (slug: string | null): NoteProblem | null =>
     slug ? (problems[slug.toLowerCase()] ?? { number: null, title: titleFromSlug(slug) }) : null;
@@ -184,10 +186,12 @@ export default function NotebookPage() {
     setTitle(n.title);
     setVisibility(n.visibility);
     setFormError(null);
-    // Body excluded from list views (§65): fetch full note on open.
-    const { getNoteById } = await import("@/lib/data/notebook");
-    const full = await getNoteById(n.id).catch(() => null);
-    setBody(full?.body_md ?? "");
+    if (n.id === selectedId && noteDetailQuery.data?.body_md !== undefined) {
+      setBody(noteDetailQuery.data.body_md);
+    } else {
+      const full = await getNoteById(n.id).catch(() => null);
+      setBody(full?.body_md ?? "");
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -212,9 +216,11 @@ export default function NotebookPage() {
       setEditing(null);
       setTitle("");
       setBody("");
-      setBodyCache({});
       setShowEditor(false);
-      await load();
+      void myNotesQuery.refresh();
+      void sharedWithMeQuery.refresh();
+      void noteDetailQuery.refresh();
+      await invalidate("my-notes", "shared-with-me", "note-by-id");
     } catch (err) {
       setFormError(dataErrorMessage(err, "Couldn't save note."));
     } finally {
@@ -228,6 +234,8 @@ export default function NotebookPage() {
       await shareNoteWith(noteId, shareName);
       setShareName("");
       setFormError(null);
+      void sharedWithMeQuery.refresh();
+      await invalidate("shared-with-me");
     } catch (err) {
       setFormError(dataErrorMessage(err, "Couldn't share."));
     }
@@ -273,26 +281,6 @@ export default function NotebookPage() {
 
   const selected = notes.find((n) => n.id === selectedId) ?? null;
 
-  useEffect(() => {
-    if (!selected || bodyCache[selected.id] !== undefined) return;
-    let cancelled = false;
-    setSelectedLoading(true);
-    import("@/lib/data/notebook").then(({ getNoteById }) =>
-      getNoteById(selected.id)
-        .then((full) => {
-          if (cancelled) return;
-          setBodyCache((c) => ({ ...c, [selected.id]: full?.body_md ?? "" }));
-        })
-        .catch(() => {})
-        .finally(() => {
-          if (!cancelled) setSelectedLoading(false);
-        })
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [selected, bodyCache, bodyRetry]);
-
   const selectNote = (id: string) => {
     setSelectedId(id);
     // Below lg the reader expands inside the tapped card: keep its top in view.
@@ -303,7 +291,7 @@ export default function NotebookPage() {
     }
   };
 
-  if (loading && !loadedOnce) return <NotebookSkeleton />;
+  if (loading) return <NotebookSkeleton />;
 
   const tabs: { id: Tab; label: React.ReactNode; count?: number }[] = [
     { id: "mine", label: "My notes", count: notes.length },
@@ -353,8 +341,8 @@ export default function NotebookPage() {
 
   const noteReaderProps = (n: NotebookNoteSummary) => ({
     note: n,
-    body: bodyCache[n.id],
-    loading: selectedLoading,
+    body: n.id === selectedId ? selectedBody : undefined,
+    loading: n.id === selectedId && selectedLoading,
     problem: problemFor(n.problem_slug),
     isOwner: user?.id === n.owner_id,
     onEdit: () => {
@@ -364,12 +352,12 @@ export default function NotebookPage() {
     onDelete: async () => {
       if (window.confirm("Delete this note?")) {
         await deleteNote(n.id);
-        setSelectedId(null);
-        setBodyCache({});
-        await load();
+        if (selectedId === n.id) setSelectedId(null);
+        void myNotesQuery.refresh();
+        await invalidate("my-notes", "shared-with-me", "note-by-id");
       }
     },
-    onRetryBody: () => setBodyRetry((r) => r + 1),
+    onRetryBody: () => void noteDetailQuery.refresh(),
     shareName,
     onShareNameChange: setShareName,
     onShare: () => handleShare(n.id),
@@ -422,7 +410,7 @@ export default function NotebookPage() {
         </div>
       </div>
 
-      {loadError && <ErrorCard message={loadError} onRetry={load} />}
+      {loadError && <ErrorCard message={loadError} onRetry={handleRetry} />}
 
       {tab === "mine" && (
         <div className="flex flex-col gap-4">
@@ -638,7 +626,8 @@ export default function NotebookPage() {
                         await copyVaultToNotebook(r.id);
                         setCopiedId(r.id);
                         setTimeout(() => setCopiedId(null), 2000);
-                        await load();
+                        void myNotesQuery.refresh();
+                        await invalidate("my-notes");
                       } catch {
                         // logged-out: vault rows still stay readable
                       }

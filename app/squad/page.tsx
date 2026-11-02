@@ -230,7 +230,7 @@ export default function SquadPage() {
       setShowCreate(false);
       setSelectedSquadId(squad.id);
       await refreshProfile();
-      await invalidate("my-squads", "squad-detail", "home-squad");
+      await invalidate("my-squads", "squad-detail", "home-squad", "active-squad-members");
     } catch (err) {
       setFormError(dataErrorMessage(err, "Couldn't create squad. Try again."));
     } finally {
@@ -251,7 +251,7 @@ export default function SquadPage() {
       setShowJoin(false);
       setSelectedSquadId(squad.id);
       await refreshProfile();
-      await invalidate("my-squads", "squad-detail", "home-squad");
+      await invalidate("my-squads", "squad-detail", "home-squad", "active-squad-members");
     } catch (err) {
       setFormError(dataErrorMessage(err, "Couldn't join squad. Check the code."));
     } finally {
@@ -264,7 +264,7 @@ export default function SquadPage() {
       await switchActiveSquad(id);
       setSelectedSquadId(id);
       await refreshProfile();
-      await invalidate("my-squads", "squad-detail", "home-squad");
+      await invalidate("my-squads", "squad-detail", "home-squad", "active-squad-members");
       setShowSwitcher(false);
     } catch (err) {
       setActionError(dataErrorMessage(err, "Couldn't switch squad. Try again."));
@@ -278,7 +278,7 @@ export default function SquadPage() {
       await leaveSquad(activeId, user.id);
       setSelectedSquadId(null);
       await refreshProfile();
-      await invalidate("my-squads", "squad-detail", "home-squad");
+      await invalidate("my-squads", "squad-detail", "home-squad", "active-squad-members");
     } catch (err) {
       setActionError(dataErrorMessage(err, "Couldn't leave squad. Try again."));
     }

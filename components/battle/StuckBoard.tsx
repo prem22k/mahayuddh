@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -30,7 +30,6 @@ import {
   setStuckRequestStatus,
   deleteStuckRequest,
 } from "@/lib/data/stuck";
-import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { StuckAssistant } from "@/components/ai/StuckAssistant";
@@ -44,6 +43,10 @@ import {
 import { relativeDays, daysBetween, titleFromSlug } from "@/lib/format";
 import { getCatalogBySlugs } from "@/lib/data/problems";
 import type { StuckRequest, StuckReply, StuckLevel, StuckVisibility, Problem } from "@/types/database";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
+
+const NO_STUCK_REQUESTS: StuckRequest[] = [];
+const NO_CATALOG_ROWS: Problem[] = [];
 
 /**
  * Stuck request surface (09): help at the level asked for, no more.
@@ -56,46 +59,61 @@ export function StuckBoard() {
   const { profile } = useAuth();
   const activeSquadId = profile?.active_squad_id ?? null;
   const [tab, setTab] = useState<"open" | "mine">("open");
-  const [open, setOpen] = useState<StuckRequest[]>([]);
-  const [mine, setMine] = useState<StuckRequest[]>([]);
-  const [titles, setTitles] = useState<Map<string, Problem>>(new Map());
   const [manualExpanded, setManualExpanded] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const invalidate = useInvalidate();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const [openRows, myRows] = await Promise.all([
-        getOpenStuckRequests(),
-        getMyStuckRequests(),
-      ]);
-      setOpen(openRows);
-      setMine(myRows);
-      const slugs = Array.from(
-        new Set([...openRows, ...myRows].map((r) => r.problem_slug))
-      ).slice(0, 60);
-      if (slugs.length > 0) {
-        const catalog = await getCatalogBySlugs(slugs).catch(() => []);
-        setTitles(new Map(catalog.map((c) => [c.title_slug, c])));
-      }
-    } catch (err) {
-      setLoadError(dataErrorMessage(err, "Couldn't load stuck requests."));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const openRequestsQuery = useCachedQuery(
+    ["open-stuck-requests"],
+    getOpenStuckRequests,
+    { freshForMs: 10_000 }
+  );
+  const myRequestsQuery = useCachedQuery(
+    ["my-stuck-requests"],
+    getMyStuckRequests,
+    { freshForMs: 10_000 }
+  );
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const open = openRequestsQuery.data ?? NO_STUCK_REQUESTS;
+  const mine = myRequestsQuery.data ?? NO_STUCK_REQUESTS;
+
+  const slugKey = useMemo(
+    () =>
+      Array.from(new Set([...open, ...mine].map((r) => r.problem_slug)))
+        .slice(0, 60)
+        .sort()
+        .join(","),
+    [open, mine]
+  );
+  const catalogQuery = useCachedQuery(
+    slugKey ? ["catalog-by-slugs", slugKey] : null,
+    () => getCatalogBySlugs(slugKey.split(",")),
+    { freshForMs: 10 * 60_000 }
+  );
+  const catalogRows = catalogQuery.data ?? NO_CATALOG_ROWS;
+  const titles = useMemo(
+    () => new Map(catalogRows.map((c) => [c.title_slug, c])),
+    [catalogRows]
+  );
+
+  const loading = openRequestsQuery.isLoading || myRequestsQuery.isLoading;
+  const hasError =
+    (openRequestsQuery.error && openRequestsQuery.data === undefined) ||
+    (myRequestsQuery.error && myRequestsQuery.data === undefined);
+  const loadError = hasError ? "Couldn't load stuck requests." : null;
+
+  const handleRefresh = async () => {
+    await Promise.all([
+      openRequestsQuery.refresh(),
+      myRequestsQuery.refresh(),
+      invalidate("open-stuck-requests", "my-stuck-requests"),
+    ]);
+  };
 
   if (loading) return <StuckBoardSkeleton />;
 
   if (loadError) {
-    return <ErrorCard message={loadError} onRetry={load} />;
+    return <ErrorCard message={loadError} onRetry={handleRefresh} />;
   }
 
   const rows = tab === "open" ? open : mine;
@@ -164,7 +182,7 @@ export function StuckBoard() {
                   setManualExpanded((prev) => (prev === r.id ? `collapsed-${r.id}` : r.id))
                 }
                 squadId={activeSquadId}
-                onRefresh={load}
+                onRefresh={handleRefresh}
                 onNotice={setNotice}
               />
             ))
