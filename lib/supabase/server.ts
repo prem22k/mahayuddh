@@ -10,7 +10,7 @@ interface CookieToSet {
 /**
  * Explicit cookie attributes for the Supabase session cookie.
  *
- * @supabase/ssr 0.5.2's built-in default is `{ path: "/", sameSite: "lax",
+ * @supabase/ssr's built-in default (unchanged through 0.12) is `{ path: "/", sameSite: "lax",
  * httpOnly: false, maxAge: 400d }` — no `secure` flag at all. Without it, a
  * session cookie is transmitted over plain HTTP, which makes every
  * cookie-authenticated state change replayable by anyone who can see the
