@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 
 import {
   checkCrossOriginRequest,
+  csrfVerdict,
   isDeclaredCrossSite,
   normalizeOrigin,
   parseAllowedOrigins,
@@ -41,6 +42,89 @@ import { randomInviteCode, CODE_ALPHABET, CODE_LENGTH } from "../../lib/security
 import { ANALYTICS_EVENTS } from "../../lib/analyticsEvents.ts";
 
 // ── 1. CSRF / cross-origin ───────────────────────────────────────────────────
+
+// The verdict proxy.ts actually applies: origin check plus the Sec-Fetch-Site
+// backstop. Regression: the backstop used to run on every request, so any
+// link clicked on another site (Sec-Fetch-Site: cross-site) got a 403 JSON
+// body instead of the page, and the allowlisted bookmarklet was refused.
+describe("csrfVerdict", () => {
+  const base = {
+    origin: null,
+    secFetchSite: null,
+    requestOrigin: "https://mahayuddh.vercel.app",
+    allowedOrigins: ["https://leetcode.com"],
+    hasBearer: false,
+  };
+
+  it("allows a page navigation arriving from another site", () => {
+    for (const pathname of ["/", "/welcome", "/squad/join/ABC123", "/auth/callback"]) {
+      const v = csrfVerdict({ ...base, method: "GET", pathname, secFetchSite: "cross-site" });
+      assert.equal(v.ok, true, `cross-site GET ${pathname} must render, not 403`);
+    }
+  });
+
+  it("allows a cross-site read of the API (GET/HEAD/OPTIONS are not CSRF-able)", () => {
+    for (const method of ["GET", "HEAD", "OPTIONS"]) {
+      const v = csrfVerdict({ ...base, method, pathname: "/api/health", secFetchSite: "cross-site" });
+      assert.equal(v.ok, true, method);
+    }
+  });
+
+  it("allows the allowlisted bookmarklet POST, which browsers mark cross-site", () => {
+    const v = csrfVerdict({
+      ...base,
+      method: "POST",
+      pathname: "/api/sync/solved-slugs",
+      origin: "https://leetcode.com",
+      secFetchSite: "cross-site",
+    });
+    assert.equal(v.ok, true);
+  });
+
+  it("allows a same-origin API POST", () => {
+    const v = csrfVerdict({
+      ...base,
+      method: "POST",
+      pathname: "/api/battles",
+      origin: "https://mahayuddh.vercel.app",
+      secFetchSite: "same-origin",
+    });
+    assert.equal(v.ok, true);
+  });
+
+  it("allows a non-browser client (no Origin, no Sec-Fetch-Site)", () => {
+    const v = csrfVerdict({ ...base, method: "POST", pathname: "/api/cron/streak-nudges" });
+    assert.equal(v.ok, true);
+  });
+
+  it("REJECTS a cross-site API POST whose Origin was stripped", () => {
+    const v = csrfVerdict({ ...base, method: "POST", pathname: "/api/battles", secFetchSite: "cross-site" });
+    assert.equal(v.ok, false);
+  });
+
+  it("REJECTS a cross-site API POST from a hostile origin", () => {
+    const v = csrfVerdict({
+      ...base,
+      method: "POST",
+      pathname: "/api/battles",
+      origin: "https://evil.example",
+      secFetchSite: "cross-site",
+    });
+    assert.equal(v.ok, false);
+  });
+
+  it("lets a bearer-authenticated request through the backstop", () => {
+    const v = csrfVerdict({
+      ...base,
+      method: "POST",
+      pathname: "/api/sync/leetcode",
+      origin: "null",
+      secFetchSite: "cross-site",
+      hasBearer: true,
+    });
+    assert.equal(v.ok, true);
+  });
+});
 
 describe("checkCrossOriginRequest", () => {
   const base = {

@@ -132,6 +132,36 @@ export function checkCrossOriginRequest(input: CrossOriginCheckInput): CrossOrig
   return bearerBypass(input, `origin not allowed: ${origin}`);
 }
 
+/**
+ * The full CSRF verdict proxy.ts applies: the Origin check above, then the
+ * Sec-Fetch-Site backstop.
+ *
+ * The backstop exists for one shape: a state-changing API request whose
+ * Origin header is absent, which `checkCrossOriginRequest` lets through as a
+ * presumed non-browser client. If the browser declared that request
+ * cross-site, it was a browser after all and the Origin was stripped, so it is
+ * refused. The backstop must not touch anything else:
+ * - reads and page navigations are exempt, and a link clicked on another site
+ *   is always `Sec-Fetch-Site: cross-site` (applying it there turned every
+ *   inbound link, auth email and share link into a 403)
+ * - an allowlisted Origin is cross-site by definition (the LeetCode
+ *   bookmarklet)
+ * - a bearer-authenticated request is CSRF-immune
+ */
+export function csrfVerdict(input: CrossOriginCheckInput): CrossOriginVerdict {
+  const verdict = checkCrossOriginRequest(input);
+  if (!verdict.ok) return verdict;
+  if ((verdict.reason ?? "").startsWith(BEARER_BYPASS_PREFIX)) return verdict;
+
+  const exempt =
+    SAFE_METHODS.has(input.method.toUpperCase()) || !input.pathname.startsWith("/api");
+  const hadOrigin = Boolean(input.origin?.trim());
+  if (!exempt && !hadOrigin && isDeclaredCrossSite(input.secFetchSite)) {
+    return { ok: false, reason: "sec-fetch-site: cross-site with no origin" };
+  }
+  return verdict;
+}
+
 /** Reason prefix marking a pass granted by the bearer bypass (never a block). */
 export const BEARER_BYPASS_PREFIX = "bearer-present";
 
