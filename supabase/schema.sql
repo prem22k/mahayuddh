@@ -23,8 +23,8 @@
 -- and then re-append the seed block at the bottom, because a schema-only dump
 -- carries no rows.
 --
--- pg_dump output is correct but not re-runnable: 131 bare ADD CONSTRAINT, 118
--- bare CREATE POLICY and 68 bare CREATE INDEX statements all fail on a second
+-- pg_dump output is correct but not re-runnable: 135 bare ADD CONSTRAINT, 122
+-- bare CREATE POLICY and 104 bare CREATE INDEX statements all fail on a second
 -- run. The script wraps the constraints in pg_constraint-guarded DO blocks,
 -- prefixes the policies with DROP POLICY IF EXISTS, and adds IF NOT EXISTS to the
 -- indexes. CREATE OR REPLACE FUNCTION / TRIGGER and CREATE TABLE IF NOT EXISTS are
@@ -34,6 +34,15 @@
 -- the auth schema stubbed) with zero errors, after which all 15 RPCs and 43 tables
 -- the app calls existed, and a trigger was observed firing rather than merely
 -- being present.
+-- Last regenerated 2026-11-02 from the local stack (`db dump --local`) after
+-- applying every migration through 20261102000002; the previous dump predated
+-- 20261004000000-08, so a fresh install had no leaderboard snapshots, no
+-- notification prefs and none of the function-grant hardening. The privilege
+-- blocks after the seed rows restore what a dump cannot express. Verified in a
+-- rolled-back transaction: starting from Supabase's default grants (anon could
+-- execute all 66 public functions and read every profiles column), replaying
+-- this file leaves exactly the 13 app RPCs executable and the encrypted
+-- LeetCode session unreadable, with zero errors.
 -- The versioned migrations in supabase/migrations/ remain the source of truth;
 -- this file is what a fresh install runs.
 -- ============================================================
@@ -221,6 +230,41 @@ COMMENT ON FUNCTION "public"."attribute_join"("p_referral_token" "text", "p_squa
 
 
 
+CREATE OR REPLACE FUNCTION "public"."complete_challenge_from_battle"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+declare
+  s public.suggestions%rowtype;
+begin
+  update public.suggestions
+     set status = 'completed',
+         completed_at = now()
+   where id = new.challenge_id
+     and to_user = new.user_id
+     and status = 'pending'
+  returning * into s;
+
+  if found then
+    insert into public.feed_events (user_id, event_type, squad_id, problem_title, problem_slug, difficulty, object_id)
+    values (
+      new.user_id,
+      'complete',
+      (select active_squad_id from public.profiles where id = new.user_id),
+      s.problem_title,
+      lower(s.problem_slug),
+      s.difficulty,
+      s.id
+    );
+  end if;
+
+  return new;
+end $$;
+
+
+ALTER FUNCTION "public"."complete_challenge_from_battle"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."count_referral_open"("p_referral_id" "uuid") RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -356,6 +400,7 @@ ALTER FUNCTION "public"."create_discussion_reply"("p_discussion_id" "uuid", "p_b
 
 CREATE OR REPLACE FUNCTION "public"."default_leaderboard_segment"("p_user" "uuid" DEFAULT NULL::"uuid") RETURNS "text"
     LANGUAGE "sql" STABLE
+    SET "search_path" TO 'public'
     AS $$
   select case
     when p_user is null then 'rising'
@@ -373,6 +418,7 @@ ALTER FUNCTION "public"."default_leaderboard_segment"("p_user" "uuid") OWNER TO 
 
 CREATE OR REPLACE FUNCTION "public"."discussion_is_actionable"("p_body" "text") RETURNS boolean
     LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO 'public'
     AS $$
   select
     -- A question, or something the reader could be told to do.
@@ -395,6 +441,7 @@ COMMENT ON FUNCTION "public"."discussion_is_actionable"("p_body" "text") IS '§5
 
 CREATE OR REPLACE FUNCTION "public"."discussion_rate_limit"() RETURNS integer
     LANGUAGE "sql" STABLE
+    SET "search_path" TO 'public'
     AS $$
   -- Per hour. Posting a problem-linked discussion is a considered act; a
   -- per-minute limit would only stop bursts of the same thing.
@@ -407,6 +454,7 @@ ALTER FUNCTION "public"."discussion_rate_limit"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."enforce_ai_ladder_ceiling"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
     AS $$
 declare
   rank int;
@@ -763,6 +811,7 @@ COMMENT ON FUNCTION "public"."gate_social"("p_squad_id" "uuid") IS '§58 social 
 
 CREATE OR REPLACE FUNCTION "public"."generate_squad_code"() RETURNS "text"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
     AS $$
 declare
   alphabet constant text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -813,7 +862,7 @@ CREATE OR REPLACE FUNCTION "public"."get_ranked_feed"("p_scope" "text", "p_squad
         where r.reporter_id = p_viewer and r.event_id = fe.id
       )
     order by fe.created_at desc
-    limit greatest(coalesce(p_limit, 30), 1)
+    limit least(greatest(coalesce(p_limit, 30), 1), 100)
   )
   select
     s.id, s.user_id, s.event_type, s.problem_title, s.problem_slug, s.difficulty,
@@ -922,7 +971,7 @@ CREATE OR REPLACE FUNCTION "public"."global_leaderboard"("p_segment" "text" DEFA
       else true
     end
   order by segment_value desc, username asc
-  limit greatest(coalesce(p_limit, 25), 1)
+  limit least(greatest(coalesce(p_limit, 25), 1), 100)
   offset greatest(coalesce(p_offset, 0), 0)
 $$;
 
@@ -936,6 +985,7 @@ COMMENT ON FUNCTION "public"."global_leaderboard"("p_segment" "text", "p_pattern
 
 CREATE OR REPLACE FUNCTION "public"."global_post_min_solves"() RETURNS integer
     LANGUAGE "sql" STABLE
+    SET "search_path" TO 'public'
     AS $$
   select 3
 $$;
@@ -962,24 +1012,26 @@ ALTER FUNCTION "public"."guard_product_admin"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."in_quiet_hours"("p_at" timestamp with time zone DEFAULT "now"()) RETURNS boolean
     LANGUAGE "sql" STABLE
+    SET "search_path" TO 'public'
     AS $$
-  -- 22:00–08:00 UTC. Contest reminders and goal nudges respect it; a direct
-  -- challenge from a person you know does not, because ignoring somebody who
-  -- just challenged you is its own kind of noise.
-  select extract(hour from p_at at time zone 'UTC') >= 22
-      or extract(hour from p_at at time zone 'UTC') < 8
+  -- Quiet hours in squad-local default (Asia/Kolkata, no DST):
+  -- 22:00-08:00 IST. p_at carries its instant; only the wall-clock reading
+  -- changes vs the old UTC version.
+  select (extract(hour from p_at at time zone 'Asia/Kolkata') >= 22
+       or extract(hour from p_at at time zone 'Asia/Kolkata') < 8);
 $$;
 
 
 ALTER FUNCTION "public"."in_quiet_hours"("p_at" timestamp with time zone) OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."in_quiet_hours"("p_at" timestamp with time zone) IS '§37 low-noise default: 22:00-08:00 UTC. Advisory nudges check this; direct person-to-person notices do not.';
+COMMENT ON FUNCTION "public"."in_quiet_hours"("p_at" timestamp with time zone) IS 'Batchable notification kinds (goal/recap/contest) are suppressed 22:00-08:00 squad-local (default Asia/Kolkata). Direct challenges bypass by design.';
 
 
 
 CREATE OR REPLACE FUNCTION "public"."lock_suggestion_parties"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
     AS $$
 begin
   if new.from_user is distinct from old.from_user
@@ -1154,6 +1206,7 @@ COMMENT ON FUNCTION "public"."my_referral_links"("p_user" "uuid") IS 'Loop D: on
 
 CREATE OR REPLACE FUNCTION "public"."normalize_leetcode_username"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
     AS $$
 begin
   if new.leetcode_username is not null then
@@ -1264,7 +1317,8 @@ begin
   values (
     new.to_user,
     'challenge',
-    'Someone challenged you',
+    coalesce('@' || (select username from public.profiles where id = new.from_user), 'Someone')
+      || ' challenged you',
     coalesce(new.problem_title, 'A problem') || ' — beat their time or take it on.',
     '/c/' || new.id::text,
     new.from_user,
@@ -1274,13 +1328,6 @@ begin
 
   -- §37: a challenge is one of the two explicitly good notifications and it is
   -- directed at one person, so it ignores quiet hours.
-  --
-  -- Deliberately no push() call from the trigger. A Postgres trigger cannot
-  -- call lib/push.ts, and the alternatives — an http extension or a queue — are
-  -- not worth it for one row. The row written above IS the queue: the app
-  -- reads unread notifications and delivers pushes (lib/data/notifications.ts).
-  -- That also means a push failure cannot roll back the challenge.
-
   return new;
 end $$;
 
@@ -1466,6 +1513,7 @@ COMMENT ON FUNCTION "public"."owns_note"("p_note_id" "uuid", "p_user" "uuid") IS
 
 CREATE OR REPLACE FUNCTION "public"."preserve_attempted_on_manual_import"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
     AS $$
 begin
   if tg_op = 'UPDATE'
@@ -1711,6 +1759,7 @@ ALTER FUNCTION "public"."refresh_note_fork_count"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."reply_rate_limit"() RETURNS integer
     LANGUAGE "sql" STABLE
+    SET "search_path" TO 'public'
     AS $$
   select 20
 $$;
@@ -1860,6 +1909,7 @@ ALTER FUNCTION "public"."sync_review_queue_from_battle"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."sync_suggestion_message"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
     AS $$
 begin
   if tg_op = 'INSERT' then
@@ -2231,6 +2281,8 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "invited_by" "uuid",
     "joined_via_referral" "uuid",
     "username_lower" "text" GENERATED ALWAYS AS ("lower"("username")) STORED,
+    "streak_updated_at" timestamp with time zone,
+    CONSTRAINT "profiles_avatar_url_check" CHECK ((("avatar_url" IS NULL) OR (("avatar_url" ~~ 'https://%'::"text") AND ("char_length"("avatar_url") <= 2048) AND (("avatar_url" = 'https://assets.leetcode.com'::"text") OR ("avatar_url" ~~ 'https://assets.leetcode.com/%'::"text") OR ("avatar_url" = 'https://leetcode.com'::"text") OR ("avatar_url" ~~ 'https://leetcode.com/%'::"text") OR ("avatar_url" = 'https://lh3.googleusercontent.com'::"text") OR ("avatar_url" ~~ 'https://lh3.googleusercontent.com/%'::"text") OR ("avatar_url" = 'https://avatars.githubusercontent.com'::"text") OR ("avatar_url" ~~ 'https://avatars.githubusercontent.com/%'::"text"))))),
     CONSTRAINT "profiles_objective_check" CHECK ((("objective" IS NULL) OR ("objective" = ANY (ARRAY['internship'::"text", 'fulltime'::"text", 'consistency'::"text"])))),
     CONSTRAINT "profiles_stats_nonnegative" CHECK (((COALESCE("contest_rating", (0)::double precision) >= (0)::double precision) AND (COALESCE("streak", 0) >= 0) AND (COALESCE("total_easy", 0) >= 0) AND (COALESCE("total_medium", 0) >= 0) AND (COALESCE("total_hard", 0) >= 0) AND (COALESCE("contest_attended", 0) >= 0)))
 );
@@ -2297,7 +2349,7 @@ CREATE OR REPLACE VIEW "public"."content_impact" AS
 ALTER VIEW "public"."content_impact" OWNER TO "postgres";
 
 
-COMMENT ON VIEW "public"."content_impact" IS '§56 Loop C: one row per (fork, target problem). solved_at is null unless the forker solved that problem within 30 days of copying, so the attribution is a bounded claim rather than a permanent one.';
+COMMENT ON VIEW "public"."content_impact" IS 'Intentional SECURITY DEFINER: fork-chain attribution over RLS-scoped notes; exposes fork relationships and public usernames only.';
 
 
 
@@ -2431,6 +2483,24 @@ CREATE TABLE IF NOT EXISTS "public"."follows" (
 ALTER TABLE "public"."follows" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."leaderboard_snapshots" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "scope" "text" NOT NULL,
+    "metric" "text" NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "rank" integer NOT NULL,
+    "value" integer NOT NULL,
+    "snapshot_date" "date" DEFAULT CURRENT_DATE NOT NULL,
+    CONSTRAINT "leaderboard_snapshots_metric_check" CHECK ((("char_length"("metric") >= 1) AND ("char_length"("metric") <= 64))),
+    CONSTRAINT "leaderboard_snapshots_rank_check" CHECK (("rank" >= 1)),
+    CONSTRAINT "leaderboard_snapshots_scope_check" CHECK ((("char_length"("scope") >= 1) AND ("char_length"("scope") <= 64))),
+    CONSTRAINT "leaderboard_snapshots_scope_metric_check" CHECK ((("scope" <> ''::"text") AND ("metric" <> ''::"text")))
+);
+
+
+ALTER TABLE "public"."leaderboard_snapshots" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."list_problems" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "list_id" "uuid" NOT NULL,
@@ -2471,7 +2541,7 @@ CREATE TABLE IF NOT EXISTS "public"."notifications" (
     "dedupe_key" "text",
     CONSTRAINT "notifications_body_check" CHECK ((("body" IS NULL) OR ("char_length"("body") <= 500))),
     CONSTRAINT "notifications_deep_link_check" CHECK ((("deep_link" IS NULL) OR ("deep_link" ~ '^/[A-Za-z0-9/_?=&%-]*$'::"text"))),
-    CONSTRAINT "notifications_kind_check" CHECK (("kind" = ANY (ARRAY['challenge'::"text", 'challenge_completed'::"text", 'goal'::"text", 'revenge'::"text", 'recap'::"text", 'contest'::"text"]))),
+    CONSTRAINT "notifications_kind_check" CHECK (("kind" = ANY (ARRAY['challenge'::"text", 'challenge_completed'::"text", 'goal'::"text", 'revenge'::"text", 'recap'::"text", 'contest'::"text", 'nudge'::"text"]))),
     CONSTRAINT "notifications_title_check" CHECK ((("char_length"("title") >= 1) AND ("char_length"("title") <= 140)))
 );
 
@@ -2583,6 +2653,7 @@ CREATE TABLE IF NOT EXISTS "public"."shared_resources" (
     "fork_of" "uuid",
     "fork_count" integer DEFAULT 0 NOT NULL,
     CONSTRAINT "shared_resources_category_check" CHECK (("category" = ANY (ARRAY['Template'::"text", 'Interview Log'::"text", 'Cheat Sheet'::"text", 'Article'::"text"]))),
+    CONSTRAINT "shared_resources_external_url_check" CHECK ((("external_url" IS NULL) OR (("external_url" ~~ 'https://%'::"text") AND ("char_length"("external_url") <= 2048)))),
     CONSTRAINT "shared_resources_visibility_check" CHECK (("visibility" = ANY (ARRAY['squad'::"text", 'public'::"text"])))
 );
 
@@ -2681,8 +2752,12 @@ CREATE TABLE IF NOT EXISTS "public"."squad_seasons" (
     "status" "text" DEFAULT 'active'::"text" NOT NULL,
     "created_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "objective_target" integer,
+    "objective_pattern" "text",
     CONSTRAINT "squad_seasons_name_check" CHECK ((("char_length"("name") >= 1) AND ("char_length"("name") <= 80))),
     CONSTRAINT "squad_seasons_objective_check" CHECK ((("objective" IS NULL) OR ("char_length"("objective") <= 500))),
+    CONSTRAINT "squad_seasons_objective_pattern_check" CHECK ((("objective_pattern" IS NULL) OR (("char_length"("objective_pattern") >= 1) AND ("char_length"("objective_pattern") <= 80)))),
+    CONSTRAINT "squad_seasons_objective_target_check" CHECK ((("objective_target" IS NULL) OR ("objective_target" > 0))),
     CONSTRAINT "squad_seasons_status_check" CHECK (("status" = ANY (ARRAY['upcoming'::"text", 'active'::"text", 'complete'::"text"]))),
     CONSTRAINT "squad_seasons_window_check" CHECK ((("ends_at" IS NULL) OR ("ends_at" >= "starts_at")))
 );
@@ -2910,7 +2985,7 @@ CREATE OR REPLACE VIEW "public"."teacher_stats" AS
 ALTER VIEW "public"."teacher_stats" OWNER TO "postgres";
 
 
-COMMENT ON VIEW "public"."teacher_stats" IS '§22 reputation as five dimensions with no total. Verified solves / Teaching / Helpfulness / Consistency / Impact. There is deliberately no aggregate column and no rank — a single score creates false precision and invites gaming.';
+COMMENT ON VIEW "public"."teacher_stats" IS 'Intentional SECURITY DEFINER: aggregates cross-user rows (battles own-row RLS, owner-scoped notes) that INVOKER would silently undercount; exposes counts plus public usernames only. anon SELECT required by logged-out public portfolios.';
 
 
 
@@ -2923,6 +2998,20 @@ CREATE TABLE IF NOT EXISTS "public"."user_blocks" (
 
 
 ALTER TABLE "public"."user_blocks" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."user_notification_prefs" (
+    "user_id" "uuid" NOT NULL,
+    "push_enabled" boolean DEFAULT true NOT NULL,
+    "challenge" boolean DEFAULT true NOT NULL,
+    "squad" boolean DEFAULT true NOT NULL,
+    "practice" boolean DEFAULT true NOT NULL,
+    "contests" boolean DEFAULT true NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."user_notification_prefs" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."user_problem_status" (
@@ -3154,6 +3243,18 @@ BEGIN
                  WHERE conname = 'follows_pkey' AND conrelid = '"public"."follows"'::regclass) THEN
     ALTER TABLE "public"."follows"
     ADD CONSTRAINT "follows_pkey" PRIMARY KEY ("follower_id", "followed_id");
+  END IF;
+END
+$guard$;
+
+
+
+DO $guard$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                 WHERE conname = 'leaderboard_snapshots_pkey' AND conrelid = '"public"."leaderboard_snapshots"'::regclass) THEN
+    ALTER TABLE "public"."leaderboard_snapshots"
+    ADD CONSTRAINT "leaderboard_snapshots_pkey" PRIMARY KEY ("id");
   END IF;
 END
 $guard$;
@@ -3631,6 +3732,18 @@ $guard$;
 DO $guard$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                 WHERE conname = 'user_notification_prefs_pkey' AND conrelid = '"public"."user_notification_prefs"'::regclass) THEN
+    ALTER TABLE "public"."user_notification_prefs"
+    ADD CONSTRAINT "user_notification_prefs_pkey" PRIMARY KEY ("user_id");
+  END IF;
+END
+$guard$;
+
+
+
+DO $guard$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
                  WHERE conname = 'user_problem_status_notes_cap' AND conrelid = '"public"."user_problem_status"'::regclass) THEN
     ALTER TABLE "public"."user_problem_status"
     ADD CONSTRAINT "user_problem_status_notes_cap" CHECK ((("notes" IS NULL) OR ("octet_length"("notes") <= 5000))) NOT VALID;
@@ -3796,6 +3909,10 @@ CREATE INDEX IF NOT EXISTS "feed_events_user_id_idx" ON "public"."feed_events" U
 
 
 
+CREATE INDEX IF NOT EXISTS "feed_reports_discussion_id_idx" ON "public"."feed_reports" USING "btree" ("discussion_id");
+
+
+
 CREATE UNIQUE INDEX IF NOT EXISTS "feed_reports_discussion_unique" ON "public"."feed_reports" USING "btree" ("reporter_id", "discussion_id") WHERE ("discussion_id" IS NOT NULL);
 
 
@@ -3813,6 +3930,14 @@ CREATE INDEX IF NOT EXISTS "follows_followed_idx" ON "public"."follows" USING "b
 
 
 CREATE INDEX IF NOT EXISTS "follows_follower_id_idx" ON "public"."follows" USING "btree" ("follower_id");
+
+
+
+CREATE INDEX IF NOT EXISTS "leaderboard_snapshots_lookup_idx" ON "public"."leaderboard_snapshots" USING "btree" ("scope", "metric", "snapshot_date" DESC);
+
+
+
+CREATE UNIQUE INDEX IF NOT EXISTS "leaderboard_snapshots_once_per_day" ON "public"."leaderboard_snapshots" USING "btree" ("scope", "metric", "snapshot_date", "user_id");
 
 
 
@@ -3889,6 +4014,10 @@ CREATE INDEX IF NOT EXISTS "problems_difficulty_idx" ON "public"."problems" USIN
 
 
 CREATE INDEX IF NOT EXISTS "problems_question_id_idx" ON "public"."problems" USING "btree" ("question_id");
+
+
+
+CREATE INDEX IF NOT EXISTS "problems_topics_gin_idx" ON "public"."problems" USING "gin" ("topics");
 
 
 
@@ -4093,6 +4222,10 @@ CREATE OR REPLACE TRIGGER "append_problem_event_on_battle_end" AFTER UPDATE OF "
 
 
 CREATE OR REPLACE TRIGGER "assert_referral_referrer_is_member" BEFORE INSERT ON "public"."squad_referrals" FOR EACH ROW EXECUTE FUNCTION "public"."assert_referral_referrer_is_member"();
+
+
+
+CREATE OR REPLACE TRIGGER "complete_challenge_on_battle_solved" AFTER UPDATE ON "public"."battles" FOR EACH ROW WHEN ((("old"."outcome" IS DISTINCT FROM "new"."outcome") AND ("new"."outcome" = 'solved'::"text") AND ("new"."challenge_id" IS NOT NULL))) EXECUTE FUNCTION "public"."complete_challenge_from_battle"();
 
 
 
@@ -4458,6 +4591,18 @@ BEGIN
                  WHERE conname = 'follows_follower_id_fkey' AND conrelid = '"public"."follows"'::regclass) THEN
     ALTER TABLE "public"."follows"
     ADD CONSTRAINT "follows_follower_id_fkey" FOREIGN KEY ("follower_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+  END IF;
+END
+$guard$;
+
+
+
+DO $guard$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                 WHERE conname = 'leaderboard_snapshots_user_id_fkey' AND conrelid = '"public"."leaderboard_snapshots"'::regclass) THEN
+    ALTER TABLE "public"."leaderboard_snapshots"
+    ADD CONSTRAINT "leaderboard_snapshots_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
   END IF;
 END
 $guard$;
@@ -4995,6 +5140,18 @@ $guard$;
 DO $guard$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                 WHERE conname = 'user_notification_prefs_user_id_fkey' AND conrelid = '"public"."user_notification_prefs"'::regclass) THEN
+    ALTER TABLE "public"."user_notification_prefs"
+    ADD CONSTRAINT "user_notification_prefs_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+  END IF;
+END
+$guard$;
+
+
+
+DO $guard$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
                  WHERE conname = 'user_problem_status_user_id_fkey' AND conrelid = '"public"."user_problem_status"'::regclass) THEN
     ALTER TABLE "public"."user_problem_status"
     ADD CONSTRAINT "user_problem_status_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
@@ -5146,6 +5303,11 @@ CREATE POLICY "Generators delete own recaps" ON "public"."squad_recaps" FOR DELE
 
 DROP POLICY IF EXISTS "Generators update own recaps" ON "public"."squad_recaps";
 CREATE POLICY "Generators update own recaps" ON "public"."squad_recaps" FOR UPDATE USING ((( SELECT "auth"."uid"() AS "uid") = "generated_by")) WITH CHECK ((( SELECT "auth"."uid"() AS "uid") = "generated_by"));
+
+
+
+DROP POLICY IF EXISTS "Leaderboard snapshots publicly readable" ON "public"."leaderboard_snapshots";
+CREATE POLICY "Leaderboard snapshots publicly readable" ON "public"."leaderboard_snapshots" FOR SELECT USING (true);
 
 
 
@@ -5614,6 +5776,11 @@ CREATE POLICY "Users manage own battles" ON "public"."battles" USING ((( SELECT 
 
 
 
+DROP POLICY IF EXISTS "Users manage own notification prefs" ON "public"."user_notification_prefs";
+CREATE POLICY "Users manage own notification prefs" ON "public"."user_notification_prefs" USING ((( SELECT "auth"."uid"() AS "uid") = "user_id")) WITH CHECK ((( SELECT "auth"."uid"() AS "uid") = "user_id"));
+
+
+
 DROP POLICY IF EXISTS "Users manage own review queue" ON "public"."review_queue";
 CREATE POLICY "Users manage own review queue" ON "public"."review_queue" USING ((( SELECT "auth"."uid"() AS "uid") = "user_id")) WITH CHECK ((( SELECT "auth"."uid"() AS "uid") = "user_id"));
 
@@ -5704,6 +5871,9 @@ ALTER TABLE "public"."feed_reports" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."follows" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."leaderboard_snapshots" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."list_problems" ENABLE ROW LEVEL SECURITY;
@@ -5809,6 +5979,9 @@ ALTER TABLE "public"."sync_rate_limits" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."user_blocks" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."user_notification_prefs" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "public"."user_problem_status" ENABLE ROW LEVEL SECURITY;
 
 
@@ -5822,86 +5995,85 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."ai_calls_remaining"("p_squad" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."ai_calls_remaining"("p_squad" "uuid") TO "service_role";
 GRANT ALL ON FUNCTION "public"."ai_calls_remaining"("p_squad" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."ai_calls_remaining"("p_squad" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."ai_calls_remaining"("p_squad" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."append_problem_event_on_battle_end"() TO "anon";
-GRANT ALL ON FUNCTION "public"."append_problem_event_on_battle_end"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."append_problem_event_on_battle_end"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."append_problem_event_on_battle_end"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."assert_referral_referrer_is_member"() TO "anon";
-GRANT ALL ON FUNCTION "public"."assert_referral_referrer_is_member"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."assert_referral_referrer_is_member"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."assert_referral_referrer_is_member"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."assert_triage_label_needs_admin"() TO "anon";
-GRANT ALL ON FUNCTION "public"."assert_triage_label_needs_admin"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."assert_triage_label_needs_admin"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."assert_triage_label_needs_admin"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."attribute_join"("p_referral_token" "text", "p_squad_id" "uuid", "p_user_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."attribute_join"("p_referral_token" "text", "p_squad_id" "uuid", "p_user_id" "uuid") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."attribute_join"("p_referral_token" "text", "p_squad_id" "uuid", "p_user_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."attribute_join"("p_referral_token" "text", "p_squad_id" "uuid", "p_user_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."count_referral_open"("p_referral_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."count_referral_open"("p_referral_id" "uuid") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."complete_challenge_from_battle"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."complete_challenge_from_battle"() TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."count_referral_open"("p_referral_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."count_referral_open"("p_referral_id" "uuid") TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."create_discussion"("p_problem_slug" "text", "p_pattern_tags" "text"[], "p_body_md" "text", "p_visibility" "text", "p_squad_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."create_discussion"("p_problem_slug" "text", "p_pattern_tags" "text"[], "p_body_md" "text", "p_visibility" "text", "p_squad_id" "uuid") TO "service_role";
 GRANT ALL ON FUNCTION "public"."create_discussion"("p_problem_slug" "text", "p_pattern_tags" "text"[], "p_body_md" "text", "p_visibility" "text", "p_squad_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."create_discussion"("p_problem_slug" "text", "p_pattern_tags" "text"[], "p_body_md" "text", "p_visibility" "text", "p_squad_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."create_discussion"("p_problem_slug" "text", "p_pattern_tags" "text"[], "p_body_md" "text", "p_visibility" "text", "p_squad_id" "uuid") TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."create_discussion_reply"("p_discussion_id" "uuid", "p_body_md" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."create_discussion_reply"("p_discussion_id" "uuid", "p_body_md" "text") TO "service_role";
 GRANT ALL ON FUNCTION "public"."create_discussion_reply"("p_discussion_id" "uuid", "p_body_md" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."create_discussion_reply"("p_discussion_id" "uuid", "p_body_md" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."create_discussion_reply"("p_discussion_id" "uuid", "p_body_md" "text") TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."default_leaderboard_segment"("p_user" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."default_leaderboard_segment"("p_user" "uuid") TO "service_role";
 GRANT ALL ON FUNCTION "public"."default_leaderboard_segment"("p_user" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."default_leaderboard_segment"("p_user" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."default_leaderboard_segment"("p_user" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."discussion_is_actionable"("p_body" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."discussion_is_actionable"("p_body" "text") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."discussion_is_actionable"("p_body" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."discussion_is_actionable"("p_body" "text") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."discussion_rate_limit"() TO "anon";
-GRANT ALL ON FUNCTION "public"."discussion_rate_limit"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."discussion_rate_limit"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."discussion_rate_limit"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."enforce_ai_ladder_ceiling"() TO "anon";
-GRANT ALL ON FUNCTION "public"."enforce_ai_ladder_ceiling"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."enforce_ai_ladder_ceiling"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."enforce_ai_ladder_ceiling"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."enforce_stuck_reply_level"() TO "anon";
-GRANT ALL ON FUNCTION "public"."enforce_stuck_reply_level"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."enforce_stuck_reply_level"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."enforce_stuck_reply_level"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."enforce_stuck_request_limit"() TO "anon";
-GRANT ALL ON FUNCTION "public"."enforce_stuck_request_limit"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."enforce_stuck_request_limit"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."enforce_stuck_request_limit"() TO "service_role";
 
 
@@ -5912,80 +6084,71 @@ GRANT ALL ON TABLE "public"."feed_events" TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."feed_usefulness"("p_event" "public"."feed_events") TO "anon";
-GRANT ALL ON FUNCTION "public"."feed_usefulness"("p_event" "public"."feed_events") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."feed_usefulness"("p_event" "public"."feed_events") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."feed_usefulness"("p_event" "public"."feed_events") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."gate_activation"("p_squad_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."gate_activation"("p_squad_id" "uuid") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."gate_activation"("p_squad_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."gate_activation"("p_squad_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."gate_learning"("p_squad_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."gate_learning"("p_squad_id" "uuid") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."gate_learning"("p_squad_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."gate_learning"("p_squad_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."gate_organic"("p_squad_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."gate_organic"("p_squad_id" "uuid") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."gate_organic"("p_squad_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."gate_organic"("p_squad_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."gate_retention"("p_squad_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."gate_retention"("p_squad_id" "uuid") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."gate_retention"("p_squad_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."gate_retention"("p_squad_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."gate_social"("p_squad_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."gate_social"("p_squad_id" "uuid") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."gate_social"("p_squad_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."gate_social"("p_squad_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."generate_squad_code"() TO "anon";
-GRANT ALL ON FUNCTION "public"."generate_squad_code"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."generate_squad_code"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."generate_squad_code"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."get_ranked_feed"("p_scope" "text", "p_squad_id" "uuid", "p_viewer" "uuid", "p_limit" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."get_ranked_feed"("p_scope" "text", "p_squad_id" "uuid", "p_viewer" "uuid", "p_limit" integer) TO "service_role";
 GRANT ALL ON FUNCTION "public"."get_ranked_feed"("p_scope" "text", "p_squad_id" "uuid", "p_viewer" "uuid", "p_limit" integer) TO "anon";
 GRANT ALL ON FUNCTION "public"."get_ranked_feed"("p_scope" "text", "p_squad_id" "uuid", "p_viewer" "uuid", "p_limit" integer) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."get_ranked_feed"("p_scope" "text", "p_squad_id" "uuid", "p_viewer" "uuid", "p_limit" integer) TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."global_leaderboard"("p_segment" "text", "p_pattern" "text", "p_limit" integer, "p_offset" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."global_leaderboard"("p_segment" "text", "p_pattern" "text", "p_limit" integer, "p_offset" integer) TO "service_role";
 GRANT ALL ON FUNCTION "public"."global_leaderboard"("p_segment" "text", "p_pattern" "text", "p_limit" integer, "p_offset" integer) TO "anon";
 GRANT ALL ON FUNCTION "public"."global_leaderboard"("p_segment" "text", "p_pattern" "text", "p_limit" integer, "p_offset" integer) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."global_leaderboard"("p_segment" "text", "p_pattern" "text", "p_limit" integer, "p_offset" integer) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."global_post_min_solves"() TO "anon";
-GRANT ALL ON FUNCTION "public"."global_post_min_solves"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."global_post_min_solves"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."global_post_min_solves"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."guard_product_admin"() TO "anon";
-GRANT ALL ON FUNCTION "public"."guard_product_admin"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."guard_product_admin"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."guard_product_admin"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."in_quiet_hours"("p_at" timestamp with time zone) TO "anon";
-GRANT ALL ON FUNCTION "public"."in_quiet_hours"("p_at" timestamp with time zone) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."in_quiet_hours"("p_at" timestamp with time zone) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."in_quiet_hours"("p_at" timestamp with time zone) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."lock_suggestion_parties"() TO "anon";
-GRANT ALL ON FUNCTION "public"."lock_suggestion_parties"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."lock_suggestion_parties"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."lock_suggestion_parties"() TO "service_role";
 
 
@@ -5995,222 +6158,202 @@ GRANT ALL ON FUNCTION "public"."mark_solved_from_leetcode"("p_user_id" "uuid", "
 
 
 
+REVOKE ALL ON FUNCTION "public"."my_content_impact"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."my_content_impact"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."my_content_impact"() TO "anon";
 GRANT ALL ON FUNCTION "public"."my_content_impact"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."my_content_impact"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."my_referral_links"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."my_referral_links"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."my_referral_links"() TO "anon";
 GRANT ALL ON FUNCTION "public"."my_referral_links"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."my_referral_links"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."my_referral_links"("p_user" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."my_referral_links"("p_user" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."normalize_leetcode_username"() TO "anon";
-GRANT ALL ON FUNCTION "public"."normalize_leetcode_username"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."normalize_leetcode_username"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."normalize_leetcode_username"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."normalize_username_case"() TO "anon";
-GRANT ALL ON FUNCTION "public"."normalize_username_case"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."normalize_username_case"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."normalize_username_case"() TO "service_role";
 
 
 
 REVOKE ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean) FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean) TO "anon";
-GRANT ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean) TO "service_role";
 
 
 
 REVOKE ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_user" "uuid", "p_need_edit" boolean) FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_user" "uuid", "p_need_edit" boolean) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_user" "uuid", "p_need_edit" boolean) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."notify_challenge_completed"() TO "anon";
-GRANT ALL ON FUNCTION "public"."notify_challenge_completed"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."notify_challenge_completed"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."notify_challenge_completed"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."notify_challenge_received"() TO "anon";
-GRANT ALL ON FUNCTION "public"."notify_challenge_received"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."notify_challenge_received"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."notify_challenge_received"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."notify_contest_reminders"("p_within" interval) TO "anon";
-GRANT ALL ON FUNCTION "public"."notify_contest_reminders"("p_within" interval) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."notify_contest_reminders"("p_within" interval) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."notify_contest_reminders"("p_within" interval) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."notify_goal_near_complete"() TO "anon";
-GRANT ALL ON FUNCTION "public"."notify_goal_near_complete"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."notify_goal_near_complete"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."notify_goal_near_complete"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."notify_recap_ready"() TO "anon";
-GRANT ALL ON FUNCTION "public"."notify_recap_ready"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."notify_recap_ready"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."notify_recap_ready"() TO "service_role";
 
 
 
 REVOKE ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid") FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid") TO "service_role";
 
 
 
 REVOKE ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid", "p_user" "uuid") FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid", "p_user" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid", "p_user" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."preserve_attempted_on_manual_import"() TO "anon";
-GRANT ALL ON FUNCTION "public"."preserve_attempted_on_manual_import"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."preserve_attempted_on_manual_import"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."preserve_attempted_on_manual_import"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."record_first_challenge_milestone"() TO "anon";
-GRANT ALL ON FUNCTION "public"."record_first_challenge_milestone"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."record_first_challenge_milestone"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."record_first_challenge_milestone"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."record_first_member_milestone"() TO "anon";
-GRANT ALL ON FUNCTION "public"."record_first_member_milestone"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."record_first_member_milestone"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."record_first_member_milestone"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."record_goal_complete_milestone"() TO "anon";
-GRANT ALL ON FUNCTION "public"."record_goal_complete_milestone"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."record_goal_complete_milestone"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."record_goal_complete_milestone"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."record_season_complete_milestone"() TO "anon";
-GRANT ALL ON FUNCTION "public"."record_season_complete_milestone"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."record_season_complete_milestone"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."record_season_complete_milestone"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."record_solve_count_milestone"() TO "anon";
-GRANT ALL ON FUNCTION "public"."record_solve_count_milestone"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."record_solve_count_milestone"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."record_solve_count_milestone"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."record_solve_milestone"() TO "anon";
-GRANT ALL ON FUNCTION "public"."record_solve_milestone"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."record_solve_milestone"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."record_solve_milestone"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."refresh_fork_count"("p_source_table" "text", "p_source_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."refresh_fork_count"("p_source_table" "text", "p_source_id" "uuid") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."refresh_fork_count"("p_source_table" "text", "p_source_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."refresh_fork_count"("p_source_table" "text", "p_source_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."refresh_fork_counts_for_note"() TO "anon";
-GRANT ALL ON FUNCTION "public"."refresh_fork_counts_for_note"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."refresh_fork_counts_for_note"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."refresh_fork_counts_for_note"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."refresh_note_fork_count"() TO "anon";
-GRANT ALL ON FUNCTION "public"."refresh_note_fork_count"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."refresh_note_fork_count"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."refresh_note_fork_count"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."reply_rate_limit"() TO "anon";
-GRANT ALL ON FUNCTION "public"."reply_rate_limit"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."reply_rate_limit"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."reply_rate_limit"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."resolve_stuck_on_solve"() TO "anon";
-GRANT ALL ON FUNCTION "public"."resolve_stuck_on_solve"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."resolve_stuck_on_solve"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."resolve_stuck_on_solve"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "anon";
-GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."rls_auto_enable"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."stuck_reminder_allowed"("p_request_id" "uuid", "p_actor" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."stuck_reminder_allowed"("p_request_id" "uuid", "p_actor" "uuid") TO "service_role";
 
 
 
 REVOKE ALL ON FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") TO "service_role";
 GRANT ALL ON FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."suggestion_remind_allowed"("p_suggestion_id" "uuid", "p_actor" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."suggestion_remind_allowed"("p_suggestion_id" "uuid", "p_actor" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."sync_review_queue_from_battle"() TO "anon";
-GRANT ALL ON FUNCTION "public"."sync_review_queue_from_battle"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."sync_review_queue_from_battle"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."sync_review_queue_from_battle"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."sync_suggestion_message"() TO "anon";
-GRANT ALL ON FUNCTION "public"."sync_suggestion_message"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."sync_suggestion_message"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."sync_suggestion_message"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."teachers_for_pattern"("p_pattern" "text", "p_limit" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."teachers_for_pattern"("p_pattern" "text", "p_limit" integer) TO "service_role";
 GRANT ALL ON FUNCTION "public"."teachers_for_pattern"("p_pattern" "text", "p_limit" integer) TO "anon";
 GRANT ALL ON FUNCTION "public"."teachers_for_pattern"("p_pattern" "text", "p_limit" integer) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."teachers_for_pattern"("p_pattern" "text", "p_limit" integer) TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") TO "service_role";
 GRANT ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."validation_scope_has"("p_squad_id" "uuid", "p_row_squad" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."validation_scope_has"("p_squad_id" "uuid", "p_row_squad" "uuid") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."validation_scope_has"("p_squad_id" "uuid", "p_row_squad" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."validation_scope_has"("p_squad_id" "uuid", "p_row_squad" "uuid") TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."validation_squads"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."validation_squads"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."validation_squads"() TO "anon";
 GRANT ALL ON FUNCTION "public"."validation_squads"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."validation_squads"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") TO "service_role";
 GRANT ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") TO "service_role";
 
 
 
@@ -6262,17 +6405,124 @@ GRANT ALL ON TABLE "public"."problem_events" TO "service_role";
 
 
 
-GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN ON TABLE "public"."profiles" TO "anon";
-GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN ON TABLE "public"."profiles" TO "authenticated";
+GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN ON TABLE "public"."profiles" TO "anon";
+GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN ON TABLE "public"."profiles" TO "authenticated";
 GRANT ALL ON TABLE "public"."profiles" TO "service_role";
 
 
 
-GRANT UPDATE("username") ON TABLE "public"."profiles" TO "authenticated";
+GRANT SELECT("id") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("id") ON TABLE "public"."profiles" TO "authenticated";
 
 
 
-GRANT UPDATE("avatar_url") ON TABLE "public"."profiles" TO "authenticated";
+GRANT SELECT("username") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("username"),UPDATE("username") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("leetcode_username") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("leetcode_username") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("avatar_url") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("avatar_url"),UPDATE("avatar_url") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("contest_rating") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("contest_rating") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("global_rank") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("global_rank") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("streak") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("streak") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("total_easy") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("total_easy") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("total_medium") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("total_medium") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("total_hard") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("total_hard") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("last_synced_at") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("last_synced_at") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("created_at") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("created_at") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("leetcode_session_synced_at") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("leetcode_session_synced_at") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("contest_attended") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("contest_attended") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("contest_global_rank") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("contest_global_rank") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("contest_top_percentage") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("contest_top_percentage") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("active_squad_id") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("active_squad_id") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("objective") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("objective") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("is_product_admin") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("is_product_admin") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("invited_by") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("invited_by") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("joined_via_referral") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("joined_via_referral") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("username_lower") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("username_lower") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("streak_updated_at") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("streak_updated_at") ON TABLE "public"."profiles" TO "authenticated";
 
 
 
@@ -6327,6 +6577,12 @@ GRANT ALL ON TABLE "public"."feed_reports" TO "service_role";
 GRANT ALL ON TABLE "public"."follows" TO "anon";
 GRANT ALL ON TABLE "public"."follows" TO "authenticated";
 GRANT ALL ON TABLE "public"."follows" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."leaderboard_snapshots" TO "anon";
+GRANT ALL ON TABLE "public"."leaderboard_snapshots" TO "authenticated";
+GRANT ALL ON TABLE "public"."leaderboard_snapshots" TO "service_role";
 
 
 
@@ -6462,6 +6718,12 @@ GRANT ALL ON TABLE "public"."user_blocks" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."user_notification_prefs" TO "anon";
+GRANT ALL ON TABLE "public"."user_notification_prefs" TO "authenticated";
+GRANT ALL ON TABLE "public"."user_notification_prefs" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."user_problem_status" TO "anon";
 GRANT ALL ON TABLE "public"."user_problem_status" TO "authenticated";
 GRANT ALL ON TABLE "public"."user_problem_status" TO "service_role";
@@ -6485,8 +6747,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQ
 
 
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "postgres";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "anon";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "service_role";
 
 
@@ -6498,6 +6758,13 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
+
+
+
+
+
+
+
 
 -- ============================================================
 -- Seed rows (appended after the schema-only dump, which carries no data).
@@ -6699,3 +6966,78 @@ where ups.status = 'solved'
       and e.problem_slug = ups.problem_slug
       and e.kind = 'solved'
   );
+
+-- ============================================================
+-- Privilege narrowing pg_dump cannot express.
+-- A dump only emits GRANTs, but Supabase's default privileges already give
+-- anon/authenticated ALL on every new table, so on a fresh install the
+-- profiles column grants above would sit on top of a table-level grant and
+-- narrow nothing. Same statements as migration 20261102000002.
+-- ============================================================
+revoke select, update on public.profiles from anon, authenticated;
+
+do $$
+declare
+  cols text;
+begin
+  select string_agg(quote_ident(column_name), ', ' order by ordinal_position)
+    into cols
+  from information_schema.columns
+  where table_schema = 'public'
+    and table_name = 'profiles'
+    and column_name <> 'leetcode_session_encrypted';
+  execute format('grant select (%s) on public.profiles to anon, authenticated', cols);
+end
+$$;
+
+grant update (username, avatar_url) on public.profiles to authenticated;
+
+-- Function EXECUTE narrowing (migrations 20261004000003 and 04, plus the
+-- grants later migrations added). Supabase's platform default privileges give
+-- anon and authenticated EXECUTE on every function at creation time, and a
+-- dump only re-grants, so without this block a fresh install would expose all
+-- public functions instead of the RPCs the app calls. Revoke everything, then
+-- replay exactly the anon/authenticated grants the migrated database holds
+-- (the same GRANT lines the dump emitted above). Triggers fire regardless.
+do $$
+declare
+  r record;
+begin
+  for r in
+    select p.oid
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prokind = 'f'
+  loop
+    execute format('revoke all on function %s from public', r.oid::regprocedure);
+    execute format('revoke all on function %s from anon, authenticated', r.oid::regprocedure);
+  end loop;
+end
+$$;
+
+GRANT ALL ON FUNCTION "public"."ai_calls_remaining"("p_squad" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."ai_calls_remaining"("p_squad" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_discussion"("p_problem_slug" "text", "p_pattern_tags" "text"[], "p_body_md" "text", "p_visibility" "text", "p_squad_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."create_discussion"("p_problem_slug" "text", "p_pattern_tags" "text"[], "p_body_md" "text", "p_visibility" "text", "p_squad_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_discussion_reply"("p_discussion_id" "uuid", "p_body_md" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."create_discussion_reply"("p_discussion_id" "uuid", "p_body_md" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."default_leaderboard_segment"("p_user" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."default_leaderboard_segment"("p_user" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_ranked_feed"("p_scope" "text", "p_squad_id" "uuid", "p_viewer" "uuid", "p_limit" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."get_ranked_feed"("p_scope" "text", "p_squad_id" "uuid", "p_viewer" "uuid", "p_limit" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."global_leaderboard"("p_segment" "text", "p_pattern" "text", "p_limit" integer, "p_offset" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."global_leaderboard"("p_segment" "text", "p_pattern" "text", "p_limit" integer, "p_offset" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."my_content_impact"() TO "anon";
+GRANT ALL ON FUNCTION "public"."my_content_impact"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."my_referral_links"() TO "anon";
+GRANT ALL ON FUNCTION "public"."my_referral_links"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."teachers_for_pattern"("p_pattern" "text", "p_limit" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."teachers_for_pattern"("p_pattern" "text", "p_limit" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."validation_squads"() TO "anon";
+GRANT ALL ON FUNCTION "public"."validation_squads"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") TO "authenticated";
