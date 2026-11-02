@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { getServiceClient } from "@/lib/supabase/service";
+import { siteHost } from "@/lib/siteUrl";
 
 // Default OG card for the app. Pulls real public primer titles so the card is a
 // teaching signal, not a stock banner. SVG is not supported by satori, so this is
@@ -25,7 +26,7 @@ export default async function OpengraphImage() {
     // A card that renders with static copy beats a 500.
   }
 
-  const host = (process.env.NEXT_PUBLIC_SITE_URL || "mahayuddh.app").replace(/^https?:\/\//, "");
+  const host = siteHost();
 
   return new ImageResponse(
     (

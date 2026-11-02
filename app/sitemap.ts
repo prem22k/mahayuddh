@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getServiceClient } from "@/lib/supabase/service";
+import { siteUrl } from "@/lib/siteUrl";
 
 // Only genuinely public, stable, indexable surfaces (Bible §14 + Principle 6).
 // Deliberately absent: /challenge*, /approach*, /practice/[slug] histories,
@@ -8,7 +9,7 @@ import { getServiceClient } from "@/lib/supabase/service";
 export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const base = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const base = siteUrl();
   const now = new Date();
 
   const staticRoutes: MetadataRoute.Sitemap = [

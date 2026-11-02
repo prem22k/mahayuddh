@@ -6,13 +6,14 @@ import {
 } from "@/lib/supabase/service";
 import { normalizeSlugList } from "@/lib/slug";
 import { readJsonBounded } from "@/lib/security/body";
+import { siteUrl } from "@/lib/siteUrl";
 
 // CORS: only allow 1-click sync from leetcode.com + own site, never "*".
 // "*" would let any site POST a victim's token-bearing request surface.
 function corsHeadersFor(request: Request) {
   const origin = request.headers.get("Origin") ?? "";
-  const site = process.env.NEXT_PUBLIC_SITE_URL ?? "";
-  const allowed = origin === "https://leetcode.com" || (site && origin === site);
+  const site = process.env.NEXT_PUBLIC_SITE_URL ? siteUrl() : "";
+  const allowed = origin === "https://leetcode.com" || (site !== "" && origin === site);
   return {
     "Access-Control-Allow-Origin": allowed ? origin : "null",
     Vary: "Origin",

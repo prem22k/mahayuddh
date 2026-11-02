@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { getServiceClient } from "@/lib/supabase/service";
+import { siteHost } from "@/lib/siteUrl";
 
 export const alt = "A squad invite on Mahayuddh";
 export const size = { width: 1200, height: 630 };
@@ -146,7 +147,7 @@ export default async function InviteOpengraphImage({
         </div>
 
         <div style={{ fontSize: 26, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>
-          mahayuddh.app
+          {siteHost()}
         </div>
       </div>
     ),
