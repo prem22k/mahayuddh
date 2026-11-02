@@ -12,6 +12,7 @@ import {
 import { requestPushPermission } from "@/lib/pushPermission";
 import { track } from "@/lib/analytics";
 import type { Notification } from "@/types/database";
+import { Skeleton } from "@/components/ui/States";
 
 /**
  * Notification bell (§37).
@@ -157,7 +158,15 @@ export function NotificationBell() {
             </div>
 
             {loading && items.length === 0 ? (
-              <p className="px-4 py-6 text-[11px] text-text-tertiary text-center">Loading…</p>
+              <ul className="divide-y divide-hairline" aria-label="Loading notifications">
+                {[0, 1, 2].map((i) => (
+                  <li key={i} className="px-4 py-3" aria-hidden>
+                    <Skeleton className="h-3 w-2/3 rounded-xs" />
+                    <Skeleton className="mt-1.5 h-3 w-full rounded-xs" />
+                    <Skeleton className="mt-2 h-2.5 w-24 rounded-xs" />
+                  </li>
+                ))}
+              </ul>
             ) : items.length === 0 ? (
               <p className="px-4 py-6 text-[11px] text-text-tertiary text-center">
                 Nothing here. Notifications only arrive when there is something to do.

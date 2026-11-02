@@ -5,12 +5,12 @@ import Link from "next/link";
 import { Plus, Copy, Check, Search, GitFork } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { MyImpact } from "@/components/impact/MyImpact";
-import { PageLoader } from "@/components/ui/PageLoader";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { Button } from "@/components/ui/Button";
 import { PatternChip } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { EmptyState, ErrorCard } from "@/components/ui/States";
+import { NotebookSkeleton } from "@/components/skeletons/NotebookSkeleton";
 import { NoteReader, type NoteProblem } from "@/components/notebook/NoteReader";
 import { VisibilityTag, shortAgo, visibilityLabel } from "@/components/notebook/noteMeta";
 import { getSharedResources } from "@/lib/data/vault";
@@ -297,7 +297,7 @@ export default function NotebookPage() {
     }
   };
 
-  if (loading) return <PageLoader label="Loading notebook..." />;
+  if (loading) return <NotebookSkeleton />;
 
   const tabs: { id: Tab; label: React.ReactNode; count?: number }[] = [
     { id: "mine", label: "My notes", count: notes.length },

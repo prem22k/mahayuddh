@@ -11,7 +11,8 @@ import { PatternChip, DifficultyBadgeNew, SelfReportedBadge } from "@/components
 import { StatusGlyph, type ProblemStatus } from "@/components/ui/ProblemRow";
 import { CodeBlock } from "@/components/approach/CodeBlock";
 import { InlineText } from "@/components/notebook/RichText";
-import { EmptyState, Skeleton } from "@/components/ui/States";
+import { EmptyState } from "@/components/ui/States";
+import { PrimerSkeleton } from "@/components/skeletons/PrimersSkeleton";
 import { ShareRow } from "@/components/ui/ShareRow";
 import { TrackVisit } from "@/components/ui/TrackVisit";
 import { getPrimer, primerReadMinutes } from "@/lib/data/primers";
@@ -137,17 +138,7 @@ export default function PrimerPage() {
     [starters, statusBySlug]
   );
 
-  if (loading) {
-    return (
-      <div className="mx-auto max-w-reading space-y-4" aria-label="Loading primer">
-        <Skeleton className="h-6 w-32" />
-        <Skeleton className="h-12 w-3/4" />
-        <Skeleton className="h-4 w-1/2" />
-        <Skeleton className="h-40 w-full" />
-        <Skeleton className="h-40 w-full" />
-      </div>
-    );
-  }
+  if (loading) return <PrimerSkeleton />;
   if (notFound || !primer) {
     return (
       <div className="mx-auto max-w-reading">

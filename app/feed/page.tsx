@@ -16,7 +16,8 @@ import {
   type WeekStats,
 } from "@/components/feed/SquadWeekRail";
 import { Avatar } from "@/components/ui/Avatar";
-import { EmptyState, ErrorCard, Skeleton } from "@/components/ui/States";
+import { EmptyState, ErrorCard } from "@/components/ui/States";
+import { FeedListSkeleton, FeedSkeleton } from "@/components/skeletons/FeedSkeleton";
 import { UnderlineTabs } from "@/components/ui/ProblemRow";
 import {
   getDiscussions,
@@ -66,7 +67,7 @@ function weekStats(rows: RankedFeedEvent[]): WeekStats {
 }
 
 export default function FeedPage() {
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const { activeProblem } = useSolving();
   const [tab, setTab] = useState<FeedScope>("squad");
   const [events, setEvents] = useState<RankedFeedEvent[]>([]);
@@ -107,9 +108,12 @@ export default function FeedPage() {
     }
   }, [tab, squadId]);
 
+  // The squad scope needs the profile's squad; loading before auth resolves
+  // would flash the no-squad empty state.
   useEffect(() => {
+    if (authLoading) return;
     void load();
-  }, [load]);
+  }, [load, authLoading]);
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
@@ -155,6 +159,8 @@ export default function FeedPage() {
   const visibleEvents = events.slice(0, visibleCount);
   const stats = useMemo(() => weekStats(squadEvents), [squadEvents]);
   const squadLabel = pulse.name ?? "your squad";
+
+  if (authLoading) return <FeedSkeleton />;
 
   return (
     <div className="flex flex-col gap-6">
@@ -204,11 +210,7 @@ export default function FeedPage() {
           {loadError && <ErrorCard message={loadError} onRetry={() => void load()} />}
 
           {loading ? (
-            <div className="flex flex-col gap-3 md:gap-4" aria-label="Loading feed">
-              {[0, 1, 2].map((i) => (
-                <Skeleton key={i} className="h-28 w-full rounded-lg" />
-              ))}
-            </div>
+            <FeedListSkeleton />
           ) : tab === "platform" ? (
             <div className="flex flex-col gap-3 md:gap-4">
               {platform.length === 0 ? (

@@ -9,7 +9,8 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { Button } from "@/components/ui/Button";
 import { PatternChip } from "@/components/ui/Badge";
-import { EmptyState, ErrorCard, Skeleton } from "@/components/ui/States";
+import { EmptyState, ErrorCard } from "@/components/ui/States";
+import { PrimerListSkeleton } from "@/components/skeletons/PrimersSkeleton";
 import { Primer } from "@/types/database";
 import { cn } from "@/lib/utils";
 
@@ -106,18 +107,7 @@ export function PrimerList() {
     return p.starter_slugs.filter((s) => solvedSlugs.has(s.toLowerCase())).length;
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-8" aria-label="Loading primers">
-        <Skeleton className="h-48 w-full rounded-xl" />
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-14 w-full rounded-md" />
-          <Skeleton className="h-14 w-full rounded-md" />
-          <Skeleton className="h-14 w-full rounded-md" />
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <PrimerListSkeleton />;
   if (loadError) {
     return <ErrorCard message={loadError} onRetry={() => window.location.reload()} />;
   }

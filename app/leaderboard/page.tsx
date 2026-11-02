@@ -27,7 +27,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ConnectLeetCodeModal } from "@/components/modals/ConnectLeetCodeModal";
 import { UserStatsDossierModal } from "@/components/profile/UserStatsDossierModal";
-import { PageLoader } from "@/components/ui/PageLoader";
+import { BoardRowsSkeleton } from "@/components/skeletons/LeaderboardSkeleton";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { FilterChips } from "@/components/ui/ProblemRow";
 import { EmptyState, ErrorCard } from "@/components/ui/States";
@@ -446,7 +446,8 @@ export default function LeaderboardPage() {
         </div>
       </div>
 
-      {!profile?.leetcode_username && (
+      {/* No profile yet while auth resolves; don't flash the connect card. */}
+      {!authLoading && !profile?.leetcode_username && (
         <div className="mt-4 flex flex-col gap-3 rounded-lg border border-hairline bg-surface p-4 md:mt-6 md:flex-row md:items-center md:justify-between md:p-5">
           <div>
             <h2 className="text-lg font-semibold leading-[26px] text-text-primary">
@@ -486,7 +487,7 @@ export default function LeaderboardPage() {
 
       <div className="mt-4 md:mt-6">
         {loading ? (
-          <PageLoader label="Loading leaderboard..." className="h-48" />
+          <BoardRowsSkeleton />
         ) : visibleMembers.length === 0 ? (
           tab === "global" ? (
             <GlobalLeaderboard />

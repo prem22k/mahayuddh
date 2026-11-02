@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeftRight, Check, Copy, NotebookPen, Swords, Trash2 } from "lucide-react";
 import { useParams } from "next/navigation";
-import { PageLoader } from "@/components/ui/PageLoader";
+import { ApproachSkeleton } from "@/components/skeletons/ApproachSkeleton";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { EmptyState, ErrorCard } from "@/components/ui/States";
@@ -116,7 +116,7 @@ export default function ApproachPage() {
     };
   }, []);
 
-  if (loading) return <PageLoader label="Loading approach..." />;
+  if (loading) return <ApproachSkeleton />;
   if (loadError) {
     return (
       <div className="mx-auto max-w-reading">

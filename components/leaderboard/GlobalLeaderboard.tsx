@@ -11,7 +11,7 @@ import {
   type LeaderboardSegment,
 } from "@/lib/data/leaderboard";
 import { dataErrorMessage } from "@/lib/data/errors";
-import { PageLoader } from "@/components/ui/PageLoader";
+import { BoardRowsSkeleton } from "@/components/skeletons/LeaderboardSkeleton";
 import { FilterChips } from "@/components/ui/ProblemRow";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
@@ -121,7 +121,7 @@ export function GlobalLeaderboard() {
       )}
 
       {loading ? (
-        <PageLoader label="Loading..." className="h-32" />
+        <BoardRowsSkeleton />
       ) : rows.length === 0 ? (
         <div className="rounded-lg border border-hairline bg-surface p-10 text-center">
           <p className="text-sm leading-6 text-text-secondary">

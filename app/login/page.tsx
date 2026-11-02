@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { MailCheck } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
-import { PageLoader } from "@/components/ui/PageLoader";
+import { AuthSkeleton } from "@/components/skeletons/AuthSkeleton";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/Button";
 import { AvatarStack } from "@/components/ui/Avatar";
@@ -40,7 +40,7 @@ type Objective = (typeof OBJECTIVES)[number]["value"];
  */
 export default function LoginPage() {
   return (
-    <Suspense fallback={<PageLoader label="Loading..." />}>
+    <Suspense fallback={<AuthSkeleton />}>
       <LoginForm />
     </Suspense>
   );

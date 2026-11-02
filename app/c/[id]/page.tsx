@@ -7,7 +7,7 @@ import { Forward, LogIn, Play, SearchX, Swords, Waypoints } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { Button } from "@/components/ui/Button";
-import { Skeleton } from "@/components/ui/States";
+import { ChallengeLinkSkeleton } from "@/components/skeletons/ChallengeLinkSkeleton";
 import { ChallengePass, type ProblemMeta } from "@/components/challenges/ChallengePass";
 import { ChainTrack, chainNames } from "@/components/challenges/ChainTrack";
 import { fmtClock, ticketOf } from "@/components/challenges/challengeFormat";
@@ -64,24 +64,7 @@ export default function ChallengeDeepLinkPage() {
   // a quiet brand bar; signed in, the shell's <main> already provides them.
   const frame = cn("mx-auto w-full max-w-[780px]", !user && "px-4 pb-12 pt-6 md:pt-10");
 
-  if (loading) {
-    return (
-      <div className={cn(frame, "space-y-4")}>
-        <div className="pass">
-          <div className="pass-body space-y-4">
-            <Skeleton className="h-7 w-56" />
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-48" />
-            <Skeleton className="h-12 w-full" />
-          </div>
-          <div className="pass-stub">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-4 w-20" />
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <ChallengeLinkSkeleton />;
   if (notFound || !item) {
     return (
       <div className={frame}>
