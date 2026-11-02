@@ -64,8 +64,8 @@ function LoginForm() {
 
   // Loop D: arriving on an invite link. The squad is named on the signup form so
   // the account is created *for* something specific rather than in the hope that
-  // something turns up afterwards. Only the code is read here — the join itself
-  // happens on the invite page after the account exists.
+  // something turns up afterwards. Signup joins with this code (the form says
+  // "Joining <squad>"); sign-in still continues to the invite page to confirm.
   const inviteCode = useMemo(() => {
     const m = nextPath.match(/^\/squad\/join\/([A-Za-z0-9]{8})/);
     return m ? m[1].toUpperCase() : null;
@@ -180,11 +180,15 @@ function LoginForm() {
   }
 
   // If user is already logged in, redirect to the intended destination
+  // Already signed in: continue to next. Not while a submit is in flight —
+  // signUp() creates the session before the handler has set up the profile,
+  // created or joined the squad and saved the objective, and redirecting here
+  // cut that work off half way.
   useEffect(() => {
-    if (!authLoading && user) {
+    if (!authLoading && user && !loading) {
       window.location.replace(nextPath);
     }
-  }, [user, authLoading, nextPath]);
+  }, [user, authLoading, nextPath, loading]);
 
   // One-shot notices from the auth flow (recovery bounce, password updated).
   // Read once: ?notice= survives in the address bar, so consuming it on mount
@@ -472,7 +476,35 @@ function LoginForm() {
                 console.warn("Objective save failed; non-blocking:", objErr);
               }
             }
-            window.location.replace(nextPath);
+
+            // Signing up from an invite joins the squad here, through the same
+            // server route the invite page uses. Landing back on the invite page
+            // with a second "Join" button left anyone who navigated away outside
+            // the squad they had just signed up for. On failure the invite page
+            // is still the next stop and can retry.
+            let landing = nextPath;
+            if (inviteCode) {
+              try {
+                const ref = new URL(nextPath, window.location.origin).searchParams.get("ref");
+                const joinRes = await fetch("/api/squads/join", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${authData.session.access_token}`,
+                  },
+                  body: JSON.stringify({ invite_code: inviteCode, ...(ref ? { ref } : {}) }),
+                });
+                if (joinRes.ok) {
+                  landing = "/squad";
+                  track("squad_joined", { via: "invite_signup", referred: Boolean(ref) });
+                } else {
+                  console.warn("Invite join after signup failed; the invite page will retry.");
+                }
+              } catch (joinErr) {
+                console.warn("Invite join after signup failed; the invite page will retry:", joinErr);
+              }
+            }
+            window.location.replace(landing);
             return;
           } else {
             setConfirmEmail(emailAddr);
