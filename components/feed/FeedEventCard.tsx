@@ -314,6 +314,7 @@ export function FeedEventCard({
   viewerId: string | null;
   onChanged: () => void;
 }) {
+  const [now] = useState(() => Date.now());
   const name = ev.actor?.username ?? "Someone";
   const isSelf = viewerId != null && ev.user_id === viewerId;
   const solve = isSolve(ev);
@@ -596,7 +597,7 @@ export function FeedEventCard({
       {usefulness > 0 && (
         <p className="flex items-center gap-2 rounded-xs border border-hairline bg-surface-raised/60 px-2.5 py-1.5 text-xs text-text-secondary">
           <Lightbulb className="h-[15px] w-[15px] shrink-0 text-verified" strokeWidth={1.5} aria-hidden />
-          {actionabilityLabel(usefulness, (Date.now() - new Date(ev.created_at).getTime()) / 3600000)}
+          {actionabilityLabel(usefulness, (now - new Date(ev.created_at).getTime()) / 3600000)}
         </p>
       )}
 
