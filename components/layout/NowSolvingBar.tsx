@@ -44,6 +44,10 @@ interface BattleOutcome {
 
 export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
   const { user, profile, session } = useAuth();
+  // The shell can mount before auth resolves. Until it has, a solve or fail
+  // would skip the write (no user) yet still end the battle, so the ending
+  // actions stay locked.
+  const canEnd = Boolean(user);
   const {
     activeProblem,
     setActiveProblem,
@@ -144,8 +148,10 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
       setScratchpadNote("");
       setBattleId(null);
     }
+    // user?.id: when the dock mounts before auth resolves, start the server
+    // session once the user arrives instead of never.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProblem?.slug]);
+  }, [activeProblem?.slug, user?.id]);
 
   // The per-second tick lives in the provider (performance.now()
   // accumulation); this component only re-renders from `seconds`.
@@ -153,6 +159,16 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
   // Multi-tab leader election: only one tab heartbeats. Tabs announce over a
   // BroadcastChannel and the lowest id wins; others suppress heartbeats but
   // keep counting locally so a leader handoff never loses time.
+  // A page restored from the back/forward cache gets a fresh channel (epoch).
+  const [electionEpoch, setElectionEpoch] = useState(0);
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setElectionEpoch((n) => n + 1);
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") {
       setIsHeartbeatLeader(true);
@@ -162,6 +178,17 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
     const peers = new Set<string>([tabId]);
     let closed = false;
     const channel = new BroadcastChannel("mahayuddh_battle_heartbeat");
+    // Posting on a closed channel throws InvalidStateError. The page keeps
+    // running for a moment after pagehide (the ping interval used to fire into
+    // a channel beforeunload had already closed), so every send is guarded.
+    const send = (msg: { type: "hello" | "ping" | "bye"; id: string }) => {
+      if (closed) return;
+      try {
+        channel.postMessage(msg);
+      } catch {
+        // closed underneath us
+      }
+    };
     const elect = () => {
       if (closed) return;
       const leader = Array.from(peers).sort()[0];
@@ -172,40 +199,30 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
       if (!msg || typeof msg.id !== "string") return;
       if (msg.type === "hello" || msg.type === "ping") {
         peers.add(msg.id);
-        channel.postMessage({ type: "hello", id: tabId });
+        send({ type: "hello", id: tabId });
         elect();
       } else if (msg.type === "bye") {
         peers.delete(msg.id);
         elect();
       }
     };
-    channel.postMessage({ type: "hello", id: tabId });
-    const ping = setInterval(() => {
-      if (!closed) channel.postMessage({ type: "ping", id: tabId });
-    }, 5000);
+    send({ type: "hello", id: tabId });
+    const ping = setInterval(() => send({ type: "ping", id: tabId }), 5000);
     const t = setTimeout(elect, 600);
-    const onUnload = () => {
-      try {
-        channel.postMessage({ type: "bye", id: tabId });
-      } catch {
-        // ignore
-      }
-      channel.close();
-    };
-    window.addEventListener("beforeunload", onUnload);
-    return () => {
+    const shutdown = () => {
+      if (closed) return;
+      send({ type: "bye", id: tabId });
       closed = true;
       clearInterval(ping);
       clearTimeout(t);
-      window.removeEventListener("beforeunload", onUnload);
-      try {
-        channel.postMessage({ type: "bye", id: tabId });
-      } catch {
-        // ignore
-      }
       channel.close();
     };
-  }, []);
+    window.addEventListener("pagehide", shutdown);
+    return () => {
+      window.removeEventListener("pagehide", shutdown);
+      shutdown();
+    };
+  }, [electionEpoch]);
 
   const handleSaveNote = (text: string) => {
     setScratchpadNote(text);
@@ -277,7 +294,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
   }, [outcome]);
 
   const handleComplete = useCallback(async (evidence: "leetcode" | "none" = "none") => {
-    if (!activeProblem || submittingRef.current) return;
+    if (!activeProblem || !user || submittingRef.current) return;
     submittingRef.current = true;
     setSubmitting(true);
     setSaveError(null);
@@ -684,7 +701,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                 />
                 <button
                   onClick={() => handleComplete()}
-                  disabled={submitting}
+                  disabled={submitting || !canEnd}
                   className="h-9 min-w-[112px] rounded-md bg-primary px-4 text-[13px] font-medium text-on-primary transition-colors hover:bg-primary-hover active:bg-primary-pressed disabled:cursor-wait disabled:bg-surface-overlay disabled:text-text-secondary"
                 >
                   {submitting ? "Saving…" : saveError ? "Retry solve" : "Submit solve"}
@@ -693,7 +710,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                   onFail={handleFail}
                   onAbandon={handleAbandon}
                   onReset={() => resetSolving()}
-                  busy={submitting}
+                  busy={submitting || !canEnd}
                 />
               </div>
             </div>
@@ -735,7 +752,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                       setCapsuleMenuOpen(false);
                       handleFail();
                     }}
-                    disabled={submitting}
+                    disabled={submitting || !canEnd}
                     className="flex min-h-[44px] items-center rounded-md px-3 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary disabled:opacity-40"
                   >
                     Mark failed
@@ -745,7 +762,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                       setCapsuleMenuOpen(false);
                       handleAbandon();
                     }}
-                    disabled={submitting}
+                    disabled={submitting || !canEnd}
                     className="flex min-h-[44px] items-center rounded-md px-3 text-left text-sm text-text-secondary hover:bg-surface-overlay hover:text-text-primary disabled:opacity-40"
                   >
                     Abandon
@@ -788,7 +805,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                 </button>
                 <button
                   onClick={() => handleComplete()}
-                  disabled={submitting}
+                  disabled={submitting || !canEnd}
                   aria-label={submitting ? "Saving solve" : saveError ? "Retry solve" : "Submit solve"}
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary transition-colors hover:bg-primary-hover active:bg-primary-pressed disabled:cursor-wait disabled:bg-surface-overlay disabled:text-text-secondary"
                 >
