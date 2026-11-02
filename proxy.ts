@@ -2,8 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import {
   BEARER_BYPASS_PREFIX,
-  checkCrossOriginRequest,
-  isDeclaredCrossSite,
+  csrfVerdict,
   parseAllowedOrigins,
 } from "@/lib/security/crossOrigin";
 import { declaredBodyTooLarge, maxBodyBytesFor } from "@/lib/security/body";
@@ -55,14 +54,14 @@ export async function proxy(request: NextRequest) {
   }
 
   // ── Cross-site request forgery ────────────────────────────────────────────
-  // Fails closed. `checkCrossOriginRequest` resolves the Origin header against
-  // the allowlist; `isDeclaredCrossSite` is the backstop for a browser that
-  // sent Sec-Fetch-Site but no usable Origin, which is the shape of an actual
-  // CSRF attempt and never the shape of the one configured cross-origin caller.
+  // Fails closed for state-changing API requests. `csrfVerdict` resolves the
+  // Origin header against the allowlist and applies the Sec-Fetch-Site
+  // backstop only where it belongs (see its doc comment): navigations from
+  // other sites and the allowlisted bookmarklet origin must pass.
   const secFetchSite = request.headers.get("sec-fetch-site");
   const authHeader = request.headers.get("authorization") ?? "";
   const hasBearer = /^bearer\s+\S+/i.test(authHeader);
-  const originVerdict = checkCrossOriginRequest({
+  const crossSiteDeclared = csrfVerdict({
     method: request.method,
     pathname: request.nextUrl.pathname,
     origin: request.headers.get("origin"),
@@ -71,22 +70,13 @@ export async function proxy(request: NextRequest) {
     allowedOrigins: allowedOrigins(),
     hasBearer,
   });
-  // The backstop catches anonymised requests that passed only for lack of an
-  // origin — but a bearer-present pass is a verdict, not an absence: the
-  // caller authenticated out-of-band, so there is nothing to backstop.
-  const bearerPass =
-    originVerdict.ok && (originVerdict.reason ?? "").startsWith(BEARER_BYPASS_PREFIX);
-  if (bearerPass) {
+  if (crossSiteDeclared.ok && (crossSiteDeclared.reason ?? "").startsWith(BEARER_BYPASS_PREFIX)) {
     logSecurityEvent("csrf.bearer_bypass", {
       method: request.method,
       path: request.nextUrl.pathname,
-      reason: originVerdict.reason,
+      reason: crossSiteDeclared.reason,
     });
   }
-  const crossSiteDeclared =
-    originVerdict.ok && !bearerPass && isDeclaredCrossSite(secFetchSite)
-      ? { ok: false, reason: "sec-fetch-site: cross-site with no allowlisted origin" }
-      : originVerdict;
 
   if (!crossSiteDeclared.ok) {
     logSecurityEvent("csrf.rejected", {
