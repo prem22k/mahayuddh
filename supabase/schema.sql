@@ -35,14 +35,14 @@
 -- the app calls existed, and a trigger was observed firing rather than merely
 -- being present.
 -- Last regenerated 2026-11-02 from the local stack (`db dump --local`) after
--- applying every migration through 20261102000002; the previous dump predated
+-- applying every migration through 20261102000003; the previous dump predated
 -- 20261004000000-08, so a fresh install had no leaderboard snapshots, no
 -- notification prefs and none of the function-grant hardening. The privilege
 -- blocks after the seed rows restore what a dump cannot express. Verified in a
 -- rolled-back transaction: starting from Supabase's default grants (anon could
 -- execute all 66 public functions and read every profiles column), replaying
--- this file leaves exactly the 13 app RPCs executable and the encrypted
--- LeetCode session unreadable, with zero errors.
+-- this file leaves exactly the 13 app RPCs and the 2 notebook policy helpers
+-- executable and the encrypted LeetCode session unreadable, with zero errors.
 -- The versioned migrations in supabase/migrations/ remain the source of truth;
 -- this file is what a fresh install runs.
 -- ============================================================
@@ -6189,6 +6189,8 @@ GRANT ALL ON FUNCTION "public"."normalize_username_case"() TO "service_role";
 
 REVOKE ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean) TO "service_role";
+GRANT ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean) TO "authenticated";
 
 
 
@@ -6224,6 +6226,8 @@ GRANT ALL ON FUNCTION "public"."notify_recap_ready"() TO "service_role";
 
 REVOKE ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid") TO "service_role";
+GRANT ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid") TO "authenticated";
 
 
 
@@ -6996,9 +7000,10 @@ grant update (username, avatar_url) on public.profiles to authenticated;
 -- grants later migrations added). Supabase's platform default privileges give
 -- anon and authenticated EXECUTE on every function at creation time, and a
 -- dump only re-grants, so without this block a fresh install would expose all
--- public functions instead of the RPCs the app calls. Revoke everything, then
--- replay exactly the anon/authenticated grants the migrated database holds
--- (the same GRANT lines the dump emitted above). Triggers fire regardless.
+-- public functions instead of the RPCs and policy helpers the app needs.
+-- Revoke everything, then replay exactly the anon/authenticated grants the
+-- migrated database holds (the same GRANT lines the dump emitted above).
+-- Triggers fire regardless of EXECUTE grants.
 do $$
 declare
   r record;
@@ -7031,6 +7036,10 @@ GRANT ALL ON FUNCTION "public"."my_content_impact"() TO "anon";
 GRANT ALL ON FUNCTION "public"."my_content_impact"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."my_referral_links"() TO "anon";
 GRANT ALL ON FUNCTION "public"."my_referral_links"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."note_shared_with"("p_note_id" "uuid", "p_need_edit" boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."owns_note"("p_note_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."teachers_for_pattern"("p_pattern" "text", "p_limit" integer) TO "anon";
