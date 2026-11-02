@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { CheckCheck, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -13,8 +13,10 @@ import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
 import { GROUP_ICON, dayLabel, groupOf, shortAgo } from "@/components/notifications/notificationMeta";
 import type { Notification } from "@/types/database";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
 const PAGE = 30;
+const NO_NOTIFICATIONS: Notification[] = [];
 
 /** Tell the header bell to re-read its unread list after a change here. */
 function announceChange() {
@@ -27,43 +29,50 @@ function announceChange() {
  * newest first, grouped by day.
  */
 export default function NotificationsPage() {
-  const { user, loading: authLoading } = useAuth();
-  const [items, setItems] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+  const invalidate = useInvalidate();
+
+  const [olderItems, setOlderItems] = useState<Notification[]>([]);
+  const [olderHasMore, setOlderHasMore] = useState<boolean | null>(null);
+  const [olderError, setOlderError] = useState<string | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [marking, setMarking] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const rows = await getNotificationHistory(PAGE);
-      setItems(rows);
-      setHasMore(rows.length === PAGE);
-    } catch (err) {
-      setError(dataErrorMessage(err, "Couldn't load your notifications. Retry."));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const historyQuery = useCachedQuery(
+    userId ? ["notification-history", PAGE] : null,
+    () => getNotificationHistory(PAGE),
+    { freshForMs: 10_000 }
+  );
 
-  useEffect(() => {
-    if (authLoading || !user) return;
-    void load();
-  }, [authLoading, user, load]);
+  const initialItems = historyQuery.data ?? NO_NOTIFICATIONS;
+  const items = useMemo(() => {
+    if (olderItems.length === 0) return initialItems;
+    const seen = new Set(initialItems.map((n) => n.id));
+    return [...initialItems, ...olderItems.filter((n) => !seen.has(n.id))];
+  }, [initialItems, olderItems]);
+
+  const hasMore = olderHasMore !== null ? olderHasMore : ((historyQuery.data?.length ?? 0) === PAGE);
+  const error = olderError || (historyQuery.error && historyQuery.data === undefined
+    ? dataErrorMessage(historyQuery.error, "Couldn't load your notifications. Retry.")
+    : null);
+
+  const handleRetry = () => {
+    setOlderError(null);
+    void historyQuery.refresh();
+  };
 
   const loadOlder = async () => {
     const oldest = items[items.length - 1]?.created_at;
     if (!oldest) return;
     setLoadingOlder(true);
+    setOlderError(null);
     try {
       const rows = await getNotificationHistory(PAGE, oldest);
-      setItems((prev) => [...prev, ...rows]);
-      setHasMore(rows.length === PAGE);
+      setOlderItems((prev) => [...prev, ...rows]);
+      setOlderHasMore(rows.length === PAGE);
     } catch (err) {
-      setError(dataErrorMessage(err, "Couldn't load older notifications. Retry."));
+      setOlderError(dataErrorMessage(err, "Couldn't load older notifications. Retry."));
     } finally {
       setLoadingOlder(false);
     }
@@ -76,8 +85,10 @@ export default function NotificationsPage() {
     const now = new Date().toISOString();
     try {
       await markAllRead();
-      setItems((prev) => prev.map((n) => (n.read_at ? n : { ...n, read_at: now })));
+      void historyQuery.setData((prev) => (prev ?? []).map((n) => (n.read_at ? n : { ...n, read_at: now })));
+      setOlderItems((prev) => prev.map((n) => (n.read_at ? n : { ...n, read_at: now })));
       track("notification_mark_all_read", { from: "history", count: unreadCount });
+      await invalidate("unread-count", "notifications");
       announceChange();
     } finally {
       setMarking(false);
@@ -88,8 +99,12 @@ export default function NotificationsPage() {
     track("notification_clicked", { kind: n.kind, from: "history" });
     if (n.read_at) return;
     const now = new Date().toISOString();
-    setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, read_at: now } : x)));
-    void markRead(n.id).then(announceChange);
+    void historyQuery.setData((prev) => (prev ?? []).map((x) => (x.id === n.id ? { ...x, read_at: now } : x)));
+    setOlderItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, read_at: now } : x)));
+    void markRead(n.id).then(() => {
+      void invalidate("unread-count", "notifications");
+      announceChange();
+    });
   };
 
   const days = useMemo(() => {
@@ -103,7 +118,7 @@ export default function NotificationsPage() {
     return out;
   }, [items]);
 
-  if (authLoading || (loading && items.length === 0 && !error)) return <NotificationsSkeleton />;
+  if (historyQuery.isLoading) return <NotificationsSkeleton />;
 
   return (
     <div className="mx-auto flex w-full max-w-reading flex-col gap-6">
@@ -127,7 +142,7 @@ export default function NotificationsPage() {
         )}
       </div>
 
-      {error && <ErrorCard message={error} onRetry={() => void load()} />}
+      {error && <ErrorCard message={error} onRetry={handleRetry} />}
 
       {!error && items.length === 0 ? (
         <EmptyState

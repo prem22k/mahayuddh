@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bell, BellRing, ChevronRight } from "lucide-react";
 import {
@@ -14,6 +14,10 @@ import { track } from "@/lib/analytics";
 import type { Notification } from "@/types/database";
 import { Skeleton } from "@/components/ui/States";
 import { groupNotifications, shortAgo } from "@/components/notifications/notificationMeta";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
+
+const NO_NOTIFICATIONS: Notification[] = [];
 
 /**
  * Notification bell (§37).
@@ -34,47 +38,56 @@ import { groupNotifications, shortAgo } from "@/components/notifications/notific
  * the same corner the two were drawn on top of each other.
  */
 export function NotificationBell() {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+  const invalidate = useInvalidate();
+
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<Notification[]>([]);
-  const [unread, setUnread] = useState(0);
-  const [loading, setLoading] = useState(false);
   const [pushGranted, setPushGranted] = useState(false);
   // Push must fire once per notification, ever. A ref rather than state: this
   // runs in an effect and a state write there would loop.
   const pushed = useRef<Set<string>>(new Set());
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [rows, count] = await Promise.all([
-        getNotifications(20, { unreadOnly: true }),
-        getUnreadCount(),
-      ]);
-      setItems(rows);
-      setUnread(count);
+  const notificationsQuery = useCachedQuery(
+    userId ? ["notifications", 20, true] : null,
+    () => getNotifications(20, { unreadOnly: true }),
+    // New notifications arrive while the user sits on a page: poll once a
+    // minute while the tab is visible (as before the cache), paused when hidden.
+    { freshForMs: 10_000, pollEveryMs: 60_000 }
+  );
 
-      // Deliver push for anything new, once.
-      for (const n of rows) {
-        if (n.read_at || pushed.current.has(n.id)) continue;
-        pushed.current.add(n.id);
-        // Server-side because it needs the service key and the VAPID private
-        // key. The route takes a notification id rather than arbitrary text, so
-        // it cannot be used as a push relay for content that is not already the
-        // caller's own notification.
-        void fetch("/api/push/deliver", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: n.id }),
-        }).catch(() => {
-          // A failed push is not worth surfacing. The row is still there and
-          // the bell still shows it.
-        });
-        track("notification_delivered", { kind: n.kind, via: "push" });
-      }
-    } finally {
-      setLoading(false);
+  const unreadCountQuery = useCachedQuery(
+    userId ? ["unread-count"] : null,
+    getUnreadCount,
+    { freshForMs: 10_000, pollEveryMs: 60_000 }
+  );
+
+  const items = notificationsQuery.data ?? NO_NOTIFICATIONS;
+  const unread = unreadCountQuery.data ?? 0;
+  const loading = notificationsQuery.isLoading || unreadCountQuery.isLoading;
+
+  // Deliver push for anything new, once.
+  useEffect(() => {
+    const rows = notificationsQuery.data;
+    if (!rows) return;
+    for (const n of rows) {
+      if (n.read_at || pushed.current.has(n.id)) continue;
+      pushed.current.add(n.id);
+      // Server-side because it needs the service key and the VAPID private
+      // key. The route takes a notification id rather than arbitrary text, so
+      // it cannot be used as a push relay for content that is not already the
+      // caller's own notification.
+      void fetch("/api/push/deliver", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: n.id }),
+      }).catch(() => {
+        // A failed push is not worth surfacing. The row is still there and
+        // the bell still shows it.
+      });
+      track("notification_delivered", { kind: n.kind, via: "push" });
     }
-  }, []);
+  }, [notificationsQuery.data]);
 
   // The permission can be granted or revoked outside the page (browser
   // settings), so read it on mount rather than assuming a default.
@@ -84,21 +97,16 @@ export function NotificationBell() {
   }, []);
 
   useEffect(() => {
-    void refresh();
-    // Skip the poll while the tab is hidden: no one is looking, and the
-    // unread count refreshes on return via mount/focus anyway.
-    const t = setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      void refresh();
-    }, 60_000);
     // The history page marks things read too; keep the dot in step with it.
-    const onChanged = () => void refresh();
+    const onChanged = () => {
+      void notificationsQuery.refresh();
+      void unreadCountQuery.refresh();
+    };
     window.addEventListener("notifications-changed", onChanged);
     return () => {
-      clearInterval(t);
       window.removeEventListener("notifications-changed", onChanged);
     };
-  }, [refresh]);
+  }, [notificationsQuery.refresh, unreadCountQuery.refresh]);
 
   const onOpen = () => {
     const next = !open;
@@ -109,18 +117,22 @@ export function NotificationBell() {
   const onItem = (n: Notification) => {
     track("notification_clicked", { kind: n.kind, from: "bell" });
     // Read now leaves the bell; the history page still has it.
-    setItems((prev) => prev.filter((x) => x.id !== n.id));
-    setUnread((u) => Math.max(0, u - 1));
+    void notificationsQuery.setData((prev) => (prev ?? []).filter((x) => x.id !== n.id));
+    void unreadCountQuery.setData((u) => Math.max(0, (u ?? 1) - 1));
     setOpen(false);
-    void markRead(n.id);
+    void markRead(n.id).then(() => {
+      void invalidate("notification-history");
+    });
   };
 
   const onMarkAll = async () => {
     track("notification_mark_all_read", { from: "bell", count: unread });
-    setItems([]);
-    setUnread(0);
+    void notificationsQuery.setData(NO_NOTIFICATIONS);
+    void unreadCountQuery.setData(0);
     await markAllRead();
-    await refresh();
+    void notificationsQuery.refresh();
+    void unreadCountQuery.refresh();
+    void invalidate("notification-history");
   };
 
   const togglePush = async () => {

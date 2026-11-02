@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, ChevronRight, ExternalLink, Plus, RefreshCw, TriangleAlert } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { syncUserProfileStats } from "@/lib/data/profiles";
@@ -28,13 +28,33 @@ import {
 } from "@/components/settings/SettingsCard";
 import { cn } from "@/lib/utils";
 import type { Squad } from "@/types/database";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
-type SquadState =
-  | { status: "loading" }
-  | { status: "ready"; squads: Squad[] }
-  | { status: "error"; message: string };
+const NO_SQUADS: Squad[] = [];
 
 const hh = (h: number) => `${String(h).padStart(2, "0")}:00`;
+
+function readDevicePrefs(): NotificationPrefs | null {
+  try {
+    const raw = localStorage.getItem("mahayuddh.notif");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, boolean>;
+    const pick = (v: unknown, fallback = true) =>
+      typeof v === "boolean" ? v : fallback;
+    return {
+      // New keys first, then the legacy per-device keys they replaced.
+      push_enabled: pick(parsed.push_enabled, pick(parsed.push, true)),
+      challenge: pick(parsed.challenge, true),
+      squad: pick(parsed.squad, parsed.goal != null || parsed.recap != null
+        ? pick(parsed.goal, true) && pick(parsed.recap, true)
+        : true),
+      practice: pick(parsed.practice, pick(parsed.revenge, true)),
+      contests: pick(parsed.contests, pick(parsed.contest, true)),
+    };
+  } catch {
+    return null;
+  }
+}
 
 const squadInitials = (name: string) =>
   name
@@ -46,6 +66,9 @@ const squadInitials = (name: string) =>
 
 export default function ProfilePage() {
   const { user, profile, session, signOut, refreshProfile, loading: authLoading } = useAuth();
+  const userId = user?.id ?? null;
+  const invalidate = useInvalidate();
+
   const [connectOpen, setConnectOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
@@ -55,70 +78,47 @@ export default function ProfilePage() {
   const [revokeOpen, setRevokeOpen] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [revokeError, setRevokeError] = useState<string | null>(null);
-  const [squadState, setSquadState] = useState<SquadState>({ status: "loading" });
   const [pushPerm, setPushPerm] = useState<PushPermissionState | null>(null);
   const [activeSection, setActiveSection] = useState("overview");
 
   // Server prefs with a localStorage offline fallback. The label under the
   // section says honestly where the last write landed.
-  const [notif, setNotif] = useState<NotificationPrefs>({ ...DEFAULT_PREFS });
   const [notifSource, setNotifSource] = useState<"server" | "device">("server");
   const [approachVis, setApproachVis] = useState<"private" | "squad" | "public">("squad");
-  const [prefsLoaded, setPrefsLoaded] = useState(false);
+
+  const mySquadsQuery = useCachedQuery(
+    userId ? ["my-squads"] : null,
+    () => getMySquads(userId as string, profile?.active_squad_id ?? null)
+  );
+  const squads = mySquadsQuery.data?.squads ?? NO_SQUADS;
+
+  const prefsQuery = useCachedQuery(
+    userId ? ["prefs"] : null,
+    getPrefs
+  );
+  const notif = prefsQuery.data ?? readDevicePrefs() ?? DEFAULT_PREFS;
+  const prefsLoaded = prefsQuery.data !== undefined || prefsQuery.error !== undefined;
 
   useEffect(() => {
-    let cancelled = false;
-    const readDevice = (): NotificationPrefs | null => {
+    if (prefsQuery.data) {
       try {
-        const raw = localStorage.getItem("mahayuddh.notif");
-        if (!raw) return null;
-        const parsed = JSON.parse(raw) as Record<string, boolean>;
-        const pick = (v: unknown, fallback = true) =>
-          typeof v === "boolean" ? v : fallback;
-        return {
-          // New keys first, then the legacy per-device keys they replaced.
-          push_enabled: pick(parsed.push_enabled, pick(parsed.push, true)),
-          challenge: pick(parsed.challenge, true),
-          squad: pick(parsed.squad, parsed.goal != null || parsed.recap != null
-            ? pick(parsed.goal, true) && pick(parsed.recap, true)
-            : true),
-          practice: pick(parsed.practice, pick(parsed.revenge, true)),
-          contests: pick(parsed.contests, pick(parsed.contest, true)),
-        };
+        localStorage.setItem("mahayuddh.notif", JSON.stringify(prefsQuery.data));
       } catch {
-        return null;
+        // Mirror is best-effort.
       }
-    };
-    const load = async () => {
-      try {
-        const server = await getPrefs();
-        if (cancelled) return;
-        setNotif(server);
-        setNotifSource("server");
-        try {
-          localStorage.setItem("mahayuddh.notif", JSON.stringify(server));
-        } catch {
-          // Mirror is best-effort.
-        }
-      } catch {
-        if (cancelled) return;
-        const device = readDevice();
-        if (device) setNotif(device);
-        setNotifSource("device");
-      } finally {
-        if (!cancelled) setPrefsLoaded(true);
-      }
-      try {
-        const a = localStorage.getItem("mahayuddh.approachVis");
-        if (!cancelled && (a === "private" || a === "squad" || a === "public")) setApproachVis(a);
-      } catch {
-        // Private mode: prefs just don't persist. The toggles still work.
-      }
-    };
-    void load();
-    return () => {
-      cancelled = true;
-    };
+      setNotifSource("server");
+    } else if (prefsQuery.error) {
+      setNotifSource("device");
+    }
+  }, [prefsQuery.data, prefsQuery.error]);
+
+  useEffect(() => {
+    try {
+      const a = localStorage.getItem("mahayuddh.approachVis");
+      if (a === "private" || a === "squad" || a === "public") setApproachVis(a);
+    } catch {
+      // Private mode: prefs just don't persist. The toggles still work.
+    }
   }, []);
 
   // Browser push permission is per device and separate from the saved pref,
@@ -126,22 +126,6 @@ export default function ProfilePage() {
   useEffect(() => {
     setPushPerm(pushPermissionState());
   }, []);
-
-  const loadSquads = useCallback(async () => {
-    // After auth: a pass with the user but no profile yet would fetch twice.
-    if (!user || authLoading) return;
-    setSquadState({ status: "loading" });
-    try {
-      const mine = await getMySquads(user.id, profile?.active_squad_id ?? null);
-      setSquadState({ status: "ready", squads: mine.squads });
-    } catch (e) {
-      setSquadState({ status: "error", message: dataErrorMessage(e, "Couldn't load your squads. Retry.") });
-    }
-  }, [user, authLoading, profile?.active_squad_id]);
-
-  useEffect(() => {
-    void loadSquads();
-  }, [loadSquads]);
 
   // Scroll spy for the "Jump to" rail (desktop only renders the rail).
   useEffect(() => {
@@ -166,7 +150,7 @@ export default function ProfilePage() {
 
   const saveNotif = (key: keyof NotificationPrefs, value: boolean) => {
     const next = { ...notif, [key]: value };
-    setNotif(next);
+    void prefsQuery.setData(next);
     try {
       localStorage.setItem("mahayuddh.notif", JSON.stringify(next));
     } catch {
@@ -176,7 +160,7 @@ export default function ProfilePage() {
     // honest fallback, and the label says so.
     void savePrefs({ [key]: value } as Partial<NotificationPrefs>)
       .then((server) => {
-        setNotif(server);
+        void prefsQuery.setData(server);
         setNotifSource("server");
         try {
           localStorage.setItem("mahayuddh.notif", JSON.stringify(server));
@@ -205,6 +189,7 @@ export default function ProfilePage() {
     try {
       const ok = await syncUserProfileStats(user.id, profile.leetcode_username);
       await refreshProfile();
+      await invalidate("squad-profiles", "my-statuses", "my-squads");
       setSyncMsg(
         ok
           ? { tone: "ok", text: "Synced just now." }
@@ -285,7 +270,6 @@ export default function ProfilePage() {
   const memberSince = profile?.created_at
     ? new Date(profile.created_at).toLocaleDateString(undefined, { month: "short", year: "numeric" })
     : null;
-  const squads = squadState.status === "ready" ? squadState.squads : [];
   const activeSquad = squads.find((s) => s.id === profile?.active_squad_id) ?? null;
   const publicPath = `/u/${encodeURIComponent(displayName)}`;
 
@@ -615,14 +599,14 @@ export default function ProfilePage() {
               </Link>
             }
           >
-            {squadState.status === "loading" ? (
+            {mySquadsQuery.isLoading ? (
               <ProfileSquadsSkeleton />
-            ) : squadState.status === "error" ? (
+            ) : mySquadsQuery.error && mySquadsQuery.data === undefined ? (
               <div className="flex items-center justify-between gap-3 rounded-lg border border-hairline bg-well p-3">
                 <p role="alert" className="text-xs leading-5 text-text-secondary">
-                  {squadState.message}
+                  {dataErrorMessage(mySquadsQuery.error, "Couldn't load your squads. Retry.")}
                 </p>
-                <button type="button" onClick={() => void loadSquads()} className={outlineAction}>
+                <button type="button" onClick={() => void mySquadsQuery.refresh()} className={outlineAction}>
                   Retry
                 </button>
               </div>
@@ -789,7 +773,14 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      <ConnectLeetCodeModal isOpen={connectOpen} onClose={() => setConnectOpen(false)} onConnected={() => void refreshProfile()} />
+      <ConnectLeetCodeModal
+        isOpen={connectOpen}
+        onClose={() => setConnectOpen(false)}
+        onConnected={async () => {
+          await refreshProfile();
+          await invalidate("squad-profiles", "my-statuses", "my-squads");
+        }}
+      />
 
       {revokeOpen && (
         <ModalShell

@@ -97,7 +97,15 @@ export interface CachedQuery<T> {
 export function useCachedQuery<T>(
   key: QueryKey | null,
   fetcher: () => Promise<T>,
-  options: { freshForMs?: number } = {},
+  options: {
+    freshForMs?: number;
+    /**
+     * Poll every N ms while the tab is visible (paused when hidden). For
+     * long-lived shell widgets such as the notification bell, which never
+     * remount and so would otherwise only refresh on focus.
+     */
+    pollEveryMs?: number;
+  } = {},
 ): CachedQuery<T> {
   const owner = useContext(OwnerContext);
   const authPending = owner === undefined;
@@ -105,6 +113,8 @@ export function useCachedQuery<T>(
 
   const swr = useSWR<T>(swrKey, () => fetcher(), {
     dedupingInterval: options.freshForMs ?? DEFAULT_FRESH_MS,
+    refreshInterval: options.pollEveryMs ?? 0,
+    refreshWhenHidden: false,
   });
 
   const { mutate } = swr;

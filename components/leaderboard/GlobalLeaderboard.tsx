@@ -1,7 +1,7 @@
 "use client";
 
 import { profileHref } from "@/lib/profiles/username";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   LEADERBOARD_SEGMENTS,
@@ -16,8 +16,10 @@ import { FilterChips } from "@/components/ui/ProblemRow";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { boardListCls, boardRankCls, boardRowCls } from "@/components/leaderboard/rowStyles";
+import { useCachedQuery } from "@/lib/cache/query";
 
 const SEGMENT_LABELS = LEADERBOARD_SEGMENTS.map((sg) => sg.label);
+const NO_LEADERBOARD_ROWS: LeaderboardRow[] = [];
 
 /**
  * Global leaderboard segments (§34).
@@ -33,39 +35,39 @@ const SEGMENT_LABELS = LEADERBOARD_SEGMENTS.map((sg) => sg.label);
  * arbitrarily badged.
  */
 export function GlobalLeaderboard() {
-  const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [segment, setSegment] = useState<LeaderboardSegment>("rising");
-  const [pattern, setPattern] = useState("");
+  const [patternInput, setPatternInput] = useState("");
+  const [appliedPattern, setAppliedPattern] = useState("");
   const [page, setPage] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const PAGE = 25;
+  const trimmedPattern = segment === "pattern" && appliedPattern.trim() ? appliedPattern.trim() : null;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await getGlobalLeaderboard({
+  const boardQuery = useCachedQuery(
+    ["global-leaderboard", segment, trimmedPattern, PAGE, page],
+    () =>
+      getGlobalLeaderboard({
         segment,
-        pattern: segment === "pattern" && pattern.trim() ? pattern.trim() : null,
+        pattern: trimmedPattern,
         limit: PAGE,
         offset: page * PAGE,
-      });
-      setRows(res.rows);
-      // The server may override the segment for a first-time viewer; reflect
-      // what was actually returned rather than what was requested.
-      setSegment(res.segment);
-    } catch (err) {
-      setError(dataErrorMessage(err, "Couldn't load the leaderboard."));
-    } finally {
-      setLoading(false);
-    }
-  }, [segment, pattern, page]);
+      })
+  );
 
+  const rows = boardQuery.data?.rows ?? NO_LEADERBOARD_ROWS;
+  const loading = boardQuery.isLoading;
+  const error =
+    boardQuery.error && boardQuery.data === undefined
+      ? dataErrorMessage(boardQuery.error, "Couldn't load the leaderboard.")
+      : null;
+
+  // The server may override the segment for a first-time viewer; reflect
+  // what was actually returned rather than what was requested.
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (boardQuery.data?.segment && boardQuery.data.segment !== segment) {
+      setSegment(boardQuery.data.segment);
+    }
+  }, [boardQuery.data?.segment, segment]);
 
   const meta = LEADERBOARD_SEGMENTS.find((s) => s.id === segment);
 
@@ -87,16 +89,28 @@ export function GlobalLeaderboard() {
       {segment === "pattern" && (
         <div className="flex items-center gap-2">
           <input
-            value={pattern}
+            value={patternInput}
             onChange={(e) => {
-              setPattern(e.target.value);
-              setPage(0);
+              setPatternInput(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                setAppliedPattern(patternInput);
+                setPage(0);
+              }
             }}
             aria-label="Pattern to rank by, for example Graphs"
             placeholder="Pattern, e.g. Graphs"
             className="h-10 min-h-[44px] min-w-0 flex-1 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:min-h-0 md:max-w-xs"
           />
-          <Button variant="secondary" onClick={() => void load()} className="min-h-[44px] md:min-h-0">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setAppliedPattern(patternInput);
+              setPage(0);
+            }}
+            className="min-h-[44px] md:min-h-0"
+          >
             Apply
           </Button>
         </div>
@@ -114,7 +128,7 @@ export function GlobalLeaderboard() {
       {error && (
         <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-error/30 bg-error-tint px-4 py-3">
           <span className="text-sm text-error">{error}</span>
-          <Button variant="secondary" onClick={() => void load()}>
+          <Button variant="secondary" onClick={() => void boardQuery.refresh()}>
             Retry
           </Button>
         </div>
