@@ -1,5 +1,5 @@
-import { PageLoader } from "@/components/ui/PageLoader";
+import { ProfileSkeleton } from "@/components/skeletons/ProfileSkeleton";
 
 export default function ProfileLoading() {
-  return <PageLoader label="Loading profile..." />;
+  return <ProfileSkeleton />;
 }

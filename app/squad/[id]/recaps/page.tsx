@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Archive, ArrowLeft, ArrowRight, CalendarDays, ChevronRight, Lock, NotebookPen } from "lucide-react";
 import { ShareRow } from "@/components/ui/ShareRow";
-import { PageLoader } from "@/components/ui/PageLoader";
+import { SquadRecapsSkeleton } from "@/components/skeletons/SquadRecapsSkeleton";
 import { Button } from "@/components/ui/Button";
 import { ErrorCard } from "@/components/ui/States";
 import { formatDuration } from "@/lib/format";
@@ -72,7 +72,7 @@ export default function SquadRecapsPage() {
     }
   };
 
-  if (loading) return <PageLoader label="Loading recaps..." />;
+  if (loading) return <SquadRecapsSkeleton />;
 
   if (loadError) {
     return <ErrorCard message={loadError} onRetry={() => void load()} />;

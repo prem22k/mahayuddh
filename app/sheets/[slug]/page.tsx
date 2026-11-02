@@ -22,8 +22,8 @@ import {
 import { parseProblemStatusEvent, applyStatusChange } from "@/lib/problemStatusEvent";
 import { DifficultyBadgeNew, PatternChip } from "@/components/ui/Badge";
 import { ProblemLink } from "@/components/ui/ProblemLink";
-import { PageLoader } from "@/components/ui/PageLoader";
-import { EmptyState, Skeleton } from "@/components/ui/States";
+import { EmptyState } from "@/components/ui/States";
+import { SheetSkeleton } from "@/components/skeletons/SheetSkeleton";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { ProblemStatusCell } from "@/components/matrix/ProblemStatusCell";
@@ -70,7 +70,7 @@ function SheetContent() {
   const [highlightedSlug, setHighlightedSlug] = useState<string | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { activeProblem, startSolving } = useSolving();
 
   useEffect(() => {
@@ -79,6 +79,8 @@ function SheetContent() {
   }, [initialCat, initialTopic]);
 
   useEffect(() => {
+    // One load with the caller's statuses, not an anonymous pass first.
+    if (authLoading) return;
     async function loadSheetData() {
       setLoading(true);
       try {
@@ -94,7 +96,7 @@ function SheetContent() {
       }
     }
     loadSheetData();
-  }, [slug, user?.id]);
+  }, [slug, user?.id, authLoading]);
 
   // Squad overlay: distinct solvers per problem from shared statuses. When
   // the read fails (or RLS scopes it away) the toggle stays honest about it
@@ -372,23 +374,7 @@ function SheetContent() {
     return null;
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-8" aria-hidden>
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div className="w-full max-w-md space-y-2">
-            <Skeleton className="h-5 w-36" />
-            <Skeleton className="h-9 w-2/3" />
-            <Skeleton className="h-5 w-full" />
-          </div>
-          <Skeleton className="h-24 w-full md:w-80" />
-        </div>
-        <Skeleton className="h-80 w-full rounded-lg" />
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-64 w-full rounded-lg" />
-      </div>
-    );
-  }
+  if (loading) return <SheetSkeleton />;
 
   const title = list?.title || slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
   const clearFilters = () => {
@@ -959,7 +945,7 @@ function StatusFilterControl({
 
 export default function SheetPage() {
   return (
-    <Suspense fallback={<PageLoader label="Loading roadmap..." />}>
+    <Suspense fallback={<SheetSkeleton />}>
       <SheetContent />
     </Suspense>
   );

@@ -39,7 +39,10 @@ export async function getPrefs(): Promise<NotificationPrefs> {
     .select("push_enabled,challenge,squad,practice,contests")
     .eq("user_id", user.id)
     .maybeSingle();
-  if (error || !data) return { ...DEFAULT_PREFS };
+  // A failed read is not "no row": throwing lets the caller fall back to the
+  // device copy. Returning defaults here overwrote a saved choice with all-on.
+  if (error) throw new Error(error.message || "Couldn't load preferences.");
+  if (!data) return { ...DEFAULT_PREFS };
   return { ...DEFAULT_PREFS, ...(data as NotificationPrefs) };
 }
 

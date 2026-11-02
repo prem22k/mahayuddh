@@ -5,12 +5,12 @@ import Link from "next/link";
 import { Plus, Copy, Check, Search, GitFork } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { MyImpact } from "@/components/impact/MyImpact";
-import { PageLoader } from "@/components/ui/PageLoader";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { Button } from "@/components/ui/Button";
 import { PatternChip } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { EmptyState, ErrorCard } from "@/components/ui/States";
+import { NotebookSkeleton } from "@/components/skeletons/NotebookSkeleton";
 import { NoteReader, type NoteProblem } from "@/components/notebook/NoteReader";
 import { VisibilityTag, shortAgo, visibilityLabel } from "@/components/notebook/noteMeta";
 import { getSharedResources } from "@/lib/data/vault";
@@ -19,7 +19,7 @@ import {
   getMyNotes,
   getSharedWithMe,
   createNote,
-  updateNoteBody,
+  updateNoteContent,
   setNoteVisibility,
   deleteNote,
   shareNoteWith,
@@ -86,6 +86,9 @@ export default function NotebookPage() {
   const [shared, setShared] = useState<NotebookNoteSummary[]>([]);
   const [vault, setVault] = useState<SharedResource[]>([]);
   const [loading, setLoading] = useState(true);
+  // Only the first load replaces the page with a skeleton; a reload after a
+  // save or delete refreshes the lists in place.
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Editor only needs id/visibility/fork_from/owner_id — all present on the
@@ -129,6 +132,7 @@ export default function NotebookPage() {
       setLoadError(dataErrorMessage(err, "Couldn't load notebook. Retry."));
     } finally {
       setLoading(false);
+      setLoadedOnce(true);
     }
   }, []);
 
@@ -197,7 +201,8 @@ export default function NotebookPage() {
     setFormError(null);
     try {
       if (editing) {
-        await updateNoteBody(editing.id, body);
+        // Title and body together: the editor lets you change both.
+        await updateNoteContent(editing.id, title, body);
         if (editing.visibility !== visibility) {
           await setNoteVisibility(editing.id, visibility, profile?.active_squad_id ?? null);
         }
@@ -208,6 +213,7 @@ export default function NotebookPage() {
       setTitle("");
       setBody("");
       setBodyCache({});
+      setShowEditor(false);
       await load();
     } catch (err) {
       setFormError(dataErrorMessage(err, "Couldn't save note."));
@@ -297,7 +303,7 @@ export default function NotebookPage() {
     }
   };
 
-  if (loading) return <PageLoader label="Loading notebook..." />;
+  if (loading && !loadedOnce) return <NotebookSkeleton />;
 
   const tabs: { id: Tab; label: React.ReactNode; count?: number }[] = [
     { id: "mine", label: "My notes", count: notes.length },

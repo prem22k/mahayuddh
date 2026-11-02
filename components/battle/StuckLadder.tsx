@@ -241,7 +241,10 @@ export function StuckLadder({
         size="full"
         onClick={submit}
         disabled={posting}
-        className="min-h-[44px] font-semibold md:min-h-0"
+        // shrink-0: in this max-h, overflow-y-auto column, md:min-h-0 let the
+        // button collapse to 0px once the ladder text overflowed, so the
+        // request could not be sent on a 900px-tall screen. Scroll instead.
+        className="min-h-[44px] shrink-0 font-semibold md:min-h-0"
       >
         <Send className="h-4 w-4" strokeWidth={1.5} aria-hidden />
         {posting ? "Posting…" : `Ask for ${LEVEL_LABEL[level].toLowerCase()}`}

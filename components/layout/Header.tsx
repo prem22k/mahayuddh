@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { LogoMark } from "@/components/landing/Brand";
 import { usePathname } from "next/navigation";
 import { RefreshCw, Menu, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -80,10 +81,10 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
     <header className="shell-header select-none">
       {/* Mobile S2: wordmark left, streak + search + bell + menu right. */}
       <Link href="/home" className="flex items-center gap-2 md:hidden" aria-label="Mahayuddh home">
+        <LogoMark className="h-5 w-5" />
         <span className="font-display text-[17px] font-semibold tracking-tight text-text-primary">
           Mahayuddh
         </span>
-        <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
       </Link>
 
       <nav

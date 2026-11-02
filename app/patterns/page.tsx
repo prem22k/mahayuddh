@@ -4,7 +4,8 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { EmptyState, ErrorCard, Skeleton } from "@/components/ui/States";
+import { EmptyState, ErrorCard } from "@/components/ui/States";
+import { PatternsIndexSkeleton } from "@/components/skeletons/PatternsSkeleton";
 import { PatternChip } from "@/components/ui/Badge";
 import { dataErrorMessage } from "@/lib/data/errors";
 import {
@@ -19,11 +20,14 @@ import { SplitBar } from "@/components/matrix/SplitBar";
 // user_problem_status rows — logged-out readers see totals only, never zeros
 // dressed as progress.
 export default function PatternsPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [topics, setTopics] = useState<CatalogTopicSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Wait for auth so the index renders once, with progress, instead of
+    // totals first and then a second pass with the caller's solves.
+    if (authLoading) return;
     let cancelled = false;
     (async () => {
       try {
@@ -51,7 +55,7 @@ export default function PatternsPage() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.id, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loadError) {
     return (
@@ -61,21 +65,7 @@ export default function PatternsPage() {
     );
   }
 
-  if (topics === null) {
-    return (
-      <div className="flex flex-col gap-6 md:gap-8" aria-label="Loading patterns">
-        <div className="space-y-3">
-          <Skeleton className="h-9 w-1/3" />
-          <Skeleton className="h-5 w-2/3" />
-        </div>
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2 md:gap-3">
-          {Array.from({ length: 8 }, (_, i) => (
-            <Skeleton key={i} className="h-16 w-full rounded-lg" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  if (topics === null) return <PatternsIndexSkeleton />;
 
   if (topics.length === 0) {
     return (

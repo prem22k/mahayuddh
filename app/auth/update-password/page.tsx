@@ -4,7 +4,7 @@ import React, { useState, useEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
-import { PageLoader } from "@/components/ui/PageLoader";
+import { AuthSkeleton } from "@/components/skeletons/AuthSkeleton";
 import {
   AuthAlert,
   AuthCard,
@@ -114,7 +114,7 @@ function UpdatePasswordForm() {
     }
   };
 
-  if (checking) return <PageLoader label="Checking your link..." />;
+  if (checking) return <AuthSkeleton tabs={false} label="Checking your link" />;
 
   return (
     <AuthFrame
@@ -183,7 +183,7 @@ function UpdatePasswordForm() {
 
 export default function UpdatePasswordPage() {
   return (
-    <Suspense fallback={<PageLoader label="Loading..." />}>
+    <Suspense fallback={<AuthSkeleton tabs={false} label="Loading" />}>
       <UpdatePasswordForm />
     </Suspense>
   );

@@ -60,8 +60,12 @@ export const metadata: Metadata = {
     title: "Mahayuddh",
   },
   icons: {
-    icon: "/icon.svg",
-    apple: "/icon.svg",
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "16x16 32x32 48x48" },
+    ],
+    // iOS ignores SVG touch icons.
+    apple: "/apple-icon.png",
   },
 };
 

@@ -11,6 +11,7 @@ import { MobileDrawer } from "./MobileDrawer";
 import { SearchModal } from "../modals/SearchModal";
 import { LeetCodeAutoSync } from "@/components/providers/LeetCodeAutoSync";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { isPublicSharePath } from "@/lib/publicPaths";
 
 function BackupModeBanner() {
   const [dismissed, setDismissed] = useState(false);
@@ -36,7 +37,7 @@ function BackupModeBanner() {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
@@ -64,7 +65,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) {
+  // Every page outside the public list requires a session (middleware), so
+  // while auth is still resolving its visitor is signed in. Drawing the shell
+  // now keeps a hard reload from rendering full width and then jumping when
+  // the sidebar arrives.
+  const signedInChrome = !!user || (authLoading && !isPublicSharePath(pathname ?? ""));
+
+  if (!signedInChrome) {
     return (
       <main className="min-h-screen bg-canvas">
         <BackupModeBanner />

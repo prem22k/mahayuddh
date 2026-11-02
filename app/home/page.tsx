@@ -42,7 +42,8 @@ import { useSolving, useSolvingTimer } from "@/components/providers/SolvingProvi
 import { Pass } from "@/components/pass/Pass";
 import { Button } from "@/components/ui/Button";
 import { VerifiedBadge, SelfReportedBadge } from "@/components/ui/Badge";
-import { Skeleton, ErrorCard } from "@/components/ui/States";
+import { ErrorCard } from "@/components/ui/States";
+import { ArenaSkeleton } from "@/components/skeletons/ArenaSkeleton";
 import {
   ARENA_PASS_CLASS,
   ARENA_STUB_CLASS,
@@ -103,7 +104,7 @@ function solvedTodayIn(grid: Record<string, boolean[]>, id: string): boolean {
 }
 
 export default function ArenaPage() {
-  const { profile, user, refreshProfile } = useAuth();
+  const { profile, user, refreshProfile, loading: authLoading } = useAuth();
   const { activeProblem, startSolving } = useSolving();
   const { seconds } = useSolvingTimer();
   void refreshProfile;
@@ -145,6 +146,9 @@ export default function ArenaPage() {
   const [lastSolveSec, setLastSolveSec] = useState<number | null>(null);
 
   useEffect(() => {
+    // Wait for auth: a first pass with no user would pick from anonymous data
+    // and then visibly swap the pick once the session resolves.
+    if (authLoading) return;
     async function loadArenaData() {
       try {
         const [listsData, problemsData, pendingCount, userStatuses, totalCatalog] =
@@ -209,7 +213,7 @@ export default function ArenaPage() {
       }
     }
     loadArenaData();
-  }, [user, refreshKey, profile?.active_squad_id]);
+  }, [user, refreshKey, profile?.active_squad_id, authLoading]);
 
   const handleRetryLoad = () => {
     setLoadError(null);
@@ -527,46 +531,7 @@ export default function ArenaPage() {
     window.open(`https://leetcode.com/problems/${pickSlug}/`, "_blank", "noopener");
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-6 select-none md:gap-8">
-        <div>
-          <Skeleton className="h-9 w-40" />
-          <Skeleton className="mt-2 h-5 w-72" />
-        </div>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
-          <div className="space-y-8 lg:col-span-8">
-            <div className={`pass ${ARENA_PASS_CLASS}`}>
-              <div className="pass-body space-y-4">
-                <Skeleton className="h-6 w-64" />
-                <Skeleton className="h-9 w-2/3" />
-                <Skeleton className="h-5 w-1/2" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-12 w-48" />
-              </div>
-              <div className="pass-stub justify-between p-4">
-                <div className="space-y-3">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-8 w-20" />
-                  <Skeleton className="h-8 w-24" />
-                </div>
-                <Skeleton className="h-8 w-28" />
-              </div>
-            </div>
-            <Skeleton className="h-36 w-full rounded-lg" />
-            <Skeleton className="h-44 w-full rounded-lg" />
-          </div>
-          <div className="space-y-3 lg:col-span-4">
-            <Skeleton className="h-7 w-36" />
-            <Skeleton className="h-[68px] w-full rounded-lg" />
-            <Skeleton className="h-28 w-full rounded-lg" />
-            <Skeleton className="h-24 w-full rounded-lg" />
-            <Skeleton className="h-[68px] w-full rounded-lg" />
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (loading || authLoading) return <ArenaSkeleton />;
 
   const stub = (
     <ArenaStub

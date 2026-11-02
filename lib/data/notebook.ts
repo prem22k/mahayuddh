@@ -92,11 +92,16 @@ export async function createNote(params: {
   return data as NotebookNote;
 }
 
-export async function updateNoteBody(id: string, bodyMd: string): Promise<void> {
+/** Save an edited note's title and body together (the editor edits both). */
+export async function updateNoteContent(id: string, title: string, bodyMd: string): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase
     .from("notebook_notes")
-    .update({ body_md: bodyMd.slice(0, 50000), updated_at: new Date().toISOString() })
+    .update({
+      title: title.trim().slice(0, 120),
+      body_md: bodyMd.slice(0, 50000),
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", id);
   if (error) throw new DataError("notebook", "Couldn't save note. Try again.", { cause: error });
 }

@@ -3,6 +3,7 @@
 import { profileHref } from "@/lib/profiles/username";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { LogoMark } from "@/components/landing/Brand";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, CalendarDays, Copy, Check, Users } from "lucide-react";
 import { copyText } from "@/lib/clipboard";
@@ -11,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
-import { Skeleton } from "@/components/ui/States";
+import { InviteCardSkeleton, InviteLinesSkeleton } from "@/components/skeletons/SquadJoinSkeleton";
 import { getMySquads, joinSquad, switchActiveSquad } from "@/lib/data/squads";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
@@ -37,7 +38,7 @@ export default function SquadJoinPage() {
   const params = useParams<{ code: string }>();
   const search = useSearchParams();
   const router = useRouter();
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile, loading: authLoading } = useAuth();
   const code = (params.code || "").toUpperCase();
   // The referral token identifies who sent the link. It survives signup: this
   // is the difference between "you joined a squad" and "Priya brought you here".
@@ -149,8 +150,12 @@ export default function SquadJoinPage() {
       : null;
   const extraMembers = preview ? Math.max(0, preview.member_count - preview.sample_members.length) : 0;
 
-  const card = loading ? (
-    <InviteSkeleton />
+  // Hold the skeleton until auth resolves too: the join button, the
+  // already-a-member branch and the page chrome all depend on who is looking.
+  const pending = loading || authLoading;
+
+  const card = pending ? (
+    <InviteCardSkeleton />
   ) : error && !preview ? (
     <InviteCard>
       <PassHeader code={code} status={{ label: "Unavailable", tone: "error" }} />
@@ -367,7 +372,7 @@ export default function SquadJoinPage() {
     return (
       <div className="mx-auto w-full max-w-[560px] pb-8 pt-2 md:pt-6">
         {card}
-        {!loading && preview && lines}
+        {pending ? <InviteLinesSkeleton /> : preview && lines}
       </div>
     );
   }
@@ -376,9 +381,7 @@ export default function SquadJoinPage() {
     <div className="flex min-h-screen flex-col bg-canvas text-text-primary">
       <header className="mx-auto flex h-14 w-full max-w-[1120px] items-center justify-between border-b border-hairline px-4 sm:px-8">
         <Link href="/welcome" className="flex items-center gap-2.5">
-          <span className="flex h-7 w-7 items-center justify-center rounded-sm border border-hairline bg-surface-raised font-display text-sm font-semibold text-primary sm:text-text-primary">
-            M
-          </span>
+          <LogoMark className="h-[22px] w-[22px]" />
           <span className="font-display text-base font-semibold tracking-tight">Mahayuddh</span>
         </Link>
         <Link
@@ -391,7 +394,7 @@ export default function SquadJoinPage() {
 
       <main className="mx-auto flex w-full max-w-[1120px] flex-1 flex-col items-center px-4 pb-16 pt-6 sm:justify-center sm:py-12">
         <div className="w-full max-w-[560px]">{card}</div>
-        {!loading && preview && lines}
+        {pending ? <InviteLinesSkeleton /> : preview && lines}
       </main>
 
       <footer className="mx-auto flex w-full max-w-[1120px] items-center justify-between gap-3 border-t border-hairline px-4 py-6 text-xs text-text-tertiary sm:px-8">
@@ -454,28 +457,6 @@ function Fact({ icon, value, caption }: { icon: React.ReactNode; value: string; 
         <span className="font-display text-base font-semibold text-text-primary tnum">{value}</span>
       </span>
       <span className="text-xs text-text-tertiary">{caption}</span>
-    </div>
-  );
-}
-
-function InviteSkeleton() {
-  return (
-    <div className="w-full rounded-xl border border-hairline bg-surface p-6 sm:p-8" aria-label="Loading invite">
-      <Skeleton className="mb-6 h-4 w-48" />
-      <div className="mb-6 flex justify-center -space-x-3">
-        {[0, 1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} className="h-12 w-12 rounded-full border-2 border-surface" />
-        ))}
-      </div>
-      <Skeleton className="mx-auto mb-2 h-4 w-32" />
-      <Skeleton className="mx-auto mb-4 h-8 w-48" />
-      <Skeleton className="mb-6 h-12 w-full" />
-      <div className="mb-8 grid grid-cols-2 gap-2">
-        <Skeleton className="h-16" />
-        <Skeleton className="h-16" />
-      </div>
-      <Skeleton className="mb-4 h-12 w-full" />
-      <Skeleton className="mx-auto h-5 w-40" />
     </div>
   );
 }

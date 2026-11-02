@@ -99,7 +99,11 @@ export async function POST(request: Request) {
     if (jErr) return NextResponse.json({ error: "Couldn't join squad. Try again." }, { status: 500 });
   }
 
-  await supabase.from("profiles").update({ active_squad_id: squad.id }).eq("id", user.id).is("active_squad_id", null);
+  // Joining is choosing this squad: every caller (join by code, the invite
+  // page, signup from an invite) opens /squad next, which must show it.
+  // Setting it only when no squad was active left a second join showing the
+  // old squad, and the hub briefly mixing the two.
+  await supabase.from("profiles").update({ active_squad_id: squad.id }).eq("id", user.id);
 
   return NextResponse.json({
     success: true,

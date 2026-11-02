@@ -5,6 +5,7 @@ import { getRecommendationStats } from "@/lib/data/recommend";
 import { label, type AcceptRate, type SignalBreakdown } from "@/lib/recommendationLog";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { Button } from "@/components/ui/Button";
+import { Skeleton } from "@/components/ui/States";
 
 /**
  * "Is this helping you?" (§24).
@@ -37,7 +38,12 @@ export function RecommendationStats() {
   }, []);
 
   if (loading) {
-    return <p className="text-xs leading-5 text-text-tertiary">Reading your recommendation log…</p>;
+    return (
+      <div className="flex flex-col gap-1.5" aria-label="Loading recommendation log">
+        <Skeleton className="h-3 w-3/4 rounded-xs" />
+        <Skeleton className="h-3 w-1/2 rounded-xs" />
+      </div>
+    );
   }
 
   if (error) {

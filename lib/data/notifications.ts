@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { Notification, NotificationKind } from "@/types/database";
 import { inQuietHoursIST } from "@/lib/quietHours";
+import { DataError } from "@/lib/data/errors";
 
 /**
  * Notifications (plan Step 23, Bible §36/§37).
@@ -56,18 +57,39 @@ export async function notify(input: NotifyInput): Promise<void> {
   });
 }
 
-export async function getNotifications(limit = 20): Promise<Notification[]> {
+const NOTIFICATION_COLUMNS =
+  "id,user_id,kind,title,body,deep_link,actor_id,dedupe_key,read_at,created_at,actor:actor_id (id, username, avatar_url)";
+
+/**
+ * The bell's list. `unreadOnly` is what the bell shows: reading an item or
+ * "Mark all read" takes it out of the bell, and /notifications keeps the
+ * history. Best effort: an error reads as an empty bell, never a broken header.
+ */
+export async function getNotifications(
+  limit = 20,
+  opts: { unreadOnly?: boolean } = {}
+): Promise<Notification[]> {
   const supabase = createClient();
-  const { data, error } = await supabase
-    .from("notifications")
-    .select(
-      "id,user_id,kind,title,body,deep_link,actor_id,dedupe_key,read_at,created_at,actor:actor_id (id, username, avatar_url)"
-    )
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  let query = supabase.from("notifications").select(NOTIFICATION_COLUMNS);
+  if (opts.unreadOnly) query = query.is("read_at", null);
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);
   if (error) return [];
   // Embedded `actor:actor_id (...)` widens to an array under the generated
   // PostgREST types; the runtime shape is a single object (see Notification).
+  return (data ?? []) as unknown as Notification[];
+}
+
+/**
+ * The history page: every notification, read or not, newest first, one page
+ * at a time (`before` is the oldest created_at already shown). Throws, so the
+ * page can offer a retry instead of claiming there is nothing.
+ */
+export async function getNotificationHistory(limit = 30, before?: string | null): Promise<Notification[]> {
+  const supabase = createClient();
+  let query = supabase.from("notifications").select(NOTIFICATION_COLUMNS);
+  if (before) query = query.lt("created_at", before);
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);
+  if (error) throw new DataError("notifications", "Couldn't load your notifications. Retry.", { cause: error });
   return (data ?? []) as unknown as Notification[];
 }
 

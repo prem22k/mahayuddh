@@ -88,17 +88,38 @@ export async function POST(request: Request) {
       ? body.deepLink
       : null;
 
-  const { error } = await supabase.from("notifications").insert({
-    user_id: userId,
-    kind,
-    title,
-    body: text,
-    deep_link: deepLink,
-    actor_id: caller.id,
-  });
+  // A challenge's in-app row is written by the notify_challenge_received
+  // trigger when the suggestion is inserted (dedupe_key "challenge:<id>"). The
+  // composer still calls this route for the immediate push, and inserting here
+  // as well gave the recipient every challenge twice. The key is derived here,
+  // never taken from the caller, so a caller cannot use it to suppress notices.
+  const challengeId =
+    kind === "challenge" ? deepLink?.match(/^\/c\/([0-9a-f-]{36})$/)?.[1] ?? null : null;
+  let alreadyStored = false;
+  if (challengeId) {
+    const { data: existing } = await supabase
+      .from("notifications")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("kind", "challenge")
+      .eq("dedupe_key", `challenge:${challengeId}`)
+      .limit(1);
+    alreadyStored = (existing?.length ?? 0) > 0;
+  }
 
-  if (error) {
-    return NextResponse.json({ error: "Couldn't create notification" }, { status: 500 });
+  if (!alreadyStored) {
+    const { error } = await supabase.from("notifications").insert({
+      user_id: userId,
+      kind,
+      title,
+      body: text,
+      deep_link: deepLink,
+      actor_id: caller.id,
+    });
+
+    if (error) {
+      return NextResponse.json({ error: "Couldn't create notification" }, { status: 500 });
+    }
   }
 
   // Push is a nice-to-have: a push failure must not undo the in-app record.

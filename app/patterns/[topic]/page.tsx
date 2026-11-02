@@ -8,7 +8,8 @@ import { ArrowRight, BookOpen, Bookmark, Copy, Send, Swords, TriangleAlert } fro
 import { cn } from "@/lib/utils";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { ErrorCard, EmptyState, Skeleton } from "@/components/ui/States";
+import { ErrorCard, EmptyState } from "@/components/ui/States";
+import { PatternHubSkeleton } from "@/components/skeletons/PatternsSkeleton";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { DifficultyBadgeNew, PatternChip, SelfReportedBadge, VerifiedBadge } from "@/components/ui/Badge";
@@ -34,7 +35,7 @@ export default function PatternPage() {
   const params = useParams<{ topic: string }>();
   const topic = decodePathSegment(params.topic);
   const { startSolving } = useSolving();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const [primer, setPrimer] = useState<Primer | null>(null);
   const [starters, setStarters] = useState<Problem[]>([]);
@@ -52,7 +53,9 @@ export default function PatternPage() {
   const [showAllApproaches, setShowAllApproaches] = useState(false);
 
   useEffect(() => {
-    if (!topic) return;
+    // The load reads the caller's statuses; running it before auth resolves
+    // would leave the hub without them.
+    if (!topic || authLoading) return;
     Promise.all([
       getPrimersForPatterns([topic]).catch(() => []),
       getCatalogByTopic(topic, 30).catch(() => []),
@@ -127,23 +130,9 @@ export default function PatternPage() {
       })
       .catch((err) => setLoadError(dataErrorMessage(err, "Couldn't load this pattern hub.")))
       .finally(() => setLoading(false));
-  }, [topic]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [topic, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (loading) {
-    return (
-      <div className="space-y-8" aria-hidden>
-        <div className="space-y-3">
-          <Skeleton className="h-9 w-1/2" />
-          <Skeleton className="h-5 w-3/4" />
-          <Skeleton className="h-4 w-1/3" />
-        </div>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          <Skeleton className="h-96 w-full rounded-lg lg:col-span-8" />
-          <Skeleton className="h-64 w-full rounded-lg lg:col-span-4" />
-        </div>
-      </div>
-    );
-  }
+  if (loading || authLoading) return <PatternHubSkeleton />;
   if (loadError) {
     return (
       <div className="max-w-2xl">

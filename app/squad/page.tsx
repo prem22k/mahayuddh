@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { InviteLink } from "@/components/squad/InviteLink";
 import { copyText } from "@/lib/clipboard";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { PageLoader } from "@/components/ui/PageLoader";
+import { SquadSkeleton } from "@/components/skeletons/SquadSkeleton";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { SquadStreakPass, type StreakPassMember } from "@/components/squad/SquadStreakPass";
 import { Button } from "@/components/ui/Button";
@@ -96,7 +96,7 @@ function formatWeekRange(startIso: string, endIso: string): string {
 }
 
 export default function SquadPage() {
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile, loading: authLoading } = useAuth();
   const [squads, setSquads] = useState<Squad[]>([]);
   const [activeId, setActiveId] = useState<string | null>(profile?.active_squad_id ?? null);
   const [members, setMembers] = useState<SquadMember[]>([]);
@@ -206,8 +206,11 @@ export default function SquadPage() {
   }, [user, profile?.active_squad_id]);
 
   useEffect(() => {
+    // Wait for auth: a first pass with no user would flash the empty
+    // "Your squad is waiting" state before the real squad loads.
+    if (authLoading) return;
     load();
-  }, [load]);
+  }, [load, authLoading]);
 
   const inviteLink = (s: Squad | null) =>
     s && typeof window !== "undefined" ? `${window.location.origin}/squad/join/${s.invite_code}` : "";
@@ -252,9 +255,8 @@ export default function SquadPage() {
       track("squad_joined", { via: "code", squad_id: squad.id });
       setCode("");
       setShowJoin(false);
+      // The join made it the active squad; the new profile re-runs load().
       await refreshProfile();
-      await load();
-      setActiveId(squad.id);
     } catch (err) {
       setFormError(dataErrorMessage(err, "Couldn't join squad. Check the code."));
     } finally {
@@ -265,8 +267,8 @@ export default function SquadPage() {
   const handleSwitch = async (id: string) => {
     try {
       await switchActiveSquad(id);
+      // load() closes over the old profile; the refreshed one re-runs it.
       await refreshProfile();
-      await load();
       setShowSwitcher(false);
     } catch (err) {
       setLoadError(dataErrorMessage(err, "Couldn't switch squad. Try again."));
@@ -326,7 +328,7 @@ export default function SquadPage() {
     }));
   }, []);
 
-  if (loading) return <PageLoader label="Loading squad..." />;
+  if (loading || authLoading) return <SquadSkeleton />;
 
   const firstGoal = goalProgress[0] ?? null;
   const todayLabel = weekDays[weekDays.length - 1]?.label ?? "";
@@ -771,13 +773,16 @@ export default function SquadPage() {
                   Start a season to track a squad objective.
                 </p>
               )}
-              <Link
-                href={activeId ? `/squad/${activeId}/seasons` : "/squad"}
-                className="mt-3 flex h-8 min-h-[44px] w-full items-center justify-center gap-1.5 rounded-sm text-xs font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0"
-              >
-                See season summary
-                <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.5} />
-              </Link>
+              {/* The summary is per season (Stitch 17); there is no season index. */}
+              {activeId && season && (
+                <Link
+                  href={`/squad/${activeId}/seasons/${season.id}`}
+                  className="mt-3 flex h-8 min-h-[44px] w-full items-center justify-center gap-1.5 rounded-sm text-xs font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0"
+                >
+                  See season summary
+                  <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.5} />
+                </Link>
+              )}
             </section>
 
             {activeId && (

@@ -27,7 +27,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ConnectLeetCodeModal } from "@/components/modals/ConnectLeetCodeModal";
 import { UserStatsDossierModal } from "@/components/profile/UserStatsDossierModal";
-import { PageLoader } from "@/components/ui/PageLoader";
+import { BoardRowsSkeleton } from "@/components/skeletons/LeaderboardSkeleton";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { FilterChips } from "@/components/ui/ProblemRow";
 import { EmptyState, ErrorCard } from "@/components/ui/States";
@@ -168,6 +168,12 @@ export default function LeaderboardPage() {
       setLoading(false);
     }
   };
+
+  // A squadless visitor gets Global as soon as the profile is known, not after
+  // the board loads, so the Squad tab never flips under a loaded board.
+  useEffect(() => {
+    if (!authLoading && !profile?.active_squad_id) setTab("global");
+  }, [authLoading, profile?.active_squad_id]);
 
   // Waits for auth: loading before the profile arrives read "no squad" and
   // flipped every visit to the Global tab.
@@ -446,34 +452,6 @@ export default function LeaderboardPage() {
         </div>
       </div>
 
-      {!profile?.leetcode_username && (
-        <div className="mt-4 flex flex-col gap-3 rounded-lg border border-hairline bg-surface p-4 md:mt-6 md:flex-row md:items-center md:justify-between md:p-5">
-          <div>
-            <h2 className="text-lg font-semibold leading-[26px] text-text-primary">
-              Connect LeetCode to appear here
-            </h2>
-            <p className="mt-1 text-sm leading-6 text-text-secondary">
-              Optional. Adds contest rating and verified solves, you are already on the board without it.
-            </p>
-          </div>
-          <form onSubmit={handleConnectHandle} className="flex items-center gap-2">
-            <input
-              type="text"
-              aria-label="Your LeetCode username"
-              value={inputHandle}
-              onChange={(e) => setInputHandle(e.target.value)}
-              placeholder="Your LeetCode username"
-              className="h-10 min-h-[44px] min-w-0 flex-1 rounded-md border border-hairline bg-well px-3.5 font-mono text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:min-h-0 md:w-52 md:flex-none"
-              required
-            />
-            <Button type="submit" variant="secondary" loading={isConnectingHandle} disabled={!inputHandle.trim()}>
-              Connect
-            </Button>
-          </form>
-          {connectError && <p className="text-sm text-error">{connectError}</p>}
-        </div>
-      )}
-
       {loadError && (
         <div className="mt-4 md:mt-6">
           <ErrorCard message={loadError} onRetry={() => { setLoading(true); loadLeaderboardData(); }} />
@@ -486,7 +464,7 @@ export default function LeaderboardPage() {
 
       <div className="mt-4 md:mt-6">
         {loading ? (
-          <PageLoader label="Loading leaderboard..." className="h-48" />
+          <BoardRowsSkeleton />
         ) : visibleMembers.length === 0 ? (
           tab === "global" ? (
             <GlobalLeaderboard />
@@ -704,6 +682,37 @@ export default function LeaderboardPage() {
           </p>
         )}
       </div>
+
+      {/* Below the board, not above it: the card depends on the profile, which
+          lands after the board skeleton is drawn, so above it pushed the
+          rankings down. No profile yet while auth resolves; don't flash it. */}
+      {!authLoading && !profile?.leetcode_username && (
+        <div className="mt-6 flex flex-col gap-3 rounded-lg border border-hairline bg-surface p-4 md:mt-8 md:flex-row md:items-center md:justify-between md:p-5">
+          <div>
+            <h2 className="text-lg font-semibold leading-[26px] text-text-primary">
+              Connect LeetCode to appear here
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-text-secondary">
+              Optional. Adds contest rating and verified solves, you are already on the board without it.
+            </p>
+          </div>
+          <form onSubmit={handleConnectHandle} className="flex items-center gap-2">
+            <input
+              type="text"
+              aria-label="Your LeetCode username"
+              value={inputHandle}
+              onChange={(e) => setInputHandle(e.target.value)}
+              placeholder="Your LeetCode username"
+              className="h-10 min-h-[44px] min-w-0 flex-1 rounded-md border border-hairline bg-well px-3.5 font-mono text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:min-h-0 md:w-52 md:flex-none"
+              required
+            />
+            <Button type="submit" variant="secondary" loading={isConnectingHandle} disabled={!inputHandle.trim()}>
+              Connect
+            </Button>
+          </form>
+          {connectError && <p className="text-sm text-error">{connectError}</p>}
+        </div>
+      )}
 
       {tab === "squad" && (
         <div className="mt-6 flex items-start gap-2.5 rounded-md border border-hairline bg-well p-3 md:mt-8 md:justify-center md:border-0 md:bg-transparent md:p-0 md:text-center">

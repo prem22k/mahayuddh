@@ -18,7 +18,7 @@ import { orderChainOldestFirst } from "@/lib/chains";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { problemUrl } from "@/components/ui/ProblemLink";
-import { PageLoader } from "@/components/ui/PageLoader";
+import { ChallengeHeroSkeleton, ChallengeListSkeleton } from "@/components/skeletons/ChallengesSkeleton";
 import { Button } from "@/components/ui/Button";
 import { EmptyState, ErrorCard } from "@/components/ui/States";
 import { UnderlineTabs } from "@/components/ui/ProblemRow";
@@ -48,7 +48,7 @@ interface ComposerSeed {
 }
 
 export default function SuggestionsPage() {
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const { startSolving } = useSolving();
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -89,9 +89,12 @@ export default function SuggestionsPage() {
     }
   }, [user?.id]);
 
+  // One load once auth resolves: a pass with no user would render the inbox
+  // without "for you" rows, then reload and swap them in.
   useEffect(() => {
+    if (authLoading) return;
     loadData();
-  }, [loadData]);
+  }, [loadData, authLoading]);
 
   // Honor ?to=<user_id> (leaderboard), ?problem=&title=&difficulty=&time=
   // (post-solve "Challenge someone" on Today's Battle) and ?pass=<id> (the
@@ -359,22 +362,22 @@ export default function SuggestionsPage() {
             </div>
           }
         />
+      ) : loading ? (
+        <ChallengeHeroSkeleton />
       ) : (
-        !loading && (
-          <div className="card flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold leading-[26px] text-text-primary">
-                No open challenges for you
-              </h2>
-              <p className="mt-1 text-sm leading-6 text-text-secondary">
-                Send one to someone in your squad.
-              </p>
-            </div>
-            <Button variant="secondary" onClick={() => openComposer()}>
-              New challenge
-            </Button>
+        <div className="card flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold leading-[26px] text-text-primary">
+              No open challenges for you
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-text-secondary">
+              Send one to someone in your squad.
+            </p>
           </div>
-        )
+          <Button variant="secondary" onClick={() => openComposer()}>
+            New challenge
+          </Button>
+        </div>
       )}
 
       <div className="space-y-4">
@@ -399,7 +402,7 @@ export default function SuggestionsPage() {
           </div>
         )}
         {loading ? (
-          <PageLoader label="Loading challenges..." className="h-60" />
+          <ChallengeListSkeleton />
         ) : filteredList.length === 0 ? (
           <EmptyState
             heading="Nothing here yet"

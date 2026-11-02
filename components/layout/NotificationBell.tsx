@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bell, BellRing } from "lucide-react";
+import { Bell, BellRing, ChevronRight } from "lucide-react";
 import {
   getNotifications,
   getUnreadCount,
@@ -12,14 +12,16 @@ import {
 import { requestPushPermission } from "@/lib/pushPermission";
 import { track } from "@/lib/analytics";
 import type { Notification } from "@/types/database";
+import { Skeleton } from "@/components/ui/States";
+import { groupNotifications, shortAgo } from "@/components/notifications/notificationMeta";
 
 /**
  * Notification bell (§37).
  *
- * §37 asks for action-oriented notifications and a low-noise default. This
- * component is where "low-noise" becomes visible: it shows what is unread, it
- * marks read on open rather than on click-through, and it refuses to grow past
- * a small number of items.
+ * The bell is an inbox of what is still unread, grouped as Challenges, Squad,
+ * Practice and Contests (DESIGN.md). Opening it changes nothing; clicking an
+ * item or "Mark all read" marks it read and takes it out of the bell. Every
+ * notification, read or not, stays on /notifications.
  *
  * Push delivery lives here too, on purpose. The database triggers write rows;
  * a Postgres trigger cannot call lib/push.ts, and inventing an HTTP extension
@@ -44,7 +46,10 @@ export function NotificationBell() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [rows, count] = await Promise.all([getNotifications(10), getUnreadCount()]);
+      const [rows, count] = await Promise.all([
+        getNotifications(20, { unreadOnly: true }),
+        getUnreadCount(),
+      ]);
       setItems(rows);
       setUnread(count);
 
@@ -86,21 +91,36 @@ export function NotificationBell() {
       if (document.visibilityState !== "visible") return;
       void refresh();
     }, 60_000);
-    return () => clearInterval(t);
+    // The history page marks things read too; keep the dot in step with it.
+    const onChanged = () => void refresh();
+    window.addEventListener("notifications-changed", onChanged);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("notifications-changed", onChanged);
+    };
   }, [refresh]);
 
-  const onOpen = async () => {
+  const onOpen = () => {
     const next = !open;
     setOpen(next);
-    if (!next) return;
-    track("notification_bell_opened", { unread });
-    // Opened, not clicked: the unread state clears when you look at the list.
-    const rows = await getNotifications(10);
-    const ids = rows.filter((r) => !r.read_at).map((r) => r.id);
-    if (ids.length > 0) {
-      await Promise.all(ids.map((id) => markRead(id)));
-      await refresh();
-    }
+    if (next) track("notification_bell_opened", { unread });
+  };
+
+  const onItem = (n: Notification) => {
+    track("notification_clicked", { kind: n.kind, from: "bell" });
+    // Read now leaves the bell; the history page still has it.
+    setItems((prev) => prev.filter((x) => x.id !== n.id));
+    setUnread((u) => Math.max(0, u - 1));
+    setOpen(false);
+    void markRead(n.id);
+  };
+
+  const onMarkAll = async () => {
+    track("notification_mark_all_read", { from: "bell", count: unread });
+    setItems([]);
+    setUnread(0);
+    await markAllRead();
+    await refresh();
   };
 
   const togglePush = async () => {
@@ -116,10 +136,12 @@ export function NotificationBell() {
     setPushGranted(granted);
   };
 
+  const groups = groupNotifications(items);
+
   return (
     <div className="relative">
       <button
-        onClick={() => void onOpen()}
+        onClick={onOpen}
         aria-label={`Notifications${unread > 0 ? ` (${unread} unread)` : ""}`}
         aria-expanded={open}
         className="relative flex h-11 w-11 cursor-pointer items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:h-8 md:w-8 md:border md:border-hairline md:hover:border-hairline-strong"
@@ -146,9 +168,9 @@ export function NotificationBell() {
               <span className="text-[10px] font-bold uppercase tracking-widest text-text-tertiary">
                 Notifications
               </span>
-              {unread > 0 && (
+              {items.length > 0 && (
                 <button
-                  onClick={() => void markAllRead().then(refresh)}
+                  onClick={() => void onMarkAll()}
                   className="text-[10px] font-bold text-text-tertiary hover:text-text-primary cursor-pointer"
                 >
                   Mark all read
@@ -156,44 +178,60 @@ export function NotificationBell() {
               )}
             </div>
 
-            {loading && items.length === 0 ? (
-              <p className="px-4 py-6 text-[11px] text-text-tertiary text-center">Loading…</p>
-            ) : items.length === 0 ? (
-              <p className="px-4 py-6 text-[11px] text-text-tertiary text-center">
-                Nothing here. Notifications only arrive when there is something to do.
-              </p>
-            ) : (
-              <ul className="max-h-96 overflow-y-auto divide-y divide-hairline">
-                {items.map((n) => (
-                  <li key={n.id}>
-                    <Link
-                      href={n.deep_link ?? "#"}
-                      onClick={() => {
-                        track("notification_clicked", { kind: n.kind });
-                        void markRead(n.id);
-                        setOpen(false);
-                      }}
-                      className={`block px-4 py-3 hover:bg-surface-overlay transition-all ${
-                        n.read_at ? "opacity-60" : ""
-                      }`}
-                    >
-                      <div className="flex items-start gap-2">
-                        {!n.read_at && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
-                        )}
-                        <div className="min-w-0">
-                          <p className="text-[11px] font-bold text-text-primary">{n.title}</p>
-                          {n.body && <p className="text-[11px] text-text-secondary mt-0.5">{n.body}</p>}
-                          <p className="text-[10px] text-text-disabled mt-1">
-                            {new Date(n.created_at).toLocaleDateString()} · {n.kind}
-                          </p>
-                        </div>
-                      </div>
-                    </Link>
+            {loading && items.length === 0 && unread > 0 ? (
+              <ul className="divide-y divide-hairline" aria-label="Loading notifications">
+                {[0, 1, 2].map((i) => (
+                  <li key={i} className="px-4 py-3" aria-hidden>
+                    <Skeleton className="h-3 w-2/3 rounded-xs" />
+                    <Skeleton className="mt-1.5 h-3 w-full rounded-xs" />
+                    <Skeleton className="mt-2 h-2.5 w-24 rounded-xs" />
                   </li>
                 ))}
               </ul>
+            ) : items.length === 0 ? (
+              <p className="px-4 py-6 text-[11px] text-text-tertiary text-center">
+                You&apos;re all caught up. Notifications only arrive when there is something to do.
+              </p>
+            ) : (
+              <div className="max-h-96 overflow-y-auto">
+                {groups.map((g) => (
+                  <section key={g.group} aria-label={g.group}>
+                    <h3 className="bg-surface px-4 pb-1 pt-2.5 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-text-tertiary">
+                      {g.group}
+                    </h3>
+                    <ul className="divide-y divide-hairline">
+                      {g.items.map((n) => (
+                        <li key={n.id}>
+                          <Link
+                            href={n.deep_link ?? "/notifications"}
+                            onClick={() => onItem(n)}
+                            className="block px-4 py-3 hover:bg-surface-overlay transition-colors"
+                          >
+                            <div className="flex items-start gap-2">
+                              <span aria-hidden className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-[11px] font-bold text-text-primary">{n.title}</p>
+                                {n.body && <p className="text-[11px] text-text-secondary mt-0.5">{n.body}</p>}
+                                <p className="font-mono text-[10px] text-text-disabled mt-1 tnum">{shortAgo(n.created_at)}</p>
+                              </div>
+                            </div>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
             )}
+
+            <Link
+              href="/notifications"
+              onClick={() => setOpen(false)}
+              className="flex items-center justify-between border-t border-hairline px-4 py-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+            >
+              Notification history
+              <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
+            </Link>
 
             {/* Push permission, with the bell. One concept, one control. */}
             <div className="border-t border-hairline px-4 py-2.5 flex items-center justify-between gap-3">

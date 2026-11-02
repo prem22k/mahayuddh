@@ -17,6 +17,7 @@ import { RecommendationStats } from "./RecommendationStats";
 import { Button } from "@/components/ui/Button";
 import { DifficultyBadgeNew, PatternChip } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/States";
 
 /** Same card language as the Arena "Up next" card. */
 const CARD = "rounded-lg border border-hairline bg-surface p-4 md:p-6";
@@ -98,9 +99,20 @@ export function NextBattle({
 
   if (loading) {
     return (
-      <section className={cn(CARD, className)} aria-label="Next battle" aria-busy>
+      <section className={cn(CARD, "flex flex-col gap-4", className)} aria-label="Next battle" aria-busy>
         <Header />
-        <p className="mt-2 text-xs leading-5 text-text-tertiary">Reading your history…</p>
+        <div className="flex flex-col gap-2 md:flex-row md:items-center" aria-hidden>
+          <Skeleton className="h-5 w-48 rounded-xs" />
+          <Skeleton className="h-5 w-24 rounded-xs" />
+        </div>
+        <div className="flex flex-col gap-1.5" aria-hidden>
+          <Skeleton className="h-3 w-4/5 rounded-xs" />
+          <Skeleton className="h-3 w-3/5 rounded-xs" />
+        </div>
+        <div className="flex items-center gap-2 pt-1" aria-hidden>
+          <Skeleton className="h-11 w-28 rounded-md md:h-10" />
+          <Skeleton className="h-11 w-24 rounded-md md:h-10" />
+        </div>
       </section>
     );
   }
