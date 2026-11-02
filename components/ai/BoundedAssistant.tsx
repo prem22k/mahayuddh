@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Sparkles } from "lucide-react";
+import { SarathiHeader } from "@/components/ai/Sarathi";
 import { Spinner } from "@/components/ui/Spinner";
 import { track } from "@/lib/analytics";
 
@@ -156,14 +156,7 @@ export function BoundedAssistant({
       aria-label={copy.title}
       className="flex flex-col gap-3 rounded-lg border border-hairline bg-surface p-4"
     >
-      <header className="space-y-1">
-        <p className="flex items-center gap-1.5 text-sm font-semibold leading-5 text-text-primary">
-          <Sparkles className="h-4 w-4 text-pattern" strokeWidth={1.5} aria-hidden />
-          {copy.title}
-          <span className="font-mono text-[10px] font-normal text-text-disabled">§45</span>
-        </p>
-        <p className="text-xs leading-[18px] text-text-secondary">{copy.blurb}</p>
-      </header>
+      <SarathiHeader title={copy.title} blurb={copy.blurb} />
 
       <label className="block">
         <span className="font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-text-tertiary">

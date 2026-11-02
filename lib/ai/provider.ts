@@ -290,7 +290,7 @@ async function callOpenAiCompatible(
   const text = choice?.message?.content;
   if (typeof text !== "string" || text.length === 0) {
     throw new ProviderError(
-      "The model returned an empty answer.",
+      "Sarathi lost the thread and came back empty. Ask again.",
       `openai-compatible response had no content (model=${config.model}` +
         (json.model && json.model !== config.model ? `, routed to ${json.model}` : "") +
         `, finish_reason=${choice?.finish_reason ?? "none"})`,
@@ -334,7 +334,7 @@ async function callAnthropic(
     .trim();
   if (text.length === 0) {
     throw new ProviderError(
-      "The model returned an empty answer.",
+      "Sarathi lost the thread and came back empty. Ask again.",
       `anthropic response had no text blocks (model=${config.model})`,
     );
   }
@@ -358,17 +358,17 @@ async function providerFailure(res: Response, config: ProviderConfig): Promise<P
   }
   if (res.status === 401 || res.status === 403) {
     return new ProviderError(
-      "The AI provider rejected this deployment's credentials.",
+      "Sarathi is away right now: the guide's connection is not set up.",
       detail,
     );
   }
   if (res.status === 429) {
     return new ProviderError(
-      "The AI provider is rate limiting this deployment. Try again shortly.",
+      "Sarathi is answering a lot of people right now. Try again in a minute.",
       detail,
     );
   }
-  return new ProviderError("The AI provider could not answer right now.", detail);
+  return new ProviderError("Sarathi could not answer just now. Try again in a moment.", detail);
 }
 
 // ── Parsing ──────────────────────────────────────────────────────────────────

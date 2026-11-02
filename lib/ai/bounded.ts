@@ -143,7 +143,7 @@ async function run(
     return {
       allowed: false,
       outcome: "error",
-      message: "AI is misconfigured on this deployment.",
+      message: "Sarathi is away right now. Try again later.",
     };
   }
 
@@ -206,7 +206,7 @@ async function run(
       outcome: "error",
       message: known
         ? (err as ProviderError).message
-        : "Something went wrong reaching the AI provider.",
+        : "Sarathi could not answer just now. Try again in a moment.",
     };
   }
 }

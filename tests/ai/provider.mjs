@@ -185,7 +185,7 @@ async function main() {
         await assert.rejects(
           () => askLadder({ config: cfg, requestedLevel: "nudge" }),
           (e) => {
-            assert.match(e.message, /empty answer/i);
+            assert.match(e.message, /came back empty/i);
             assert.match(e.detail, /finish_reason=length/);
             return true;
           },
@@ -211,7 +211,7 @@ async function main() {
         await assert.rejects(
           () => askLadder({ config: cfg, requestedLevel: "nudge" }),
           (e) => {
-            assert.match(e.message, /rejected this deployment's credentials/i);
+            assert.match(e.message, /connection is not set up/i);
             // The upstream body quoted the key. It must not reach the message.
             assert.ok(!e.message.includes("sk-live-abc123"), "the key was surfaced in the user-facing message");
             assert.ok(!e.message.includes("Incorrect API key"), "the provider's body was surfaced verbatim");
@@ -224,7 +224,7 @@ async function main() {
   await check("a 429 says rate limited and stays retryable-sounding", async () => {
     await withMock({ error: "slow down" }, async (cfg) => {
       await assert.rejects(() => askLadder({ config: cfg, requestedLevel: "nudge" }),
-        (e) => { assert.match(e.message, /rate limiting/i); return true; });
+        (e) => { assert.match(e.message, /answering a lot of people/i); return true; });
     }, { status: 429 });
   });
 
@@ -232,7 +232,7 @@ async function main() {
     await withMock({ error: "upstream exploded at 10.0.0.7" }, async (cfg) => {
       await assert.rejects(() => askLadder({ config: cfg, requestedLevel: "nudge" }),
         (e) => {
-          assert.match(e.message, /could not answer right now/i);
+          assert.match(e.message, /could not answer just now/i);
           assert.ok(!e.message.includes("10.0.0.7"), "an internal address leaked into the message");
           return true;
         });
@@ -242,14 +242,14 @@ async function main() {
   await check("an empty completion is an error, not an empty hint", async () => {
     await withMock({ choices: [{ message: { content: "" } }] }, async (cfg) => {
       await assert.rejects(() => askLadder({ config: cfg, requestedLevel: "nudge" }),
-        (e) => { assert.match(e.message, /empty answer/i); return true; });
+        (e) => { assert.match(e.message, /came back empty/i); return true; });
     });
   });
 
   await check("a response with no choices at all is an error", async () => {
     await withMock({}, async (cfg) => {
       await assert.rejects(() => askLadder({ config: cfg, requestedLevel: "nudge" }),
-        (e) => { assert.match(e.message, /empty answer/i); return true; });
+        (e) => { assert.match(e.message, /came back empty/i); return true; });
     });
   });
 

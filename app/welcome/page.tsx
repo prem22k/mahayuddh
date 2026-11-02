@@ -7,6 +7,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { DifficultyBadgeNew, PatternChip, VerifiedBadge } from "@/components/ui/Badge";
 import { Monogram, Wordmark } from "@/components/landing/Brand";
 import { ExamplePass } from "@/components/landing/ExamplePass";
+import { SarathiAvatar } from "@/components/ai/Sarathi";
 import { cn } from "@/lib/utils";
 
 /**
@@ -302,6 +303,24 @@ export default function WelcomePage() {
                 <span className="shrink-0 font-mono text-[11px] text-text-tertiary md:rounded-xs md:border md:border-hairline md:bg-surface-raised md:px-2.5 md:py-1 md:text-xs">
                   Coin Change II
                 </span>
+              </div>
+            </Moment>
+
+            <Moment time="20:55" title="Stuck on the recurrence, you ask Sarathi" shortTitle="You ask Sarathi">
+              <div className={cn(cardCls, "flex items-start gap-3")}>
+                <SarathiAvatar size="sm" />
+                <div className="min-w-0">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-primary md:text-xs">
+                    Sarathi · nudge
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-text-primary md:text-sm md:leading-6">
+                    &ldquo;If you add the coins in a different order, does the count change? What would
+                    you have to fix so it can&apos;t?&rdquo;
+                  </p>
+                  <p className="mt-1 text-[11px] leading-4 text-text-tertiary md:text-xs">
+                    Your guide steers. You fight. Never the code.
+                  </p>
+                </div>
               </div>
             </Moment>
 
