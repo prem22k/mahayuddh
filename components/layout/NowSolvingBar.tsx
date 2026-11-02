@@ -314,16 +314,28 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
         }
         track("battle_solved", { problem_slug: problem.slug });
         if (wasSolved) track("revisit_done", { problem_slug: problem.slug, via: "dock" });
+        // A server battle writes its own history row when it ends
+        // (append_problem_event_on_battle_end, exactly once). Logging here as
+        // well raced that trigger: the client "solved" landed first, the
+        // trigger then saw a prior solve and appended a "revisited", and every
+        // solve counted twice. The client logs only when no server row will.
+        const logClientEvent = () =>
+          logProblemEvent({
+            problemSlug: problem.slug,
+            kind: wasSolved ? "revisited" : "solved",
+            battleId: null,
+            durationSec: duration,
+            source: evidence === "leetcode" ? "leetcode" : "self",
+          }).catch(() => {});
         if (endedBattleId) {
-          endBattle(endedBattleId, "solved", { duration_sec: duration, evidence }).catch(() => {});
+          endBattle(endedBattleId, "solved", { duration_sec: duration, evidence })
+            .then((res) => {
+              if (res.error) logClientEvent();
+            })
+            .catch(logClientEvent);
+        } else {
+          logClientEvent();
         }
-        logProblemEvent({
-          problemSlug: problem.slug,
-          kind: wasSolved ? "revisited" : "solved",
-          battleId: endedBattleId,
-          durationSec: duration,
-          source: evidence === "leetcode" ? "leetcode" : "self",
-        }).catch(() => {});
         // Squad activity: solves generate feed without requiring prose (§50).
         logFeedEvent({
           eventType: "solve",
@@ -407,15 +419,22 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
           })
         );
       }
+      // Same rule as a solve: the battle-end trigger owns the history row.
+      let serverRecorded = false;
       if (endedBattleId) {
-        await endBattle(endedBattleId, "failed", { duration_sec: duration }).catch(() => {});
+        const res = await endBattle(endedBattleId, "failed", { duration_sec: duration }).catch(
+          () => ({ error: "network" })
+        );
+        serverRecorded = !res.error;
       }
-      await logProblemEvent({
-        problemSlug: problem.slug,
-        kind: "failed",
-        battleId: endedBattleId,
-        durationSec: duration,
-      }).catch(() => {});
+      if (!serverRecorded) {
+        await logProblemEvent({
+          problemSlug: problem.slug,
+          kind: "failed",
+          battleId: null,
+          durationSec: duration,
+        }).catch(() => {});
+      }
       track("battle_failed", { problem_slug: problem.slug });
       // No feed event: failed battles stay private until revenge (Phase 3).
       setIsPlaying(false);
