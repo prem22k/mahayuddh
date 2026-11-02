@@ -97,6 +97,7 @@ export const ANALYTICS_EVENTS = [
   // beside it, so the grant rate is measurable from the same surface.
   "notification_push_toggled",
   "notification_push_manage_opened",
+  "notification_mark_all_read",
   // Feed (Step 21, Bible §19/§51). Useful-action rate per feed view is the
   // Step 21 metric, so the denominators and the actions are both named.
   // feed_view is the DENOMINATOR (a feed was looked at); feed_action is the

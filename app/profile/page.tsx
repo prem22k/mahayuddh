@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Check, ExternalLink, Plus, RefreshCw, TriangleAlert } from "lucide-react";
+import { Check, ChevronRight, ExternalLink, Plus, RefreshCw, TriangleAlert } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { syncUserProfileStats } from "@/lib/data/profiles";
 import { getMySquads } from "@/lib/data/squads";
@@ -716,6 +716,15 @@ export default function ProfilePage() {
                 <span className="shrink-0 font-mono text-xs text-text-secondary tnum">
                   {hh(QUIET_START_HOUR)}–{hh(QUIET_END_HOUR)} IST
                 </span>
+              </SettingsRow>
+              <SettingsRow
+                label="Notification history"
+                caption="Everything that reached your bell, read or not."
+              >
+                <Link href="/notifications" className={outlineAction}>
+                  View
+                  <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
+                </Link>
               </SettingsRow>
             </div>
             <p className="mt-1 font-mono text-[11px] text-text-tertiary md:hidden">
