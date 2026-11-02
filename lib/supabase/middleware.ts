@@ -57,7 +57,8 @@ export async function updateSession(request: NextRequest) {
   // /api/squads/referral both did. An allowlist here can only ever be wrong in
   // one direction, so it is gone.
   const isApiRequest = request.nextUrl.pathname.startsWith("/api");
-// Share and resilience pages a signed-out visitor may open. The list lives
+
+  // Share and resilience pages a signed-out visitor may open. The list lives
   // in lib/publicPaths so the app shell reads the same one.
   const isPublicSharePath = isPublicPath(request.nextUrl.pathname);
 
