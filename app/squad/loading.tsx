@@ -1,5 +1,5 @@
-import { PageLoader } from "@/components/ui/PageLoader";
+import { SquadSkeleton } from "@/components/skeletons/SquadSkeleton";
 
 export default function SquadLoading() {
-  return <PageLoader label="Loading squad..." />;
+  return <SquadSkeleton />;
 }

@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ErrorCard, Skeleton } from "@/components/ui/States";
+import { ErrorCard } from "@/components/ui/States";
+import { SquadWallSkeleton } from "@/components/skeletons/SquadWallSkeleton";
 import { VerifiedBadge } from "@/components/ui/Badge";
 import { ShareRow } from "@/components/ui/ShareRow";
 import { getWall } from "@/lib/data/wall";
@@ -107,18 +108,7 @@ export default function SquadWallPage() {
   const [latest, ...rest] = items;
   void rest;
 
-  if (loading)
-    return (
-      <div className="mx-auto w-full max-w-reading space-y-6 md:space-y-10" aria-label="Loading the wall">
-        <div className="space-y-2">
-          <Skeleton className="h-8 w-56" />
-          <Skeleton className="h-4 w-72 max-w-full" />
-        </div>
-        <Skeleton className="h-44 w-full rounded-xl" />
-        <Skeleton className="h-20 w-full rounded-lg" />
-        <Skeleton className="h-20 w-full rounded-lg" />
-      </div>
-    );
+  if (loading) return <SquadWallSkeleton />;
 
   if (loadError) {
     return <ErrorCard message={loadError} onRetry={() => void load()} />;

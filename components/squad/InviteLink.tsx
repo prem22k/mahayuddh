@@ -7,6 +7,7 @@ import { track } from "@/lib/analytics";
 import { ShareRow } from "@/components/ui/ShareRow";
 import { getOrCreateMyReferralLink, getMyReferralLinks, type ReferralLink } from "@/lib/data/referrals";
 import { dataErrorMessage } from "@/lib/data/errors";
+import { InviteLinkSkeleton } from "@/components/skeletons/SquadSkeleton";
 
 /**
  * Loop D — your invite link (§56, §40, §57).
@@ -28,6 +29,8 @@ export function InviteLink({ squadId, squadName }: { squadId: string; squadName:
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // First mint in flight: show the block's shape, not the retry button.
+  const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -39,6 +42,8 @@ export function InviteLink({ squadId, squadName }: { squadId: string; squadName:
       setAll(await getMyReferralLinks());
     } catch (err) {
       setError(dataErrorMessage(err, "Couldn't get an invite link."));
+    } finally {
+      setLoaded(true);
     }
   }, [squadId]);
 
@@ -57,6 +62,8 @@ export function InviteLink({ squadId, squadName }: { squadId: string; squadName:
       track("invite_link_copied", { squad_id: squadId });
     }
   };
+
+  if (!loaded) return <InviteLinkSkeleton />;
 
   if (error) {
     return (

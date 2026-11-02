@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { InviteLink } from "@/components/squad/InviteLink";
 import { copyText } from "@/lib/clipboard";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { PageLoader } from "@/components/ui/PageLoader";
+import { SquadSkeleton } from "@/components/skeletons/SquadSkeleton";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { SquadStreakPass, type StreakPassMember } from "@/components/squad/SquadStreakPass";
 import { Button } from "@/components/ui/Button";
@@ -96,7 +96,7 @@ function formatWeekRange(startIso: string, endIso: string): string {
 }
 
 export default function SquadPage() {
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile, loading: authLoading } = useAuth();
   const [squads, setSquads] = useState<Squad[]>([]);
   const [activeId, setActiveId] = useState<string | null>(profile?.active_squad_id ?? null);
   const [members, setMembers] = useState<SquadMember[]>([]);
@@ -206,8 +206,11 @@ export default function SquadPage() {
   }, [user, profile?.active_squad_id]);
 
   useEffect(() => {
+    // Wait for auth: a first pass with no user would flash the empty
+    // "Your squad is waiting" state before the real squad loads.
+    if (authLoading) return;
     load();
-  }, [load]);
+  }, [load, authLoading]);
 
   const inviteLink = (s: Squad | null) =>
     s && typeof window !== "undefined" ? `${window.location.origin}/squad/join/${s.invite_code}` : "";
@@ -326,7 +329,7 @@ export default function SquadPage() {
     }));
   }, []);
 
-  if (loading) return <PageLoader label="Loading squad..." />;
+  if (loading || authLoading) return <SquadSkeleton />;
 
   const firstGoal = goalProgress[0] ?? null;
   const todayLabel = weekDays[weekDays.length - 1]?.label ?? "";

@@ -4,7 +4,11 @@ import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Check, ChevronDown, CircleHelp, Plus, RefreshCw, TriangleAlert, Users, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PageLoader } from "@/components/ui/PageLoader";
+import {
+  ValidationBoardSkeleton,
+  ValidationSkeleton,
+  ValidationStatusSkeleton,
+} from "@/components/skeletons/ValidationSkeleton";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { dataErrorMessage } from "@/lib/data/errors";
 import {
@@ -129,7 +133,7 @@ function SelectField({
 }
 
 export default function ValidationPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [board, setBoard] = useState<GateBoard | null>(null);
   const [status, setStatus] = useState<TestStatus | null>(null);
   const [squads, setSquads] = useState<SquadOption[]>([]);
@@ -164,6 +168,9 @@ export default function ValidationPage() {
   }, [squadId]);
 
   useEffect(() => {
+    // Wait for auth: with no user yet this would drop `loading` and show the
+    // sign-in note (or an empty board) before the real read starts.
+    if (authLoading) return;
     if (!user) {
       setLoading(false);
       return;
@@ -172,7 +179,9 @@ export default function ValidationPage() {
       .then(setSquads)
       .catch((e) => setError(dataErrorMessage(e, "Couldn't load squads. Retry.")))
       .finally(() => void load());
-  }, [user, load]);
+  }, [user, authLoading, load]);
+
+  if (authLoading) return <ValidationSkeleton />;
 
   if (!user) {
     return (
@@ -230,7 +239,7 @@ export default function ValidationPage() {
       <div className="flex flex-col gap-3 md:flex-row md:items-start">
         <ScopePicker squads={squads} value={squadId} onChange={setSquadId} />
         <div className="min-w-0 flex-1">
-          <StatusBanner status={status} />
+          {firstLoad ? <ValidationStatusSkeleton /> : <StatusBanner status={status} />}
         </div>
       </div>
 
@@ -251,7 +260,7 @@ export default function ValidationPage() {
       )}
 
       {firstLoad ? (
-        <PageLoader label="Reading the gates…" />
+        <ValidationBoardSkeleton />
       ) : (
         <>
           <GateSection board={board} />

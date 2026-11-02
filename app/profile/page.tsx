@@ -17,6 +17,7 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Avatar } from "@/components/ui/Avatar";
 import { StreakChip } from "@/components/ui/Badge";
 import { ModalShell } from "@/components/ui/ModalShell";
+import { ProfileSkeleton, ProfileSquadsSkeleton } from "@/components/skeletons/ProfileSkeleton";
 import {
   SettingsCard,
   SettingsField,
@@ -43,7 +44,7 @@ const squadInitials = (name: string) =>
     .join("") || "?";
 
 export default function ProfilePage() {
-  const { user, profile, session, signOut, refreshProfile } = useAuth();
+  const { user, profile, session, signOut, refreshProfile, loading: authLoading } = useAuth();
   const [connectOpen, setConnectOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
@@ -126,7 +127,8 @@ export default function ProfilePage() {
   }, []);
 
   const loadSquads = useCallback(async () => {
-    if (!user) return;
+    // After auth: a pass with the user but no profile yet would fetch twice.
+    if (!user || authLoading) return;
     setSquadState({ status: "loading" });
     try {
       const mine = await getMySquads(user.id, profile?.active_squad_id ?? null);
@@ -134,7 +136,7 @@ export default function ProfilePage() {
     } catch (e) {
       setSquadState({ status: "error", message: dataErrorMessage(e, "Couldn't load your squads. Retry.") });
     }
-  }, [user, profile?.active_squad_id]);
+  }, [user, authLoading, profile?.active_squad_id]);
 
   useEffect(() => {
     void loadSquads();
@@ -142,7 +144,8 @@ export default function ProfilePage() {
 
   // Scroll spy for the "Jump to" rail (desktop only renders the rail).
   useEffect(() => {
-    if (typeof IntersectionObserver === "undefined") return;
+    // The sections only exist once the skeleton is gone.
+    if (authLoading || typeof IntersectionObserver === "undefined") return;
     const ids = ["overview", "account", "leetcode", "practice", "squads", "notifications", "privacy"];
     const els = ids
       .map((id) => document.getElementById(id))
@@ -158,7 +161,7 @@ export default function ProfilePage() {
     );
     els.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
-  }, []);
+  }, [authLoading]);
 
   const saveNotif = (key: keyof NotificationPrefs, value: boolean) => {
     const next = { ...notif, [key]: value };
@@ -262,6 +265,10 @@ export default function ProfilePage() {
     }
     await signOut();
   };
+
+  // Until auth resolves the page has no profile, and would draw "You" and
+  // "LeetCode not connected" for a beat. Hooks above, so this stays legal.
+  if (authLoading) return <ProfileSkeleton />;
 
   const displayName = profile?.username ?? "You";
   const email = user?.email ?? "";
@@ -608,13 +615,7 @@ export default function ProfilePage() {
             }
           >
             {squadState.status === "loading" ? (
-              <div className="flex items-center gap-3 py-3" aria-hidden>
-                <span className="skeleton h-8 w-8 shrink-0" />
-                <span className="flex-1 space-y-1.5">
-                  <span className="skeleton block h-3 w-32" />
-                  <span className="skeleton block h-2.5 w-48" />
-                </span>
-              </div>
+              <ProfileSquadsSkeleton />
             ) : squadState.status === "error" ? (
               <div className="flex items-center justify-between gap-3 rounded-lg border border-hairline bg-well p-3">
                 <p role="alert" className="text-xs leading-5 text-text-secondary">
