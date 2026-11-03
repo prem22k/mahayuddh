@@ -22,7 +22,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import useSWR, { SWRConfig, useSWRConfig, type Cache } from "swr";
-import { matchesNames, scopedKey, serializedOwnerPrefix, type QueryKey } from "./keys";
+import { matchesNames, ownedBy, scopedKey, serializedOwnerPrefix, type QueryKey } from "./keys";
 
 /** undefined while auth is still resolving; null when signed out. */
 type Owner = string | null | undefined;
@@ -149,4 +149,16 @@ export function useInvalidate(): (...names: string[]) => Promise<unknown> {
     (...names: string[]) => mutate((stored) => matchesNames(stored, owner ?? null, names)),
     [mutate, owner],
   );
+}
+
+/**
+ * Refetch every cached query of the current user. For changes that touch
+ * almost everything at once, e.g. a LeetCode sync, which can change solve
+ * statuses, sheet and pattern progress, stats, streaks and leaderboards.
+ * Mounted readers update in place; the rest refetch when next shown.
+ */
+export function useInvalidateAll(): () => Promise<unknown> {
+  const { mutate } = useSWRConfig();
+  const owner = useContext(OwnerContext);
+  return useCallback(() => mutate((stored) => ownedBy(stored, owner ?? null)), [mutate, owner]);
 }

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { X, Zap, CircleHelp, Check, Copy, ArrowRight, ExternalLink, Bookmark } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { useLeetCodeSynced } from "@/lib/leetcode/useLeetCodeSynced";
 import { syncUserProfileStats } from "@/lib/data/profiles";
 import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
@@ -18,7 +19,9 @@ interface ConnectLeetCodeModalProps {
 }
 
 export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLeetCodeModalProps) {
-  const { user, profile, session, refreshProfile } = useAuth();
+  const { user, profile, session } = useAuth();
+  // Profile + every cached query: progress numbers all derive from the sync.
+  const leetcodeSynced = useLeetCodeSynced();
   const [activeTab, setActiveTab] = useState<"handle" | "bookmarklet" | "session">("handle");
   const [username, setUsername] = useState(profile?.leetcode_username || "");
   const [password, setPassword] = useState("");
@@ -88,7 +91,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
         return;
       }
 
-      await refreshProfile();
+      await leetcodeSynced();
       setSuccess(`Connected @${username.trim()}! Solved stats, rating, and last 100 ACs synced.`);
       try {
         const confetti = (await import("canvas-confetti")).default;
@@ -155,7 +158,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
       } catch {
         // ignore
       }
-      await refreshProfile();
+      await leetcodeSynced();
       setTimeout(() => {
         onConnected?.();
         onClose();
@@ -190,7 +193,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
         return;
       }
       setSuccess("Stored LeetCode session removed. Your squads, notes, and history are untouched — only the evidence badge is gone.");
-      await refreshProfile();
+      await leetcodeSynced();
     } catch {
       setError("Couldn't remove the stored session. Try again.");
     } finally {

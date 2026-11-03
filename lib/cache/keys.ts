@@ -39,6 +39,11 @@ export function matchesNames(stored: unknown, userId: string | null, names: read
   );
 }
 
+/** True when a stored key belongs to this user, whatever its name. */
+export function ownedBy(stored: unknown, userId: string | null): boolean {
+  return Array.isArray(stored) && stored[0] === ownerOf(userId);
+}
+
 /**
  * The prefix SWR's serializer gives every key owned by this user. SWR
  * serializes an array key as `@` + each element JSON-encoded + `,`, so a

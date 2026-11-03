@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
@@ -14,6 +14,25 @@ import { FirstRunTour } from "@/components/tour/FirstRunTour";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { isPublicSharePath } from "@/lib/publicPaths";
 import { isAppPage } from "@/lib/appRoutes";
+import { Spinner } from "@/components/ui/Spinner";
+
+/**
+ * Pages a not-yet-onboarded account may still open: the setup itself, the
+ * auth flow, the landing and legal pages, and the offline fallback. Every
+ * other signed-in page sends them to /onboarding first and comes back after.
+ */
+function skipsOnboarding(path: string): boolean {
+  return (
+    path === "/onboarding" ||
+    path.startsWith("/login") ||
+    path.startsWith("/auth") ||
+    path === "/welcome" ||
+    path === "/privacy" ||
+    path === "/terms" ||
+    path === "/offline" ||
+    !isAppPage(path) // the 404 page
+  );
+}
 
 function BackupModeBanner() {
   const [dismissed, setDismissed] = useState(false);
@@ -39,7 +58,8 @@ function BackupModeBanner() {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const { user, profile, loading: authLoading } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
@@ -58,7 +78,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setIsMobileMenuOpen(false);
   }, [pathname]);
 
-  if (pathname?.startsWith("/login") || pathname?.startsWith("/auth")) {
+  // First-run setup comes before anything else. The page that was asked for
+  // (an invite, a challenge, the Arena) is kept as ?next= and opens after
+  // the setup is finished or skipped.
+  const needsOnboarding = Boolean(user && profile && !profile.onboarded_at && !skipsOnboarding(pathname ?? ""));
+  useEffect(() => {
+    if (!needsOnboarding) return;
+    const target = `${window.location.pathname}${window.location.search}`;
+    router.replace(`/onboarding?next=${encodeURIComponent(target)}`);
+  }, [needsOnboarding, router]);
+
+  if (needsOnboarding) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-canvas" aria-busy="true">
+        <Spinner size="xl" />
+      </main>
+    );
+  }
+
+  // Login, auth and the first-run setup are focused screens without the app
+  // chrome.
+  if (pathname?.startsWith("/login") || pathname?.startsWith("/auth") || pathname === "/onboarding") {
     return (
       <main className="min-h-screen bg-canvas">
         <BackupModeBanner />
