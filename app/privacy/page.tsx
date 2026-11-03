@@ -122,8 +122,8 @@ const sections: LegalSection[] = [
     heading: "How long we keep it",
     body: (
       <p>
-        We keep your data while your account exists. When you ask us to delete your account, we delete it and the
-        personal data tied to it within 30 days, unless the law requires us to keep something. Copies that other
+        We keep your data while your account exists. When you delete your account, we delete it and the personal
+        data tied to it straight away, unless the law requires us to keep something. Copies that other
         members made of things you shared with them (for example a note they copied into their own notebook) stay
         with them. Backups held by our providers expire on their own schedule.
       </p>
@@ -138,8 +138,9 @@ const sections: LegalSection[] = [
           Under India&rsquo;s Digital Personal Data Protection Act, 2023, you can ask us for a summary of the data we
           hold about you, ask us to correct or delete it, withdraw your consent, and nominate someone to act for you.
           You can edit your profile, change the visibility of your notes and approaches, and delete your own posts
-          and notes yourself. To delete your account, email {mail} from your account&rsquo;s address. We reply within
-          30 days.
+          and notes yourself. To delete your account, go to Profile, then Account, then Delete account; it takes
+          effect immediately. If you can&rsquo;t sign in, email {mail} from your account&rsquo;s address and we
+          reply within 30 days.
         </p>
         <p>
           If you are not satisfied with our answer, you can complain to the Data Protection Board of India.

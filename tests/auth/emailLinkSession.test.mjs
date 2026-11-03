@@ -37,3 +37,18 @@ describe("isRecentEmailLinkSession", () => {
     assert.equal(isRecentEmailLinkSession(jwt(claims), NOW), true);
   });
 });
+
+describe("isRecentSignIn (account deletion gate)", async () => {
+  const { isRecentSignIn, lastAuthenticatedAt } = await import("../../lib/auth/jwtClaims.ts");
+  it("uses the newest authentication of any method", () => {
+    const t = jwt({ amr: [{ method: "oauth", timestamp: NOW - 7200 }, { method: "password", timestamp: NOW - 120 }] });
+    assert.equal(lastAuthenticatedAt(t), NOW - 120);
+    assert.equal(isRecentSignIn(t, NOW), true);
+  });
+  it("rejects a session last proved over 10 minutes ago, however recently refreshed", () => {
+    assert.equal(isRecentSignIn(jwt({ amr: [{ method: "oauth", timestamp: NOW - 601 }], iat: NOW - 5 }), NOW), false);
+  });
+  it("rejects tokens without timestamped methods", () => {
+    for (const t of [null, "", "x.y.z", jwt({}), jwt({ amr: ["password"] })]) assert.equal(isRecentSignIn(t, NOW), false);
+  });
+});

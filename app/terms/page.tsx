@@ -102,8 +102,8 @@ const sections: LegalSection[] = [
     body: (
       <p>
         You can report posts and block people. We may remove content and suspend or close accounts that break these
-        terms, and we will tell you why when we can. You can stop using Mahayuddh at any time and ask us to delete
-        your account by emailing {mail}.
+        terms, and we will tell you why when we can. You can stop using Mahayuddh at any time and delete your
+        account from your profile; if you can&rsquo;t sign in, email {mail}.
       </p>
     ),
   },
