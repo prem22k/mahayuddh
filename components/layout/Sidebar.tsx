@@ -79,6 +79,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
             onClick={onSearchOpen}
             className="group mb-4 flex h-9 w-full items-center justify-between rounded-md border border-hairline bg-well px-3 text-text-secondary transition-colors hover:border-hairline-strong hover:text-text-primary"
             aria-label="Search"
+            data-tour="search-sidebar"
           >
             <span className="flex items-center gap-2.5">
               <Search
@@ -103,6 +104,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
                   href={item.href}
                   aria-current={isActive ? "page" : undefined}
                   title={item.name}
+                  data-tour={`nav-${item.name.toLowerCase()}`}
                   className={cn("nav-item group", isActive && "active")}
                 >
                   <Icon
@@ -167,6 +169,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
             onClick={() => setIsDossierOpen(true)}
             className="group w-full rounded-lg border border-transparent bg-surface p-2.5 text-left transition-colors hover:border-hairline hover:bg-surface-raised"
             title="Open your dossier"
+            data-tour="you-card"
           >
             <span className="mb-2 flex items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-2.5">

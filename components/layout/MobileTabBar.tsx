@@ -38,6 +38,7 @@ export function MobileTabBar() {
             href={tab.href}
             className={cn("mobile-tab", active && "active")}
             aria-current={active ? "page" : undefined}
+            data-tour={`tab-${tab.name.toLowerCase()}`}
           >
             <Icon className="h-[18px] w-[18px]" strokeWidth={1.5} aria-hidden="true" />
             <span>{tab.name}</span>
