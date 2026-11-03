@@ -31,9 +31,22 @@ export const TOUR_STEPS: TourStep[] = [
     id: "battle",
     title: "Today's battle",
     body: "One problem a day, the same one for your whole squad. Start battle runs a timer, and your squad sees who solved it and how fast. A new pick lands at midnight.",
-    // The Arena Pass is the first Pass on /home. Targeted by class so the home
-    // page itself carries no tour markup.
-    targets: [{ selector: "main .pass", placement: "bottom", scroll: true }],
+    // On /home: the Arena Pass itself (the first Pass on the page, targeted by
+    // class so the home page carries no tour markup). Anywhere else the tour
+    // starts (right after onboarding): the Arena entry in the nav.
+    targets: [
+      { selector: "main .pass", placement: "bottom", scroll: true },
+      {
+        selector: '[data-tour="nav-arena"]',
+        placement: "right",
+        body: "Today's battle lives in the Arena: one problem a day, the same one for your whole squad. A timer runs while you solve, and your squad sees who solved it and how fast.",
+      },
+      {
+        selector: '[data-tour="tab-arena"]',
+        placement: "top",
+        body: "Today's battle lives in the Arena: one problem a day, the same one for your whole squad. A timer runs while you solve, and your squad sees who solved it and how fast.",
+      },
+    ],
   },
   {
     id: "practice",
