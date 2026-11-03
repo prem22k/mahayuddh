@@ -78,7 +78,7 @@ Postgres 17, RLS on all ~45 tables, ~65 functions, ~25 triggers. The recurring s
 Two setup paths — **pick one** (they are not composable: migrations assume `profiles` exists):
 
 - **Fresh database** → run `supabase/schema.sql` in the SQL editor, then seed below.
-- **Existing project** → `npx supabase link` + `db push` (dry-run first). Never hand-edit an applied migration.
+- **Existing project** → `npx supabase link`, then `bash scripts/push-migrations.sh --dry-run` to list what the project hasn't recorded and `bash scripts/push-migrations.sh` to apply it (each migration and its history row in one transaction). Plain `db push` skips everything here because `[db.migrations]` is disabled for the local stack, which is built from `schema.sql`. Never hand-edit an applied migration.
 
 Then seed the catalog and roadmaps:
 

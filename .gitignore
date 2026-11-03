@@ -40,6 +40,8 @@ scripts/*
 !scripts/setup-social-login.sh
 # setup-email.sh is the documented email setup (README, Deploy).
 !scripts/setup-email.sh
+# push-migrations.sh is the documented way to apply migrations (README, Database).
+!scripts/push-migrations.sh
 
 # TypeScript cache
 *.tsbuildinfo
