@@ -197,6 +197,8 @@ function LoginForm({ providers }: { providers: OAuthProviderId[] }) {
       setErrorMsg("Sign-in was cancelled. Pick an account again, or use email.");
     } else if (err === "oauth_failed") {
       setErrorMsg("Couldn't finish signing in with that account. Try again, or use email.");
+    } else if (notice === "account_deleted") {
+      setSuccessMsg("Your account is deleted. Thanks for practising with us.");
     } else if (notice === "password_updated") {
       setSuccessMsg("Password set. Every other device was logged out — sign in again.");
     }

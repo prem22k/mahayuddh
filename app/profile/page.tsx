@@ -7,7 +7,6 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { syncUserProfileStats } from "@/lib/data/profiles";
 import { getMySquads } from "@/lib/data/squads";
 import { dataErrorMessage } from "@/lib/data/errors";
-import { LEGAL } from "@/lib/legal";
 import { ConnectLeetCodeModal } from "@/components/modals/ConnectLeetCodeModal";
 import { DEFAULT_PREFS, getPrefs, savePrefs, type NotificationPrefs } from "@/lib/data/notificationPrefs";
 import { pushPermissionState, requestPushPermission, type PushPermissionState } from "@/lib/pushPermission";
@@ -80,6 +79,10 @@ export default function ProfilePage() {
   const [objective, setObjective] = useState<string>("");
   const [objSaved, setObjSaved] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteNeedsReauth, setDeleteNeedsReauth] = useState(false);
   const [revokeOpen, setRevokeOpen] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [revokeError, setRevokeError] = useState<string | null>(null);
@@ -136,6 +139,23 @@ export default function ProfilePage() {
   useEffect(() => {
     setPushPerm(pushPermissionState());
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("delete") === "1") {
+      setDeleteOpen(true);
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!deleteOpen) {
+      setDeleteConfirm("");
+      setDeleting(false);
+      setDeleteError(null);
+      setDeleteNeedsReauth(false);
+    }
+  }, [deleteOpen]);
 
   // Scroll spy for the "Jump to" rail (desktop only renders the rail).
   useEffect(() => {
@@ -315,6 +335,63 @@ export default function ProfilePage() {
       setNameError("Couldn't save your name. Try again.");
     } finally {
       setNameSaving(false);
+    }
+  };
+
+  const canDelete =
+    Boolean(displayName.trim()) &&
+    deleteConfirm.trim().toLowerCase() === displayName.trim().toLowerCase();
+
+  const handleDeleteAccount = async () => {
+    if (deleting) return;
+    setDeleting(true);
+    setDeleteError(null);
+    setDeleteNeedsReauth(false);
+
+    let shouldResetDeleting = true;
+    try {
+      const { data } = await createClient().auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) {
+        setDeleteError("Couldn't delete your account. Try again.");
+        return;
+      }
+
+      const res = await fetch("/api/auth/account", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ confirm: deleteConfirm.trim() }),
+      });
+
+      const body = (await res.json().catch(() => ({}))) as {
+        deleted?: boolean;
+        error?: string;
+        reauth?: boolean;
+      };
+
+      if (res.status === 200 && body.deleted) {
+        shouldResetDeleting = false;
+        await createClient().auth.signOut().catch(() => {});
+        window.location.replace("/login?notice=account_deleted");
+        return;
+      }
+
+      if (res.status === 401 && body.reauth) {
+        setDeleteNeedsReauth(true);
+        setDeleteError(body.error ?? "For your safety, sign in again, then delete your account.");
+        return;
+      }
+
+      setDeleteError(body.error ?? "Couldn't delete your account. Try again.");
+    } catch {
+      setDeleteError("Couldn't delete your account. Try again.");
+    } finally {
+      if (shouldResetDeleting) {
+        setDeleting(false);
+      }
     }
   };
 
@@ -966,38 +1043,67 @@ export default function ProfilePage() {
         >
           <h2 className="font-display text-xl font-semibold tracking-tight">Delete account?</h2>
           <p className="mt-2 text-sm leading-6 text-text-secondary">
-            This removes your profile, solves, and approaches. Your squad keeps going
-            without you. This can&apos;t be undone.
+            This permanently deletes your profile, solves, battles, notes, approaches and posts, and removes you from your squads. Squads where you&apos;re the only member are deleted too. This can&apos;t be undone.
           </p>
-          <p className="mt-3 rounded-lg border border-hairline bg-well p-3 text-xs leading-5 text-text-tertiary">
-            Self-serve deletion isn&apos;t available yet. To delete your account, email{" "}
-            <a
-              href={`mailto:${LEGAL.contactEmail}`}
-              className="font-medium underline underline-offset-2 hover:text-text-primary"
-            >
-              {LEGAL.contactEmail}
-            </a>{" "}
-            from the address you signed up with. We reply within 30 days.
-          </p>
+          <div className="mt-4 flex flex-col gap-1.5">
+            <label htmlFor="delete-confirm-input" className="text-xs font-medium text-text-secondary">
+              Type <span className="font-mono text-text-primary">{displayName}</span> to confirm
+            </label>
+            <input
+              id="delete-confirm-input"
+              type="text"
+              value={deleteConfirm}
+              onChange={(e) => setDeleteConfirm(e.target.value)}
+              aria-label="Type your name to confirm"
+              autoComplete="off"
+              className="h-11 md:h-10 w-full rounded-md border border-hairline bg-well px-3 text-sm text-text-primary"
+              disabled={deleting}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && canDelete && !deleting && !deleteNeedsReauth) {
+                  e.preventDefault();
+                  void handleDeleteAccount();
+                }
+              }}
+            />
+            {deleteError && (
+              <p role="alert" className="text-xs text-error">
+                {deleteError}
+              </p>
+            )}
+          </div>
           <div className="mt-5 flex flex-col-reverse gap-2 md:flex-row md:justify-end">
-            <Button variant="ghost" onClick={() => setDeleteOpen(false)} className="min-h-[44px]">
+            <Button
+              variant="ghost"
+              onClick={() => setDeleteOpen(false)}
+              disabled={deleting}
+              className="min-h-[44px]"
+            >
               Keep my account
             </Button>
-            <Button variant="secondary" onClick={() => void signOut()} className="min-h-[44px]">
-              Sign out instead
-            </Button>
-            <a
-              href={`mailto:${LEGAL.contactEmail}?subject=${encodeURIComponent(
-                "Delete my Mahayuddh account"
-              )}&body=${encodeURIComponent(
-                profile?.username
-                  ? `Please delete my Mahayuddh account.\n\nUsername: ${profile.username}`
-                  : "Please delete my Mahayuddh account."
-              )}`}
-              className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium leading-5 transition-colors focus-visible:outline-hidden select-none bg-surface-overlay text-text-primary hover:bg-[#272830] h-10 px-4 min-h-[44px]"
-            >
-              Email a deletion request
-            </a>
+            {deleteNeedsReauth ? (
+              <Button
+                variant="primary"
+                onClick={async () => {
+                  // Not useAuth().signOut: it navigates to /login itself and
+                  // would race this redirect, losing ?next.
+                  await createClient().auth.signOut().catch(() => {});
+                  window.location.assign(`/login?next=${encodeURIComponent("/profile?delete=1")}`);
+                }}
+                className="min-h-[44px]"
+              >
+                Sign in again
+              </Button>
+            ) : (
+              <Button
+                variant="danger"
+                onClick={() => void handleDeleteAccount()}
+                loading={deleting}
+                disabled={!canDelete || deleting}
+                className="min-h-[44px]"
+              >
+                Delete my account
+              </Button>
+            )}
           </div>
         </ModalShell>
       )}
