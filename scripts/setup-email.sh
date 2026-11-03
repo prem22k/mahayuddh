@@ -355,7 +355,7 @@ def page(preheader, title, intro, cta, href, kind, outro):
         <a href="{href}" style="color:#a1a3ab;text-decoration:underline;word-break:break-all">{href}</a>
       </td></tr>
       <tr><td style="padding:20px 4px 0;font-family:{SANS};font-size:12px;line-height:18px;color:#84868f">{outro}</td></tr>
-      <tr><td style="padding:28px 4px 0;font-family:{SANS};font-size:12px;line-height:18px;color:#55575e">Mahayuddh &middot; Practice DSA with your people &middot; <a href="{site}" style="color:#55575e;text-decoration:underline">mahayuddh.vercel.app</a></td></tr>
+      <tr><td style="padding:28px 4px 0;font-family:{SANS};font-size:12px;line-height:18px;color:#55575e">Mahayuddh &middot; Practice DSA with your people &middot; <a href="{site}" style="color:#55575e;text-decoration:underline">{site}</a></td></tr>
     </table>
   </td></tr>
 </table>"""
