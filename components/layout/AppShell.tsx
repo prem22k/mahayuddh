@@ -12,6 +12,7 @@ import { SearchModal } from "../modals/SearchModal";
 import { LeetCodeAutoSync } from "@/components/providers/LeetCodeAutoSync";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { isPublicSharePath } from "@/lib/publicPaths";
+import { isAppPage } from "@/lib/appRoutes";
 
 function BackupModeBanner() {
   const [dismissed, setDismissed] = useState(false);
@@ -68,8 +69,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Every page outside the public list requires a session (middleware), so
   // while auth is still resolving its visitor is signed in. Drawing the shell
   // now keeps a hard reload from rendering full width and then jumping when
-  // the sidebar arrives.
-  const signedInChrome = !!user || (authLoading && !isPublicSharePath(pathname ?? ""));
+  // the sidebar arrives. A path no page serves (the 404) is open to everyone,
+  // so it waits for auth instead of assuming a session.
+  const p = pathname ?? "";
+  const signedInChrome = !!user || (authLoading && !isPublicSharePath(p) && isAppPage(p));
 
   if (!signedInChrome) {
     return (

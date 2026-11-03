@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { type ResponseCookie } from "next/dist/compiled/@edge-runtime/cookies";
 import { safeNext } from "@/lib/safeNext";
 import { isPublicSharePath as isPublicPath } from "@/lib/publicPaths";
+import { isAppPage } from "@/lib/appRoutes";
 
 interface CookieToSet {
   name: string;
@@ -78,6 +79,11 @@ export async function updateSession(request: NextRequest) {
   // in lib/publicPaths so the app shell reads the same one.
   const isPublicSharePath = isPublicPath(request.nextUrl.pathname);
 
+  // A path no page serves is not protected: it renders the 404 page for
+  // everyone. Sending a signed-out visitor's typo to /login would promise a
+  // page that isn't there.
+  const isUnknownPath = !isAppPage(request.nextUrl.pathname);
+
   // Fast-path: Check if any Supabase auth cookies exist in request
   const allCookies = request.cookies.getAll();
   const hasAuthCookie = allCookies.some(
@@ -92,7 +98,7 @@ export async function updateSession(request: NextRequest) {
   // - Public/login/auth/invite routes pass through immediately
   // - Protected routes redirect to /login
   if (!hasAuthCookie) {
-    if (isLoginPage || isAuthCallback || isApiRequest || isPublicSharePath) {
+    if (isLoginPage || isAuthCallback || isApiRequest || isPublicSharePath || isUnknownPath) {
       return supabaseResponse;
     }
     return signedOutRedirect(request, supabaseResponse);
@@ -141,7 +147,7 @@ export async function updateSession(request: NextRequest) {
     const user = data?.user ?? null;
 
     // If user is not authenticated and trying to access protected route
-    if (!user && !isLoginPage && !isAuthCallback && !isApiRequest && !isPublicSharePath) {
+    if (!user && !isLoginPage && !isAuthCallback && !isApiRequest && !isPublicSharePath && !isUnknownPath) {
       return signedOutRedirect(request, supabaseResponse);
     }
 
@@ -155,7 +161,7 @@ export async function updateSession(request: NextRequest) {
     }
   } catch (err) {
     console.warn("Supabase auth check in middleware encountered an error:", err);
-    if (!isLoginPage && !isAuthCallback && !isApiRequest && !isPublicSharePath) {
+    if (!isLoginPage && !isAuthCallback && !isApiRequest && !isPublicSharePath && !isUnknownPath) {
       return loginUrlFor(request, supabaseResponse);
     }
   }
