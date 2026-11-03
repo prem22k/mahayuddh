@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore }
 import { createPortal } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { isAppPage } from "@/lib/appRoutes";
 import { cn } from "@/lib/utils";
 import { TOUR_STEPS, type Placement, type TourStep, type TourTarget } from "./steps";
 import { TOUR_REPLAY_EVENT, setTourCompleted, tourDismissedKey } from "./replay";
@@ -12,8 +13,11 @@ import styles from "./tour.module.css";
 /**
  * First-run walkthrough: coachmarks over the real shell, once per account.
  *
- * Shown on /home when onboarding is done (`onboarded_at`) and the tour is not
- * (`tour_completed_at`), so it never stacks on top of onboarding. Finishing
+ * Starts right after onboarding: on the first signed-in page the setup hands
+ * the visitor to, once `onboarded_at` is set and `tour_completed_at` is not,
+ * so it never stacks on top of onboarding. Pages where they came to do one
+ * thing (joining a squad, a challenge or share link, solving a problem) are
+ * left alone; the tour waits for the next ordinary page. Finishing
  * or skipping stamps `tour_completed_at`; a session flag keeps it closed even
  * if that save fails. Profile's "Replay the tour" calls `replayTour()`.
  *
@@ -89,6 +93,28 @@ function placeCard(
   };
 }
 
+/**
+ * Pages the tour may open on. Not the setup, auth or public pages, and not a
+ * page the visitor arrived at to finish one task: a squad invite, a
+ * challenge, a shared proof or approach, a profile link, or a problem they
+ * are solving. The tour picks up on the next page they open.
+ */
+export function tourCanStartOn(path: string): boolean {
+  if (!isAppPage(path)) return false;
+  return !(
+    path === "/onboarding" ||
+    path.startsWith("/login") ||
+    path.startsWith("/auth") ||
+    path === "/welcome" ||
+    path === "/privacy" ||
+    path === "/terms" ||
+    path === "/offline" ||
+    path.startsWith("/squad/join/") ||
+    /^\/(c|b|a|u)\//.test(path) ||
+    /^\/practice\/[^/]+/.test(path)
+  );
+}
+
 const noopSubscribe = () => () => {};
 
 function readDismissed(userId: string | undefined) {
@@ -126,7 +152,7 @@ export function FirstRunTour() {
 
   const eligible =
     !!user &&
-    pathname === "/home" &&
+    tourCanStartOn(pathname ?? "") &&
     !!profile?.onboarded_at &&
     !profile?.tour_completed_at &&
     !closedNow &&
@@ -134,14 +160,19 @@ export function FirstRunTour() {
   const running = eligible && index !== null;
   const step = running ? TOUR_STEPS[index] : null;
 
-  // Start once the Arena Pass has rendered (the page loads behind a
-  // skeleton). After ~10s start anyway; a missing stop is skipped.
+  // Start once there is something to point at. On /home that means the Arena
+  // Pass (the page loads behind a skeleton); elsewhere the shell's nav is
+  // enough. After ~10s start anyway; a missing stop is skipped.
+  const onHome = pathname === "/home";
   useEffect(() => {
     if (!eligible || index !== null) return;
     let tries = 0;
     const id = window.setInterval(() => {
       tries += 1;
-      if (findTarget(TOUR_STEPS[0]) || tries >= 40) {
+      const ready = onHome
+        ? !!document.querySelector("main .pass:not([aria-hidden] .pass)") && !!findTarget(TOUR_STEPS[0])
+        : TOUR_STEPS.some((s) => findTarget(s));
+      if (ready || tries >= 40) {
         window.clearInterval(id);
         returnFocus.current = document.activeElement as HTMLElement | null;
         direction.current = 1;
@@ -149,7 +180,7 @@ export function FirstRunTour() {
       }
     }, 250);
     return () => window.clearInterval(id);
-  }, [eligible, index]);
+  }, [eligible, index, onHome]);
 
   const close = useCallback(() => {
     setIndex(null);
@@ -229,12 +260,15 @@ export function FirstRunTour() {
         setFrame({
           stepId: step.id,
           body: found.target.body ?? step.body,
-          hole: {
-            top: r.top - HOLE_PAD,
-            left: r.left - HOLE_PAD,
-            width: r.width + HOLE_PAD * 2,
-            height: r.height + HOLE_PAD * 2,
-          },
+          // Padded, but kept on screen: a tab at the very edge of a phone
+          // would otherwise push the outline past it.
+          hole: (() => {
+            const left = Math.max(2, r.left - HOLE_PAD);
+            const top = Math.max(2, r.top - HOLE_PAD);
+            const right = Math.min(vw - 2, r.right + HOLE_PAD);
+            const bottom = Math.min(vh - 2, r.bottom + HOLE_PAD);
+            return { top, left, width: right - left, height: bottom - top };
+          })(),
           card: placeCard(r, w, h, found.target.placement, vw, vh),
         });
       }
