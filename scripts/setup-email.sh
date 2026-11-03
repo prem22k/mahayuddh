@@ -201,13 +201,35 @@ umask 077
 ENV_FILE="${MAHAYUDDH_OAUTH_ENV:-$HOME/.config/mahayuddh/oauth.env}"
 mkdir -p "$(dirname "$ENV_FILE")"
 
-PROJECT_REF="purvcivaijjjtgknqvqn"
-SITE_URL="https://mahayuddh.vercel.app"
-API="https://api.supabase.com/v1/projects/${PROJECT_REF}/config/auth"
+API=""; CALLBACK_URL=""   # set by project_settings in stage 1
 
 for bin in curl python3; do
   command -v "$bin" >/dev/null 2>&1 || { printf 'This wizard needs %s.\n' "$bin"; exit 1; }
 done
+
+# need VAR "Prompt": the value comes from the environment if exported, else
+# from the saved settings file, else it's asked for. Nothing has a default in
+# this script: every project-specific value is yours to provide.
+need() {
+  local var="$1" prompt="$2"
+  if [[ -n "${!var:-}" ]]; then
+    note "$var from the environment."
+  else
+    ask "$var" "$prompt"
+  fi
+  if [[ -z "${!var:-}" ]]; then warn "$var is required."; exit 1; fi
+  write_env "$var" "${!var}"
+}
+
+# project_settings: the Supabase project and the site, asked once and saved.
+project_settings() {
+  need SUPABASE_PROJECT_REF "Supabase project ref (the <ref> in https://<ref>.supabase.co):"
+  need SITE_URL "Site URL people sign in on (https://..., no trailing slash):"
+  SITE_URL="${SITE_URL%/}"
+  write_env SITE_URL "$SITE_URL" >/dev/null
+  API="https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/config/auth"
+  CALLBACK_URL="https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/callback"
+}
 
 # api METHOD [json-file]: token and body travel in files only you can read.
 api() {
@@ -229,7 +251,9 @@ TOTAL_STAGES=4
 banner "Mahayuddh · email sending + confirmation"
 
 # ── 1 ─────────────────────────────────────────────────────────────────────
-stage "Supabase access token"
+stage "Supabase project and access token"
+project_settings
+say ""
 say "Reuses the token saved by setup-social-login.sh (Enter keeps it)."
 note "New token: https://supabase.com/dashboard/account/tokens"
 ask_secret SUPABASE_ACCESS_TOKEN "Supabase access token:"
@@ -257,7 +281,11 @@ warn "App passwords need 2-Step Verification on the Google account."
 open_url "https://myaccount.google.com/apppasswords"
 step "Sign in if asked. App name: Mahayuddh Supabase → Create."
 step "Copy the 16-letter password Google shows (spaces don't matter)."
-ask GMAIL_ADDRESS "Gmail address that will send the emails:"
+need SMTP_HOST "SMTP host (for Gmail: smtp.gmail.com):"
+need SMTP_PORT "SMTP port (for Gmail: 465):"
+need SMTP_SENDER_NAME "Sender name shown in inboxes:"
+need SMTP_MAX_PER_HOUR "Max auth emails per hour (Gmail allows ~500/day):"
+ask GMAIL_ADDRESS "Address that will send the emails:"
 ask_secret GMAIL_APP_PASSWORD "App password:"
 GMAIL_APP_PASSWORD="${GMAIL_APP_PASSWORD// /}"
 if [[ ${#GMAIL_APP_PASSWORD} -ne 16 ]]; then
@@ -270,13 +298,15 @@ pause
 # ── 3 ─────────────────────────────────────────────────────────────────────
 stage "Apply in Supabase"
 say "This sets, and nothing else:"
-step "SMTP: smtp.gmail.com:465 as $GMAIL_ADDRESS, sender name Mahayuddh, 30 emails/hour"
+step "SMTP: $SMTP_HOST:$SMTP_PORT as $GMAIL_ADDRESS, sender name $SMTP_SENDER_NAME, $SMTP_MAX_PER_HOUR emails/hour"
 step "Templates: confirmation and password reset link to $SITE_URL/auth/confirm"
 step "Confirm email: ON (new email signups must click the link)"
 step "Manual identity linking: ON (for 'Connect GitHub' in the profile)"
 if confirm "Apply now?"; then
   body=$(mktemp)
   GMAIL_ADDRESS="$GMAIL_ADDRESS" GMAIL_APP_PASSWORD="$GMAIL_APP_PASSWORD" \
+  SMTP_HOST="$SMTP_HOST" SMTP_PORT="$SMTP_PORT" SMTP_SENDER_NAME="$SMTP_SENDER_NAME" \
+  SMTP_MAX_PER_HOUR="$SMTP_MAX_PER_HOUR" \
   python3 -I - "$body" <<'PY'
 import json, os, sys
 site = "{{ .SiteURL }}"
@@ -325,20 +355,20 @@ def page(preheader, title, intro, cta, href, kind, outro):
         <a href="{href}" style="color:#a1a3ab;text-decoration:underline;word-break:break-all">{href}</a>
       </td></tr>
       <tr><td style="padding:20px 4px 0;font-family:{SANS};font-size:12px;line-height:18px;color:#84868f">{outro}</td></tr>
-      <tr><td style="padding:28px 4px 0;font-family:{SANS};font-size:12px;line-height:18px;color:#55575e">Mahayuddh &middot; Practice DSA with your people &middot; <a href="{site}" style="color:#55575e;text-decoration:underline">mahayuddh.vercel.app</a></td></tr>
+      <tr><td style="padding:28px 4px 0;font-family:{SANS};font-size:12px;line-height:18px;color:#55575e">Mahayuddh &middot; Practice DSA with your people &middot; <a href="{site}" style="color:#55575e;text-decoration:underline">{site}</a></td></tr>
     </table>
   </td></tr>
 </table>"""
 confirm_href = site + "/auth/confirm?token_hash={{ .TokenHash }}&type=email&next={{ .RedirectTo }}"
 recovery_href = site + "/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=" + site + "/auth/update-password"
 patch = {
-    "smtp_host": "smtp.gmail.com",
-    "smtp_port": "465",
+    "smtp_host": os.environ["SMTP_HOST"].strip(),
+    "smtp_port": os.environ["SMTP_PORT"].strip(),
     "smtp_user": os.environ["GMAIL_ADDRESS"].strip(),
     "smtp_pass": os.environ["GMAIL_APP_PASSWORD"].strip(),
     "smtp_admin_email": os.environ["GMAIL_ADDRESS"].strip(),
-    "smtp_sender_name": "Mahayuddh",
-    "rate_limit_email_sent": 30,
+    "smtp_sender_name": os.environ["SMTP_SENDER_NAME"].strip(),
+    "rate_limit_email_sent": int(os.environ["SMTP_MAX_PER_HOUR"]),
     "mailer_subjects_confirmation": "Confirm your Mahayuddh account",
     "mailer_templates_confirmation_content": page(
         "Confirm your email to start practising with your squad.",

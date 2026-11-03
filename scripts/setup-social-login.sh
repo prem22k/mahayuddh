@@ -204,10 +204,7 @@ umask 077
 ENV_FILE="${MAHAYUDDH_OAUTH_ENV:-$HOME/.config/mahayuddh/oauth.env}"
 mkdir -p "$(dirname "$ENV_FILE")"
 
-PROJECT_REF="purvcivaijjjtgknqvqn"
-SITE_URL="https://mahayuddh.vercel.app"
-CALLBACK_URL="https://${PROJECT_REF}.supabase.co/auth/v1/callback"
-API="https://api.supabase.com/v1/projects/${PROJECT_REF}/config/auth"
+API=""; CALLBACK_URL=""   # set by project_settings in stage 1
 # provider → its ID and secret variables. Every provider whose two values are
 # saved is switched on in the final stage, whether entered this run or before.
 PROVIDERS=(github gitlab google linkedin_oidc x apple)
@@ -226,6 +223,30 @@ done
 for bin in curl python3; do
   command -v "$bin" >/dev/null 2>&1 || { printf 'This wizard needs %s.\n' "$bin"; exit 1; }
 done
+
+# need VAR "Prompt": the value comes from the environment if exported, else
+# from the saved settings file, else it's asked for. Nothing has a default in
+# this script: every project-specific value is yours to provide.
+need() {
+  local var="$1" prompt="$2"
+  if [[ -n "${!var:-}" ]]; then
+    note "$var from the environment."
+  else
+    ask "$var" "$prompt"
+  fi
+  if [[ -z "${!var:-}" ]]; then warn "$var is required."; exit 1; fi
+  write_env "$var" "${!var}"
+}
+
+# project_settings: the Supabase project and the site, asked once and saved.
+project_settings() {
+  need SUPABASE_PROJECT_REF "Supabase project ref (the <ref> in https://<ref>.supabase.co):"
+  need SITE_URL "Site URL people sign in on (https://..., no trailing slash):"
+  SITE_URL="${SITE_URL%/}"
+  write_env SITE_URL "$SITE_URL" >/dev/null
+  API="https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/config/auth"
+  CALLBACK_URL="https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/callback"
+}
 
 # api METHOD [json-file] calls the Management API without putting the token
 # or the secrets on a command line: both go through files only you can read.
@@ -269,7 +290,9 @@ TOTAL_STAGES=9
 banner "Mahayuddh · social sign-in"
 
 # ── 1 ─────────────────────────────────────────────────────────────────────
-stage "Supabase access token"
+stage "Supabase project and access token"
+project_settings
+say ""
 say "The last stage switches providers on through Supabase's Management API."
 say "That needs a personal access token from your Supabase account."
 open_url "https://supabase.com/dashboard/account/tokens"
@@ -278,7 +301,7 @@ note "Revoke it on the same page when you're done if you won't re-run this."
 ask_secret SUPABASE_ACCESS_TOKEN "Paste the token:"
 api GET
 if [[ "$API_STATUS" != "200" ]]; then
-  warn "Supabase answered HTTP $API_STATUS. Check the token and that it can see project $PROJECT_REF."
+  warn "Supabase answered HTTP $API_STATUS. Check the token and that it can see project $SUPABASE_PROJECT_REF."
   rm -f "$API_BODY_FILE"; exit 1
 fi
 write_env SUPABASE_ACCESS_TOKEN "$SUPABASE_ACCESS_TOKEN"
@@ -394,7 +417,7 @@ if want "Apple" apple; then
   step "Note your Team ID (top right of the developer site)."
   step "Identifiers → + → App IDs: e.g. com.mahayuddh.app, enable 'Sign in with Apple'."
   step "Identifiers → + → Services IDs: e.g. com.mahayuddh.web. Enable Sign in with Apple,"
-  step "  Configure: primary App ID above, Domain ${PROJECT_REF}.supabase.co,"
+  step "  Configure: primary App ID above, Domain ${SUPABASE_PROJECT_REF}.supabase.co,"
   step "  Return URL: the URL below."
   show_callback
   step "Keys → + : enable Sign in with Apple, download the .p8 (one download only)."

@@ -27,6 +27,8 @@
  *
  * Two wire formats, because the providers anybody actually uses are not the
  * same API. `AI_PROVIDER` picks; the default is inferred from which key is set.
+ * Where it points and which model it runs are deployment settings only:
+ * AI_BASE_URL and AI_MODEL are required, with no defaults in code.
  * Gemini rides the OpenAI-compatible wire (Google's documented
  * /v1beta/openai/ endpoint speaks chat/completions with Bearer auth), so it
  * inherits the timeout, output cap, envelope parsing, and error scrubbing
@@ -79,28 +81,14 @@ export function readProviderConfig(): ProviderConfig | null {
           : kiloKey;
   if (!key) return null;
 
-  // AI_BASE_URL exists so an OpenAI-compatible endpoint (a gateway, a local
-  // runner) can be used without patching code. The default paths match each
-  // provider's documented API.
-  const baseUrl =
-    process.env.AI_BASE_URL ??
-    (chosen === "openai"
-      ? "https://api.openai.com/v1"
-      : chosen === "anthropic"
-        ? "https://api.anthropic.com/v1"
-        : chosen === "gemini"
-          ? "https://generativelanguage.googleapis.com/v1beta/openai"
-          : "https://ai-gateway.kilo.ai/api/v1");
-
-  const model =
-    process.env.AI_MODEL ??
-    (chosen === "openai"
-      ? "gpt-4o-mini"
-      : chosen === "anthropic"
-        ? "claude-haiku-5-5"
-        : chosen === "gemini"
-          ? "gemini-2.5-flash"
-          : "kilo-auto/free");
+  // Endpoint and model come from the deployment, never from code. Both are
+  // required: AI_BASE_URL is the API root the wire format talks to (a
+  // provider's API, a gateway, a local runner), AI_MODEL what it runs.
+  // isProviderConfigured() requires the same two, so the gate refuses before
+  // this can return null for a configured key.
+  const baseUrl = process.env.AI_BASE_URL?.trim();
+  const model = process.env.AI_MODEL?.trim();
+  if (!baseUrl || !model) return null;
 
   return { name: chosen, apiKey: key, baseUrl: baseUrl.replace(/\/+$/, ""), model };
 }
@@ -112,8 +100,9 @@ export function providerConfigForTest(overrides: Partial<ProviderConfig>): Provi
   return {
     name: overrides.name ?? base?.name ?? "openai",
     apiKey: overrides.apiKey ?? base?.apiKey ?? "",
-    baseUrl: (overrides.baseUrl ?? base?.baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, ""),
-    model: overrides.model ?? base?.model ?? "gpt-4o-mini",
+    // Test-only placeholders: tests always point baseUrl at a local mock.
+    baseUrl: (overrides.baseUrl ?? base?.baseUrl ?? "http://127.0.0.1/unset").replace(/\/+$/, ""),
+    model: overrides.model ?? base?.model ?? "test-model",
   };
 }
 

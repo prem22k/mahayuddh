@@ -153,15 +153,18 @@ async function main() {
     }, { provider: "gemini" });
   });
 
-  await check("KILO_API_KEY alone selects the Kilo gateway and kilo-auto/free", async () => {
+  await check("a key alone is not enough: endpoint and model come only from the environment", async () => {
     const saved = { ...process.env };
     try {
       for (const k of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "AI_PROVIDER", "AI_MODEL", "AI_BASE_URL"]) delete process.env[k];
       process.env.KILO_API_KEY = "kilo-test";
+      assert.equal(readProviderConfig(), null, "no AI_BASE_URL / AI_MODEL → no config");
+      process.env.AI_BASE_URL = "https://gateway.example/api/v1/";
+      process.env.AI_MODEL = "some/model";
       const cfg = readProviderConfig();
       assert.equal(cfg?.name, "kilo");
-      assert.equal(cfg?.baseUrl, "https://ai-gateway.kilo.ai/api/v1");
-      assert.equal(cfg?.model, "kilo-auto/free");
+      assert.equal(cfg?.baseUrl, "https://gateway.example/api/v1");
+      assert.equal(cfg?.model, "some/model");
       assert.equal(cfg?.apiKey, "kilo-test");
     } finally {
       for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
