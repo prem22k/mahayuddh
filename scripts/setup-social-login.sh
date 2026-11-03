@@ -199,14 +199,29 @@ finish() {
 # Run: bash scripts/setup-social-login.sh
 
 umask 077
-ENV_FILE="${ENV_FILE:-$HOME/.config/mahayuddh/oauth.env}"
+# Set unconditionally: the library above already defaults ENV_FILE to ./.env,
+# which would put these secrets in the repo folder.
+ENV_FILE="${MAHAYUDDH_OAUTH_ENV:-$HOME/.config/mahayuddh/oauth.env}"
 mkdir -p "$(dirname "$ENV_FILE")"
 
 PROJECT_REF="purvcivaijjjtgknqvqn"
 SITE_URL="https://mahayuddh.vercel.app"
 CALLBACK_URL="https://${PROJECT_REF}.supabase.co/auth/v1/callback"
 API="https://api.supabase.com/v1/projects/${PROJECT_REF}/config/auth"
-ENABLED=()   # providers to switch on in the final stage
+# provider → its ID and secret variables. Every provider whose two values are
+# saved is switched on in the final stage, whether entered this run or before.
+PROVIDERS=(github gitlab google linkedin_oidc x apple)
+declare -A ID_VAR=([github]=GITHUB_CLIENT_ID [gitlab]=GITLAB_CLIENT_ID [google]=GOOGLE_CLIENT_ID
+                   [linkedin_oidc]=LINKEDIN_CLIENT_ID [x]=X_CLIENT_ID [apple]=APPLE_SERVICES_ID)
+declare -A SECRET_VAR=([github]=GITHUB_SECRET [gitlab]=GITLAB_SECRET [google]=GOOGLE_SECRET
+                       [linkedin_oidc]=LINKEDIN_SECRET [x]=X_SECRET [apple]=APPLE_SECRET)
+
+# Load what earlier runs saved, so a provider skipped this run keeps its values.
+for p in "${PROVIDERS[@]}"; do
+  for k in "${ID_VAR[$p]}" "${SECRET_VAR[$p]}"; do
+    printf -v "$k" '%s' "$(_existing "$k" || true)"
+  done
+done
 
 for bin in curl python3; do
   command -v "$bin" >/dev/null 2>&1 || { printf 'This wizard needs %s.\n' "$bin"; exit 1; }
@@ -236,8 +251,15 @@ show_callback() {
   say ""
 }
 
-# want "Label": y/N gate for setting up one provider this run.
+# want "Label" ID: y/N gate for (re)entering one provider's values this run.
+# A provider that is already saved stays saved (and switched on) on "No".
 want() {
+  local id="$2" idv secv
+  idv="${ID_VAR[$id]}"; secv="${SECRET_VAR[$id]}"
+  if [[ -n "${!idv}" && -n "${!secv}" ]]; then
+    if confirm "$1 is already saved. Re-enter its values? (No keeps the saved ones)"; then return 0; fi
+    note "Keeping the saved $1 values."; pause; return 1
+  fi
   if confirm "Set up $1 now? (No skips it; a re-run can add it later)"; then return 0; fi
   note "Skipped $1."; pause; return 1
 }
@@ -274,7 +296,7 @@ pause
 
 # ── 2 ─────────────────────────────────────────────────────────────────────
 stage "GitHub"
-if want "GitHub"; then
+if want "GitHub" github; then
   open_url "https://github.com/settings/applications/new"
   step "Application name: Mahayuddh"
   step "Homepage URL: $SITE_URL"
@@ -285,13 +307,12 @@ if want "GitHub"; then
   step "Click 'Generate a new client secret', copy it (shown once)."
   ask_secret GITHUB_SECRET "GitHub client secret:"
   write_env GITHUB_CLIENT_ID "$GITHUB_CLIENT_ID"; write_env GITHUB_SECRET "$GITHUB_SECRET"
-  ENABLED+=(github)
   pause
 fi
 
 # ── 3 ─────────────────────────────────────────────────────────────────────
 stage "GitLab"
-if want "GitLab"; then
+if want "GitLab" gitlab; then
   open_url "https://gitlab.com/-/user_settings/applications"
   step "Add a new application. Name: Mahayuddh"
   step "Redirect URI: the URL below."
@@ -301,13 +322,12 @@ if want "GitLab"; then
   ask GITLAB_CLIENT_ID "GitLab Application ID:"
   ask_secret GITLAB_SECRET "GitLab Secret:"
   write_env GITLAB_CLIENT_ID "$GITLAB_CLIENT_ID"; write_env GITLAB_SECRET "$GITLAB_SECRET"
-  ENABLED+=(gitlab)
   pause
 fi
 
 # ── 4 ─────────────────────────────────────────────────────────────────────
 stage "Google"
-if want "Google"; then
+if want "Google" google; then
   say "Part 1 · consent screen (Google Auth Platform). Create or pick a project first."
   open_url "https://console.cloud.google.com/auth/overview"
   step "Branding: app name Mahayuddh, your support email, home page $SITE_URL,"
@@ -327,14 +347,13 @@ if want "Google"; then
   ask GOOGLE_CLIENT_ID "Google Client ID:"
   ask_secret GOOGLE_SECRET "Google Client secret:"
   write_env GOOGLE_CLIENT_ID "$GOOGLE_CLIENT_ID"; write_env GOOGLE_SECRET "$GOOGLE_SECRET"
-  ENABLED+=(google)
   pause
 fi
 
 # ── 5 ─────────────────────────────────────────────────────────────────────
 stage "LinkedIn"
 warn "LinkedIn requires a LinkedIn Page to attach the app to."
-if want "LinkedIn"; then
+if want "LinkedIn" linkedin_oidc; then
   open_url "https://www.linkedin.com/developers/apps/new"
   step "Create app: name Mahayuddh, pick your LinkedIn Page, upload a logo, save."
   step "Products tab: 'Sign In with LinkedIn using OpenID Connect' → Request access."
@@ -345,13 +364,12 @@ if want "LinkedIn"; then
   ask LINKEDIN_CLIENT_ID "LinkedIn Client ID:"
   ask_secret LINKEDIN_SECRET "LinkedIn Client Secret:"
   write_env LINKEDIN_CLIENT_ID "$LINKEDIN_CLIENT_ID"; write_env LINKEDIN_SECRET "$LINKEDIN_SECRET"
-  ENABLED+=(linkedin_oidc)
   pause
 fi
 
 # ── 6 ─────────────────────────────────────────────────────────────────────
 stage "X (Twitter)"
-if want "X"; then
+if want "X" x; then
   open_url "https://developer.x.com/en/portal/dashboard"
   step "Create a Project and an App (name Mahayuddh). Ignore the API Key / Secret it shows."
   step "App settings → User authentication settings → Set up."
@@ -364,7 +382,6 @@ if want "X"; then
   ask X_CLIENT_ID "X OAuth 2.0 Client ID:"
   ask_secret X_SECRET "X OAuth 2.0 Client Secret:"
   write_env X_CLIENT_ID "$X_CLIENT_ID"; write_env X_SECRET "$X_SECRET"
-  ENABLED+=(x)
   pause
 fi
 
@@ -372,7 +389,7 @@ fi
 stage "Apple"
 warn "Apple needs a paid Apple Developer Program membership (99 USD/year), and"
 warn "its secret expires every 6 months: re-run this wizard to rotate it."
-if want "Apple"; then
+if want "Apple" apple; then
   open_url "https://developer.apple.com/account/resources/identifiers/list"
   step "Note your Team ID (top right of the developer site)."
   step "Identifiers → + → App IDs: e.g. com.mahayuddh.app, enable 'Sign in with Apple'."
@@ -389,64 +406,63 @@ if want "Apple"; then
   ask_secret APPLE_SECRET "Generated Apple client secret (a long JWT):"
   write_env APPLE_SERVICES_ID "$APPLE_SERVICES_ID"; write_env APPLE_SECRET "$APPLE_SECRET"
   write_env APPLE_SECRET_SET_ON "$(date +%F)"
-  ENABLED+=(apple)
   pause
 fi
 
 # ── 8 ─────────────────────────────────────────────────────────────────────
 stage "Switch them on in Supabase"
-if (( ${#ENABLED[@]} == 0 )); then
-  warn "No providers chosen this run; nothing to change."
+READY=(); INCOMPLETE=()
+for p in "${PROVIDERS[@]}"; do
+  idv="${ID_VAR[$p]}"; secv="${SECRET_VAR[$p]}"
+  if [[ -n "${!idv}" && -n "${!secv}" ]]; then READY+=("$p")
+  elif [[ -n "${!idv}" || -n "${!secv}" ]]; then INCOMPLETE+=("$p"); fi
+done
+(( ${#INCOMPLETE[@]} )) && warn "Only half saved (ID or secret missing), left off: ${INCOMPLETE[*]}"
+if (( ${#READY[@]} == 0 )); then
+  warn "No provider has both its ID and secret saved; nothing to switch on."
   pause
 else
-  say "This will turn ON: ${BOLD}${ENABLED[*]}${RESET}"
+  say "This will turn ON: ${BOLD}${READY[*]}${RESET}"
   say "and set Site URL to $SITE_URL, adding $SITE_URL/** to the redirect URLs"
   say "(existing redirect URLs are kept). Nothing else in Supabase changes."
   if confirm "Apply now?"; then
     body=$(mktemp)
-    ENABLED_LIST="${ENABLED[*]}" SITE_URL="$SITE_URL" \
-    GITHUB_CLIENT_ID="${GITHUB_CLIENT_ID:-}" GITHUB_SECRET="${GITHUB_SECRET:-}" \
-    GITLAB_CLIENT_ID="${GITLAB_CLIENT_ID:-}" GITLAB_SECRET="${GITLAB_SECRET:-}" \
-    GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}" GOOGLE_SECRET="${GOOGLE_SECRET:-}" \
-    LINKEDIN_CLIENT_ID="${LINKEDIN_CLIENT_ID:-}" LINKEDIN_SECRET="${LINKEDIN_SECRET:-}" \
-    X_CLIENT_ID="${X_CLIENT_ID:-}" X_SECRET="${X_SECRET:-}" \
-    APPLE_SERVICES_ID="${APPLE_SERVICES_ID:-}" APPLE_SECRET="${APPLE_SECRET:-}" \
+    READY_LIST="${READY[*]}" SITE_URL="$SITE_URL" \
+    GITHUB_CLIENT_ID="$GITHUB_CLIENT_ID" GITHUB_SECRET="$GITHUB_SECRET" \
+    GITLAB_CLIENT_ID="$GITLAB_CLIENT_ID" GITLAB_SECRET="$GITLAB_SECRET" \
+    GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" GOOGLE_SECRET="$GOOGLE_SECRET" \
+    LINKEDIN_CLIENT_ID="$LINKEDIN_CLIENT_ID" LINKEDIN_SECRET="$LINKEDIN_SECRET" \
+    X_CLIENT_ID="$X_CLIENT_ID" X_SECRET="$X_SECRET" \
+    APPLE_SERVICES_ID="$APPLE_SERVICES_ID" APPLE_SECRET="$APPLE_SECRET" \
     python3 -I - "$ENV_FILE.current-auth.json" "$body" <<'PY'
 import json, os, sys
 current = json.load(open(sys.argv[1]))
 site = os.environ["SITE_URL"]
 allow = [u.strip() for u in (current.get("uri_allow_list") or "").split(",") if u.strip()]
-for u in (f"{site}/**",):
-    if u not in allow:
-        allow.append(u)
+if f"{site}/**" not in allow:
+    allow.append(f"{site}/**")
 patch = {"site_url": site, "uri_allow_list": ",".join(allow)}
 ids = {"github": "GITHUB_CLIENT_ID", "gitlab": "GITLAB_CLIENT_ID", "google": "GOOGLE_CLIENT_ID",
        "linkedin_oidc": "LINKEDIN_CLIENT_ID", "x": "X_CLIENT_ID", "apple": "APPLE_SERVICES_ID"}
 secrets = {"github": "GITHUB_SECRET", "gitlab": "GITLAB_SECRET", "google": "GOOGLE_SECRET",
            "linkedin_oidc": "LINKEDIN_SECRET", "x": "X_SECRET", "apple": "APPLE_SECRET"}
-missing = []
-for p in os.environ["ENABLED_LIST"].split():
-    cid, sec = os.environ.get(ids[p], "").strip(), os.environ.get(secrets[p], "").strip()
-    if not cid or not sec:
-        missing.append(p); continue
+for p in os.environ["READY_LIST"].split():
     patch[f"external_{p}_enabled"] = True
-    patch[f"external_{p}_client_id"] = cid
-    patch[f"external_{p}_secret"] = sec
-if missing:
-    print("  missing ID or secret for: " + ", ".join(missing) + " (left unchanged)")
+    patch[f"external_{p}_client_id"] = os.environ[ids[p]].strip()
+    patch[f"external_{p}_secret"] = os.environ[secrets[p]].strip()
 json.dump(patch, open(sys.argv[2], "w"))
 PY
     api PATCH "$body"; rm -f "$body"
     if [[ "$API_STATUS" == "200" ]]; then
-      printf '  %s✓ Supabase updated%s\n' "$GREEN" "$RESET"
+      printf '  %s✓ Supabase accepted the change%s (the next stage reads it back)\n' "$GREEN" "$RESET"
     else
       warn "Supabase answered HTTP $API_STATUS:"
-      python3 -I -c "import json,sys; b=open(sys.argv[1]).read(); print('  ', b[:400])" "$API_BODY_FILE"
-      SKIPPED+=("Supabase PATCH failed (HTTP $API_STATUS); re-run stage 8")
+      python3 -I -c "import sys; print('  ', open(sys.argv[1]).read()[:400])" "$API_BODY_FILE"
+      SKIPPED+=("Supabase PATCH failed (HTTP $API_STATUS); re-run and apply again")
     fi
     rm -f "$API_BODY_FILE"
   else
-    SKIPPED+=("providers captured but not switched on; re-run and apply")
+    SKIPPED+=("providers saved but not switched on; re-run and apply")
   fi
   pause
 fi
