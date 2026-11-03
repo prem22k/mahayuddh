@@ -55,6 +55,11 @@ colors:
   focus-ring: "rgba(237, 237, 239, 0.72)"
   scrim: "rgba(5, 6, 8, 0.72)"
 
+  # Landing stage only: the warm lamp. Stored in CSS as channel triplets
+  # (--light / --face) so each use sets its own alpha. Never a fill or text.
+  stage-light: "#FFE8C6"
+  stage-face: "#FFCE92"
+
 typography:
   display-xl:
     fontFamily: Space Grotesk
@@ -157,6 +162,31 @@ typography:
     fontWeight: 500
     lineHeight: 16px
     letterSpacing: 0.06em
+  # Landing stage only: statements
+  statement-hero:
+    fontFamily: Space Grotesk
+    fontSize: "clamp(2.75rem, 0.6rem + 6.6vw, 6rem)"
+    fontWeight: 600
+    lineHeight: 0.95
+    letterSpacing: -0.038em
+  statement-xl:
+    fontFamily: Space Grotesk
+    fontSize: "clamp(2.6rem, 0.9rem + 5.4vw, 5.75rem)"
+    fontWeight: 600
+    lineHeight: 0.97
+    letterSpacing: -0.036em
+  statement-lg:
+    fontFamily: Space Grotesk
+    fontSize: "clamp(2.4rem, 1rem + 4.2vw, 4.75rem)"
+    fontWeight: 600
+    lineHeight: 0.98
+    letterSpacing: -0.032em
+  statement-numeral:
+    fontFamily: JetBrains Mono
+    fontSize: 0.9em
+    fontWeight: 500
+    letterSpacing: -0.04em
+    fontFeature: "'tnum' 1, 'zero' 1"
 
 rounded:
   xs: 4px
@@ -183,6 +213,9 @@ spacing:
   header-height: 56px
   content-max: 1120px
   reading-max: 680px
+  # Landing stage only
+  stage-max: 1200px
+  beat-padding: "clamp(4.5rem, 10vw, 8.5rem)"
 
 components:
   button-primary:
@@ -410,6 +443,35 @@ components:
     width: 2px
   modal-scrim:
     backgroundColor: "{colors.scrim}"
+  # Landing stage only (light, mask and shading live in .impeccable/design.json)
+  pass-stage:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.text-primary}"
+    rounded: "{rounded.xl}"
+    padding: 36px
+  pass-stage-stub:
+    backgroundColor: "{colors.surface-raised}"
+    textColor: "{colors.text-primary}"
+    typography: "{typography.mono-caption}"
+    width: 30%
+    padding: 24px
+  lit-card:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.text-primary}"
+    rounded: "{rounded.xl}"
+    padding: 24px
+  example-tag:
+    backgroundColor: transparent
+    textColor: "{colors.text-tertiary}"
+    rounded: "{rounded.xs}"
+    height: 20px
+    padding: 0 6px
+  # Documented exception: the guide's identity mark is gold app-wide
+  sarathi-avatar:
+    backgroundColor: "{colors.primary-tint}"
+    textColor: "{colors.primary}"
+    rounded: "{rounded.full}"
+    size: 36px
 ---
 
 # Mahayuddh Design System
@@ -417,6 +479,8 @@ components:
 Version 4. This file replaces every earlier design spec for Mahayuddh,
 including the Apple Music–derived system (rose accent, frosted glass, bento
 gradients, 13px type scale). None of those tokens or rules carry forward.
+Extended 2026-11-03 with the landing stage, a register scoped to the public
+landing; nothing else changed.
 
 ## Overview
 
@@ -475,6 +539,19 @@ problem you failed), Squad, Streak, Proof, Approach, Pattern, Primer,
 Notebook, and Sheet. Never use jargon written to sound impressive; the
 banned list is under Do's and Don'ts.
 
+**The landing stage (scoped register).** The public landing is the one
+place the product is put on a stage. Warm light falls on its surfaces, its
+pieces sit in 3D depth, the camera moves as the visitor scrolls, and the
+motion is big. The app avoids all of this, and every other rule in this file
+still binds every other screen. The stage lives in one landing-only
+stylesheet and never leaks into globals. Each section below ends with a
+"Landing stage" block that describes it as built.
+
+**The Stage Is Scoped Rule.** Light pools, lit faces, perspective,
+scroll-linked transforms, and the statement sizes belong to the public
+landing only. If a signed-in screen seems to need one of them, the screen
+is wrong.
+
 ## Colors
 
 The palette is restrained on purpose. Neutrals carry about 90% of every
@@ -507,7 +584,8 @@ passes WCAG AA on every surface it sits on.
   flame, and the live-timer dot while a battle runs. **At most one gold
   filled button per view.** Gold never appears as decoration, as a heading
   color, or on more than one competing element. If two things on a screen
-  are gold, one of them is wrong.
+  are gold, one of them is wrong. The one standing exception is Sarathi's
+  mark (see The Identity Mark Exception below).
 - **Emerald, `verified`: proof.** Only for solves that LeetCode sync has
   verified: the Verified badge, the Proof card seal, and solved-cell fills
   in sheets. A self-reported solve uses a neutral outline badge with
@@ -531,6 +609,36 @@ over `surface`) for badge and chip fills. Borders in a hue use the hue at
 indigo, `secondary` is a neutral steel for secondary emphasis, and
 `neutral` is the card surface. `verified` stays its own role and is never
 used as a general "secondary" color.
+
+**The Identity Mark Exception.** Sarathi's avatar, the chariot-wheel mark
+in `primary` on `primary-tint` inside a 1px gold ring at 30% (36px, or 28px
+small), renders in gold app-wide. It is the guide's identity mark, not an
+action, and it is the only gold that is not the primary action, the live
+timer, or the streak flame. It never becomes a filled gold control, it
+doesn't count against the one-gold-button rule, and it doesn't license gold
+for any other identity (people, squads, badges, labels).
+
+**Landing stage: the lamp.** Two warm tokens, stored in CSS as channel
+triplets (`--light` 255 232 198, `--face` 255 206 146) so every use sets its
+own alpha. Neither is gold, and neither ever fills text, a control, or a
+border on its own.
+
+- **`stage-light`: the light in the air.** The stage pool behind every
+  piece (a radial at 17% in the core, 6% at half radius, then transparent),
+  the hero pool (24%, then 8.5%), the 1px top-edge highlight on a Pass (a
+  line 72% wide, 60% at its centre and fading to nothing at both ends), and
+  the hero sheen (8.5%).
+- **`stage-face`: the same lamp as it reads on a dark face**, deeper and
+  warmer. The Pass body face (a radial from above-left, 17% then 5.5%), the
+  Pass stub face (11%), the lit-card face (15% then 4.5%), and the lit top
+  border (28% on a Pass, 26% on a lit card). Face alphas scale with the
+  piece's entrance progress, so a piece is unlit until it rises into place.
+- Every lit face also carries a bottom shade: black from transparent at 55%
+  down to 22% on the Pass body and 20% on the stub and lit cards.
+
+**The One Lamp Rule.** The stage has one light source, overhead and a little
+to the left. Every pool, face, and edge is lit from it. Nothing glows from
+within, and no hue (gold, emerald, indigo) is ever used as light.
 
 ## Typography
 
@@ -581,6 +689,31 @@ Three faces, each with one role.
   `14m 22s` in running text. Hours appear only when present: `1:02:15`.
 - Numbers that change (timers, counts, ranks) are tabular so they don't
   jitter.
+
+**Landing stage: statements.** The landing speaks in short sentences set
+very large: Space Grotesk 600 with balanced wrapping, in three sizes that
+replace `display-xl` on the stage. Outside the stage, the scale above
+stands.
+
+| Token | Size / line, tracking | Use |
+|---|---|---|
+| statement-hero | clamp(2.75rem, 0.6rem + 6.6vw, 6rem) / 0.95, -0.038em | The hero headline and the closing line |
+| statement-xl | clamp(2.6rem, 0.9rem + 5.4vw, 5.75rem) / 0.97, -0.036em | The default beat statement |
+| statement-lg | clamp(2.4rem, 1rem + 4.2vw, 4.75rem) / 0.98, -0.032em | A statement that shares its row with an aside or a piece |
+
+- Statements hold a narrow measure (10–16ch), so a sentence breaks into two
+  or three heavy lines.
+- **Mono numerals inside sentences.** A measured value in a statement is set
+  in `statement-numeral`: JetBrains Mono 500 at 0.9em, -0.04em, tabular and
+  slashed-zero ("Priya solved it in 14:22."). Only measurements get this,
+  never a word.
+- **Words light up as they cross the reading line.** Each word's opacity
+  runs from 12% to 100% in reading order, driven by the statement's
+  progress `--p` (0 when its top is at 92% of the viewport, 1 at 42%). At
+  rest, without JavaScript, and under reduced motion, `--p` is 1 and every
+  word is lit.
+- The aside under a statement is Geist 400 at 17/28 (18/30 from 768px) in
+  `text-secondary`, capped at 34rem.
 
 ## Layout
 
@@ -634,6 +767,23 @@ cards of equal weight.
 grids on general screens. The Roadmap Matrix and Leaderboard are the only
 tabular screens, and even they use 48px rows with generous padding.
 
+**Landing stage rhythm.** One `stage-max` container (1200px) holds the nav,
+the hero, every beat, the close, and the footer, with the shell gutters
+(16px, and 40px from 768px). Each beat is a section with `beat-padding`
+(clamp(4.5rem, 10vw, 8.5rem)) above and below; the short "what it isn't"
+beat tightens to clamp(4rem, 9vw, 7rem), and the close opens to
+clamp(6rem, 15vw, 12rem).
+
+- Inside a beat, a 12-column grid from 1024px with 40–48px column gaps.
+  Statement and piece alternate sides from beat to beat (aside 4 / piece 8,
+  piece 7 / aside 4, piece 6 / statement 6), and one beat centres on a
+  900px statement over an 820px piece. Below 1024px everything stacks,
+  statement first.
+- The nav is 64px and fixed: transparent at the top, then `canvas` with a
+  hairline bottom edge once the page has scrolled 12px.
+- The hero opens 112px from the top (144px from 768px). From 1024px its
+  Pass sits in the right 8 columns, dropped 20vh below the headline.
+
 ## Elevation & Depth
 
 Depth comes from stacked surface tones and hairlines, not from shadows.
@@ -652,6 +802,28 @@ Depth comes from stacked surface tones and hairlines, not from shadows.
   it lands, and then the bloom fades.
 - The scrim behind modals may use a light backdrop blur (8px) to keep focus.
   Blur is never used on cards or as decoration.
+
+**Landing stage: light and depth.** The flat rules above hold everywhere
+except the landing stage, where depth comes from light and perspective
+instead of tone alone. The pools are light falling on the floor, not glows
+on an element, so the no-glow rule and the seal's bloom exception stand.
+
+- **Pools.** Every staged piece has a pool of `stage-light` behind it: a
+  radial at a 1.5 ratio, up to 1250px wide, centred 70% above the piece,
+  whose opacity follows the piece's progress. The hero pool is wider (165%,
+  1.45 ratio, 78% above) and comes up once the hero Pass has landed.
+- **Contact shadow** (`radial-gradient(closest-side, rgb(0 0 0 / 0.7),
+  transparent)`, 68px tall, inset 6% from each side, 34px below the piece).
+  It sets the piece on the stage. The close has a pool but no piece, so no
+  shadow.
+- **Layers.** Statements and asides sit on a far layer that drifts 56px
+  across a beat's pass through the viewport. Pieces sit on a near layer
+  that travels 40px the other way.
+- **Perspective.** 1400px on piece entrances, 1600px on the turns, 1700px on
+  the beat crane.
+
+**The Floor Rule.** On the stage, every piece sits on a contact shadow under
+its own pool of light. Nothing floats.
 
 ## Shapes
 
@@ -688,6 +860,21 @@ is broken. No emoji as icons.
 on `surface-overlay`. In a stack, avatars overlap by 8px with a 2px
 `canvas` ring, showing three at most, then a "+2" counter in the same
 circle style.
+
+**The Pass on the landing stage.** The same shape, cut for real. Instead of
+canvas-coloured circles painted on the edges, the notches are cut through
+with a CSS mask (two radial masks, 20px across with a 1px soft edge, at
+both ends of the perforation), so the stage light and the canvas show
+through them.
+
+- **Landscape:** the stub is 30% wide behind a 1px dashed
+  `hairline-strong` perforation.
+- **Portrait (below 768px):** the Pass stacks and the stub takes a fixed
+  height (116px, or 120px on the hero Pass) behind a horizontal
+  perforation, with the notches cut into the left and right edges.
+- The corner stays `xl` (16px). Lit cards (the code and Sarathi pieces)
+  also take `xl` on the stage, one step above app cards, so they sit with
+  the Passes.
 
 ## Components
 
@@ -871,6 +1058,79 @@ Everything around it steps down.
 - **Reduced motion.** Respect `prefers-reduced-motion`: swap every motion
   for an opacity fade of 120ms or less.
 
+### Landing stage
+
+- **Statement, aside, piece.** Every beat is one statement, one aside, and
+  one working piece of the product at stage scale: Today's Battle Pass with
+  a real timer, the Proof card, the code reveal, Sarathi's nudges, the
+  Challenge Pass, and the Squad Streak card.
+- **Example tag.** Every demo person and squad carries an "Example" tag:
+  Geist 500 at 11px in `text-tertiary`, a 1px `hairline` border, `xs`
+  corners, 20px tall, top-right of the piece. The page makes no claims
+  about real users, counts, or results.
+- **Gold on the landing.** One gold filled button per view, as everywhere.
+  "Start a squad" in the hero and at the close is the gold action (48px
+  tall, 24px padding, a 15px label, and a trailing arrow). The solve dock
+  carries the demo battle's gold Submit only while the hero Pass is off
+  screen (less than 25% visible) and the closing section is off screen
+  (less than 20% visible), so it never shares a view with either gold
+  "Start a squad". Buttons inside the pieces (Try it, Pause, Submit solve, Reveal
+  code, Accept challenge) are secondary: 44px on phones and 40px from
+  768px, with a `hairline-strong` border. The nav's "Start a squad" is
+  secondary too.
+- **Solve dock and capsule.** The app's dock and capsule carry the demo
+  clock down the page: a 48px pill on phones (max 420px) and a 56px `xl`
+  bar from 768px (max 720px). After a submit it confirms "Logged 14:22 ·
+  self-reported" with a "See it" link for a few seconds, then leaves.
+
+### Landing stage motion
+
+Every move uses the stamp's ease-out, `cubic-bezier(0.16, 1, 0.3, 1)`.
+Scroll-linked moves read custom properties written by one passive scroll
+listener; nothing re-renders on scroll.
+
+- **The opening.** The two headline lines rise from 112% below their masks
+  (1100ms, at 60ms and 170ms). The subline, the actions, and the free line
+  fade up 14px (900ms, at 380, 480 and 560ms). The hero Pass enters from
+  72px below, tilted back 18° (1400ms, from 300ms). The house lights come
+  up over it (2200ms, from 650ms). One sheen crosses the Pass once (2400ms,
+  from 1100ms). Nothing loops.
+- **Hero drift and dolly (`--q`).** `--q` runs 0 → 1 over the first 70% of a
+  viewport of scrolling. The headline lifts 110px and dims to 25%; the Pass
+  rises 36px and grows 3.5% from its top edge, toward the camera.
+- **Per-beat entrances (`--p`).** A piece's `--p` runs 0 → 1 as its top
+  travels from 102% to 58% of the viewport. There are four entrances, and
+  neighbouring beats never share one: rise (up 72px, untilting 12° from the
+  bottom edge), turn right (in 64px from the right and 24px from below,
+  turning 18° on the right edge), turn left (its mirror), and dolly (up
+  40px, scale 0.88 → 1). The pool and the face light follow `--p`; the
+  piece itself runs from 15% to full opacity.
+- **The per-beat crane (`--b`).** Each beat reports where its centre sits
+  (0 entering at the bottom, 0.5 centred, 1 leaving at the top). Its
+  content tilts up to ±8° in rotateX: seen slightly from above on the way
+  in, square to the lens at the centre, tipping toward the viewer on the
+  way out. It shrinks by up to 4.5% away from the centre. The far and near
+  layers drift against it (see Elevation & Depth).
+- **Small authored motions inside pieces.** Hidden code sits under a 7px
+  blur at 50% opacity and clears over 600ms when the visitor chooses to
+  reveal it; the blur is the spoiler itself, never decoration. The streak
+  count rolls up (520ms), today's streak dot pops (0.35 → 1.2 → 1, 460ms),
+  and the dock rises in 14px (280ms).
+- **The stamp is still the one authored moment.** The Proof card's seal
+  waits off screen and stamps the first time the card is 70% visible, with
+  the same stamp and bloom as the app. Everything else on the stage is
+  camera, not a moment.
+- **Reduced motion.** No scroll progress registers, so every property keeps
+  its resting value and every piece renders final: lit, square to the lens,
+  in place. The opening animations are off, the sheen is removed, the far
+  and near drift and the crane are flattened, and the reveal becomes a
+  120ms opacity change. The seal shows already set. Server render and
+  no-JavaScript visitors see the same final frame.
+
+**The Final-Frame Rule.** Every landing motion travels toward a state that
+is already correct at rest. Scroll properties default to their final value,
+so motion only ever starts somewhere else.
+
 ### Browser details
 
 - Text selection uses `primary-tint` with `text-primary`.
@@ -898,6 +1158,9 @@ Everything around it steps down.
   (Priya, Rahul, Arjun, Meera, Sam, Lena), and squads of 3–7.
 - Design mobile as the same product: same components, stacked by
   priority, with 44px targets.
+- On the landing, tag every demo person and squad "Example".
+- On the landing, light every piece from the one overhead lamp and set it
+  on its contact shadow.
 
 **Don't**
 
@@ -917,6 +1180,10 @@ Everything around it steps down.
   or casino-style celebrations. No countdown timers built to manufacture
   urgency. The daily pick says "New pick at midnight", not a ticking clock.
 - Don't add presence theater: no "online now" dots, no fake activity.
+- Don't carry the landing stage into the app: no light pools, lit faces,
+  perspective, scroll-linked transforms, or statement sizes on signed-in
+  screens.
+- Don't light anything with a hue. The lamp is the only light.
 - **Don't use these words or anything like them:** protocol, telemetry,
   tactical, vector (outside its DSA meaning), intel, operative, mission
   control, command center, wager, reputation points, algorithmic

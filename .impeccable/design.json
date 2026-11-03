@@ -1,0 +1,848 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-03T05:47:55+00:00",
+  "title": "Design System: Mahayuddh",
+  "extensions": {
+    "colorMeta": {
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Obsidian Canvas",
+        "canonical": "oklch(15.0% 0.007 271.0)",
+        "tonalRamp": [
+          "oklch(15% 0.007 271.0)",
+          "oklch(26% 0.007 271.0)",
+          "oklch(38% 0.007 271.0)",
+          "oklch(50% 0.007 271.0)",
+          "oklch(62% 0.007 271.0)",
+          "oklch(73% 0.007 271.0)",
+          "oklch(84% 0.007 271.0)",
+          "oklch(95% 0.007 271.0)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Resting Surface",
+        "canonical": "oklch(19.6% 0.006 271.1)",
+        "tonalRamp": [
+          "oklch(15% 0.006 271.1)",
+          "oklch(26% 0.006 271.1)",
+          "oklch(38% 0.006 271.1)",
+          "oklch(50% 0.006 271.1)",
+          "oklch(62% 0.006 271.1)",
+          "oklch(73% 0.006 271.1)",
+          "oklch(84% 0.006 271.1)",
+          "oklch(95% 0.006 271.1)"
+        ]
+      },
+      "surface-raised": {
+        "role": "neutral",
+        "displayName": "Raised Surface",
+        "canonical": "oklch(21.8% 0.008 274.6)",
+        "tonalRamp": [
+          "oklch(15% 0.008 274.6)",
+          "oklch(26% 0.008 274.6)",
+          "oklch(38% 0.008 274.6)",
+          "oklch(50% 0.008 274.6)",
+          "oklch(62% 0.008 274.6)",
+          "oklch(73% 0.008 274.6)",
+          "oklch(84% 0.008 274.6)",
+          "oklch(95% 0.008 274.6)"
+        ]
+      },
+      "surface-overlay": {
+        "role": "neutral",
+        "displayName": "Overlay Surface",
+        "canonical": "oklch(24.9% 0.011 278.0)",
+        "tonalRamp": [
+          "oklch(15% 0.011 278.0)",
+          "oklch(26% 0.011 278.0)",
+          "oklch(38% 0.011 278.0)",
+          "oklch(50% 0.011 278.0)",
+          "oklch(62% 0.011 278.0)",
+          "oklch(73% 0.011 278.0)",
+          "oklch(84% 0.011 278.0)",
+          "oklch(95% 0.011 278.0)"
+        ]
+      },
+      "well": {
+        "role": "neutral",
+        "displayName": "Inset Well",
+        "canonical": "oklch(16.9% 0.006 271.0)",
+        "tonalRamp": [
+          "oklch(15% 0.006 271.0)",
+          "oklch(26% 0.006 271.0)",
+          "oklch(38% 0.006 271.0)",
+          "oklch(50% 0.006 271.0)",
+          "oklch(62% 0.006 271.0)",
+          "oklch(73% 0.006 271.0)",
+          "oklch(84% 0.006 271.0)",
+          "oklch(95% 0.006 271.0)"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(100.0% 0.000 89.9 / 0.08)",
+        "tonalRamp": [
+          "oklch(15% 0.000 89.9 / 0.08)",
+          "oklch(26% 0.000 89.9 / 0.08)",
+          "oklch(38% 0.000 89.9 / 0.08)",
+          "oklch(50% 0.000 89.9 / 0.08)",
+          "oklch(62% 0.000 89.9 / 0.08)",
+          "oklch(73% 0.000 89.9 / 0.08)",
+          "oklch(84% 0.000 89.9 / 0.08)",
+          "oklch(95% 0.000 89.9 / 0.08)"
+        ]
+      },
+      "hairline-strong": {
+        "role": "neutral",
+        "displayName": "Strong Hairline",
+        "canonical": "oklch(100.0% 0.000 89.9 / 0.14)",
+        "tonalRamp": [
+          "oklch(15% 0.000 89.9 / 0.14)",
+          "oklch(26% 0.000 89.9 / 0.14)",
+          "oklch(38% 0.000 89.9 / 0.14)",
+          "oklch(50% 0.000 89.9 / 0.14)",
+          "oklch(62% 0.000 89.9 / 0.14)",
+          "oklch(73% 0.000 89.9 / 0.14)",
+          "oklch(84% 0.000 89.9 / 0.14)",
+          "oklch(95% 0.000 89.9 / 0.14)"
+        ]
+      },
+      "edge-highlight": {
+        "role": "neutral",
+        "displayName": "Edge Highlight",
+        "canonical": "oklch(100.0% 0.000 89.9 / 0.04)",
+        "tonalRamp": [
+          "oklch(15% 0.000 89.9 / 0.04)",
+          "oklch(26% 0.000 89.9 / 0.04)",
+          "oklch(38% 0.000 89.9 / 0.04)",
+          "oklch(50% 0.000 89.9 / 0.04)",
+          "oklch(62% 0.000 89.9 / 0.04)",
+          "oklch(73% 0.000 89.9 / 0.04)",
+          "oklch(84% 0.000 89.9 / 0.04)",
+          "oklch(95% 0.000 89.9 / 0.04)"
+        ]
+      },
+      "text-primary": {
+        "role": "neutral",
+        "displayName": "Primary Ink",
+        "canonical": "oklch(94.7% 0.003 286.3)",
+        "tonalRamp": [
+          "oklch(15% 0.003 286.3)",
+          "oklch(26% 0.003 286.3)",
+          "oklch(38% 0.003 286.3)",
+          "oklch(50% 0.003 286.3)",
+          "oklch(62% 0.003 286.3)",
+          "oklch(73% 0.003 286.3)",
+          "oklch(84% 0.003 286.3)",
+          "oklch(95% 0.003 286.3)"
+        ]
+      },
+      "text-secondary": {
+        "role": "neutral",
+        "displayName": "Secondary Ink",
+        "canonical": "oklch(71.6% 0.012 274.8)",
+        "tonalRamp": [
+          "oklch(15% 0.012 274.8)",
+          "oklch(26% 0.012 274.8)",
+          "oklch(38% 0.012 274.8)",
+          "oklch(50% 0.012 274.8)",
+          "oklch(62% 0.012 274.8)",
+          "oklch(73% 0.012 274.8)",
+          "oklch(84% 0.012 274.8)",
+          "oklch(95% 0.012 274.8)"
+        ]
+      },
+      "text-tertiary": {
+        "role": "neutral",
+        "displayName": "Tertiary Ink",
+        "canonical": "oklch(62.1% 0.014 276.0)",
+        "tonalRamp": [
+          "oklch(15% 0.014 276.0)",
+          "oklch(26% 0.014 276.0)",
+          "oklch(38% 0.014 276.0)",
+          "oklch(50% 0.014 276.0)",
+          "oklch(62% 0.014 276.0)",
+          "oklch(73% 0.014 276.0)",
+          "oklch(84% 0.014 276.0)",
+          "oklch(95% 0.014 276.0)"
+        ]
+      },
+      "text-disabled": {
+        "role": "neutral",
+        "displayName": "Disabled Ink",
+        "canonical": "oklch(45.7% 0.012 273.2)",
+        "tonalRamp": [
+          "oklch(15% 0.012 273.2)",
+          "oklch(26% 0.012 273.2)",
+          "oklch(38% 0.012 273.2)",
+          "oklch(50% 0.012 273.2)",
+          "oklch(62% 0.012 273.2)",
+          "oklch(73% 0.012 273.2)",
+          "oklch(84% 0.012 273.2)",
+          "oklch(95% 0.012 273.2)"
+        ]
+      },
+      "on-primary": {
+        "role": "neutral",
+        "displayName": "Ink on Gold",
+        "canonical": "oklch(19.4% 0.027 87.4)",
+        "tonalRamp": [
+          "oklch(15% 0.027 87.4)",
+          "oklch(26% 0.027 87.4)",
+          "oklch(38% 0.027 87.4)",
+          "oklch(50% 0.027 87.4)",
+          "oklch(62% 0.027 87.4)",
+          "oklch(73% 0.027 87.4)",
+          "oklch(84% 0.027 87.4)",
+          "oklch(95% 0.027 87.4)"
+        ]
+      },
+      "primary": {
+        "role": "primary",
+        "displayName": "Heat Gold",
+        "canonical": "oklch(81.9% 0.150 80.8)",
+        "tonalRamp": [
+          "oklch(15% 0.150 80.8)",
+          "oklch(26% 0.150 80.8)",
+          "oklch(38% 0.150 80.8)",
+          "oklch(50% 0.150 80.8)",
+          "oklch(62% 0.150 80.8)",
+          "oklch(73% 0.150 80.8)",
+          "oklch(84% 0.150 80.8)",
+          "oklch(95% 0.150 80.8)"
+        ]
+      },
+      "secondary": {
+        "role": "secondary",
+        "displayName": "Neutral Steel",
+        "canonical": "oklch(71.6% 0.012 274.8)",
+        "tonalRamp": [
+          "oklch(15% 0.012 274.8)",
+          "oklch(26% 0.012 274.8)",
+          "oklch(38% 0.012 274.8)",
+          "oklch(50% 0.012 274.8)",
+          "oklch(62% 0.012 274.8)",
+          "oklch(73% 0.012 274.8)",
+          "oklch(84% 0.012 274.8)",
+          "oklch(95% 0.012 274.8)"
+        ]
+      },
+      "tertiary": {
+        "role": "tertiary",
+        "displayName": "Pattern Indigo",
+        "canonical": "oklch(69.6% 0.148 279.3)",
+        "tonalRamp": [
+          "oklch(15% 0.148 279.3)",
+          "oklch(26% 0.148 279.3)",
+          "oklch(38% 0.148 279.3)",
+          "oklch(50% 0.148 279.3)",
+          "oklch(62% 0.148 279.3)",
+          "oklch(73% 0.148 279.3)",
+          "oklch(84% 0.148 279.3)",
+          "oklch(95% 0.148 279.3)"
+        ]
+      },
+      "neutral": {
+        "role": "neutral",
+        "displayName": "Card Surface",
+        "canonical": "oklch(19.6% 0.006 271.1)",
+        "tonalRamp": [
+          "oklch(15% 0.006 271.1)",
+          "oklch(26% 0.006 271.1)",
+          "oklch(38% 0.006 271.1)",
+          "oklch(50% 0.006 271.1)",
+          "oklch(62% 0.006 271.1)",
+          "oklch(73% 0.006 271.1)",
+          "oklch(84% 0.006 271.1)",
+          "oklch(95% 0.006 271.1)"
+        ]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Heat Gold, hover",
+        "canonical": "oklch(86.4% 0.138 82.2)",
+        "tonalRamp": [
+          "oklch(15% 0.138 82.2)",
+          "oklch(26% 0.138 82.2)",
+          "oklch(38% 0.138 82.2)",
+          "oklch(50% 0.138 82.2)",
+          "oklch(62% 0.138 82.2)",
+          "oklch(73% 0.138 82.2)",
+          "oklch(84% 0.138 82.2)",
+          "oklch(95% 0.138 82.2)"
+        ]
+      },
+      "primary-pressed": {
+        "role": "primary",
+        "displayName": "Heat Gold, pressed",
+        "canonical": "oklch(75.5% 0.145 79.0)",
+        "tonalRamp": [
+          "oklch(15% 0.145 79.0)",
+          "oklch(26% 0.145 79.0)",
+          "oklch(38% 0.145 79.0)",
+          "oklch(50% 0.145 79.0)",
+          "oklch(62% 0.145 79.0)",
+          "oklch(73% 0.145 79.0)",
+          "oklch(84% 0.145 79.0)",
+          "oklch(95% 0.145 79.0)"
+        ]
+      },
+      "primary-tint": {
+        "role": "primary",
+        "displayName": "Gold Tint",
+        "canonical": "oklch(26.7% 0.018 82.2)",
+        "tonalRamp": [
+          "oklch(15% 0.018 82.2)",
+          "oklch(26% 0.018 82.2)",
+          "oklch(38% 0.018 82.2)",
+          "oklch(50% 0.018 82.2)",
+          "oklch(62% 0.018 82.2)",
+          "oklch(73% 0.018 82.2)",
+          "oklch(84% 0.018 82.2)",
+          "oklch(95% 0.018 82.2)"
+        ]
+      },
+      "verified": {
+        "role": "verified",
+        "displayName": "Proof Emerald",
+        "canonical": "oklch(79.7% 0.164 159.7)",
+        "tonalRamp": [
+          "oklch(15% 0.164 159.7)",
+          "oklch(26% 0.164 159.7)",
+          "oklch(38% 0.164 159.7)",
+          "oklch(50% 0.164 159.7)",
+          "oklch(62% 0.164 159.7)",
+          "oklch(73% 0.164 159.7)",
+          "oklch(84% 0.164 159.7)",
+          "oklch(95% 0.164 159.7)"
+        ]
+      },
+      "verified-tint": {
+        "role": "verified",
+        "displayName": "Emerald Tint",
+        "canonical": "oklch(26.4% 0.024 177.9)",
+        "tonalRamp": [
+          "oklch(15% 0.024 177.9)",
+          "oklch(26% 0.024 177.9)",
+          "oklch(38% 0.024 177.9)",
+          "oklch(50% 0.024 177.9)",
+          "oklch(62% 0.024 177.9)",
+          "oklch(73% 0.024 177.9)",
+          "oklch(84% 0.024 177.9)",
+          "oklch(95% 0.024 177.9)"
+        ]
+      },
+      "pattern": {
+        "role": "tertiary",
+        "displayName": "Pattern Indigo",
+        "canonical": "oklch(69.6% 0.148 279.3)",
+        "tonalRamp": [
+          "oklch(15% 0.148 279.3)",
+          "oklch(26% 0.148 279.3)",
+          "oklch(38% 0.148 279.3)",
+          "oklch(50% 0.148 279.3)",
+          "oklch(62% 0.148 279.3)",
+          "oklch(73% 0.148 279.3)",
+          "oklch(84% 0.148 279.3)",
+          "oklch(95% 0.148 279.3)"
+        ]
+      },
+      "pattern-tint": {
+        "role": "tertiary",
+        "displayName": "Indigo Tint",
+        "canonical": "oklch(26.5% 0.028 278.4)",
+        "tonalRamp": [
+          "oklch(15% 0.028 278.4)",
+          "oklch(26% 0.028 278.4)",
+          "oklch(38% 0.028 278.4)",
+          "oklch(50% 0.028 278.4)",
+          "oklch(62% 0.028 278.4)",
+          "oklch(73% 0.028 278.4)",
+          "oklch(84% 0.028 278.4)",
+          "oklch(95% 0.028 278.4)"
+        ]
+      },
+      "error": {
+        "role": "error",
+        "displayName": "Broken Rose",
+        "canonical": "oklch(69.8% 0.164 17.3)",
+        "tonalRamp": [
+          "oklch(15% 0.164 17.3)",
+          "oklch(26% 0.164 17.3)",
+          "oklch(38% 0.164 17.3)",
+          "oklch(50% 0.164 17.3)",
+          "oklch(62% 0.164 17.3)",
+          "oklch(73% 0.164 17.3)",
+          "oklch(84% 0.164 17.3)",
+          "oklch(95% 0.164 17.3)"
+        ]
+      },
+      "error-tint": {
+        "role": "error",
+        "displayName": "Rose Tint",
+        "canonical": "oklch(25.1% 0.020 356.8)",
+        "tonalRamp": [
+          "oklch(15% 0.020 356.8)",
+          "oklch(26% 0.020 356.8)",
+          "oklch(38% 0.020 356.8)",
+          "oklch(50% 0.020 356.8)",
+          "oklch(62% 0.020 356.8)",
+          "oklch(73% 0.020 356.8)",
+          "oklch(84% 0.020 356.8)",
+          "oklch(95% 0.020 356.8)"
+        ]
+      },
+      "focus-ring": {
+        "role": "neutral",
+        "displayName": "Focus Ring",
+        "canonical": "oklch(94.7% 0.003 286.3 / 0.72)",
+        "tonalRamp": [
+          "oklch(15% 0.003 286.3 / 0.72)",
+          "oklch(26% 0.003 286.3 / 0.72)",
+          "oklch(38% 0.003 286.3 / 0.72)",
+          "oklch(50% 0.003 286.3 / 0.72)",
+          "oklch(62% 0.003 286.3 / 0.72)",
+          "oklch(73% 0.003 286.3 / 0.72)",
+          "oklch(84% 0.003 286.3 / 0.72)",
+          "oklch(95% 0.003 286.3 / 0.72)"
+        ]
+      },
+      "scrim": {
+        "role": "neutral",
+        "displayName": "Scrim",
+        "canonical": "oklch(12.2% 0.006 261.6 / 0.72)",
+        "tonalRamp": [
+          "oklch(15% 0.006 261.6 / 0.72)",
+          "oklch(26% 0.006 261.6 / 0.72)",
+          "oklch(38% 0.006 261.6 / 0.72)",
+          "oklch(50% 0.006 261.6 / 0.72)",
+          "oklch(62% 0.006 261.6 / 0.72)",
+          "oklch(73% 0.006 261.6 / 0.72)",
+          "oklch(84% 0.006 261.6 / 0.72)",
+          "oklch(95% 0.006 261.6 / 0.72)"
+        ]
+      },
+      "stage-light": {
+        "role": "landing-stage",
+        "displayName": "Stage Lamp (air)",
+        "canonical": "oklch(94.1% 0.051 77.6)",
+        "tonalRamp": [
+          "oklch(15% 0.051 77.6)",
+          "oklch(26% 0.051 77.6)",
+          "oklch(38% 0.051 77.6)",
+          "oklch(50% 0.051 77.6)",
+          "oklch(62% 0.051 77.6)",
+          "oklch(73% 0.051 77.6)",
+          "oklch(84% 0.051 77.6)",
+          "oklch(95% 0.051 77.6)"
+        ],
+        "cssSource": "--light: 255 232 198 (landing.module.css, used as rgb(var(--light) / alpha))"
+      },
+      "stage-face": {
+        "role": "landing-stage",
+        "displayName": "Stage Lamp (on a face)",
+        "canonical": "oklch(88.1% 0.094 71.8)",
+        "tonalRamp": [
+          "oklch(15% 0.094 71.8)",
+          "oklch(26% 0.094 71.8)",
+          "oklch(38% 0.094 71.8)",
+          "oklch(50% 0.094 71.8)",
+          "oklch(62% 0.094 71.8)",
+          "oklch(73% 0.094 71.8)",
+          "oklch(84% 0.094 71.8)",
+          "oklch(95% 0.094 71.8)"
+        ],
+        "cssSource": "--face: 255 206 146 (landing.module.css, used as rgb(var(--face) / alpha))"
+      }
+    },
+    "typographyMeta": {
+      "display-xl": {
+        "displayName": "Display Xl",
+        "purpose": "Largest in-app display size; on the landing stage the statement sizes replace it."
+      },
+      "display-lg": {
+        "displayName": "Display Lg",
+        "purpose": "Public page titles, problem title on a shared Pass."
+      },
+      "display-md": {
+        "displayName": "Display Md",
+        "purpose": "In-app page titles, problem title on the Arena Pass."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card titles, modal titles."
+      },
+      "numeral-xl": {
+        "displayName": "Numeral Xl",
+        "purpose": "Streak count, a hero count."
+      },
+      "numeral-md": {
+        "displayName": "Numeral Md",
+        "purpose": "Inline stats (solved, rank)."
+      },
+      "heading": {
+        "displayName": "Heading",
+        "purpose": "Section headings inside a page."
+      },
+      "body-lg": {
+        "displayName": "Body Lg",
+        "purpose": "Long-form reading: primers, approaches, recaps."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default body and descriptions."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Buttons, navigation, tabs, form labels, table text."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Timestamps, metadata, badge text."
+      },
+      "mono-display": {
+        "displayName": "Mono Display",
+        "purpose": "Solve time on a Pass, the full-size active timer."
+      },
+      "mono-lg": {
+        "displayName": "Mono Lg",
+        "purpose": "Solve dock timer, leaderboard times."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Inline durations, problem numbers."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Code blocks."
+      },
+      "mono-caption": {
+        "displayName": "Mono Caption",
+        "purpose": "Pass stub serials and kbd keys only (uppercase)."
+      },
+      "statement-hero": {
+        "displayName": "Statement Hero",
+        "purpose": "Landing stage only: the hero headline and the closing line."
+      },
+      "statement-xl": {
+        "displayName": "Statement Xl",
+        "purpose": "Landing stage only: the default beat statement."
+      },
+      "statement-lg": {
+        "displayName": "Statement Lg",
+        "purpose": "Landing stage only: a statement sharing its row with an aside or a piece."
+      },
+      "statement-numeral": {
+        "displayName": "Statement Numeral",
+        "purpose": "Landing stage only: a measured value set inside a statement."
+      }
+    },
+    "shadows": [
+      {
+        "name": "lifted",
+        "value": "0 8px 24px -8px rgba(0,0,0,0.5)",
+        "purpose": "Layer 2: hovered interactive cards, popovers, dropdowns, the solve dock."
+      },
+      {
+        "name": "overlay",
+        "value": "0 24px 64px -16px rgba(0,0,0,0.7)",
+        "purpose": "Layer 3: modals, the command palette, the mobile drawer."
+      },
+      {
+        "name": "seal-bloom",
+        "value": "emerald disc, blur(12px), opacity 0.2 -> 0 over 600ms",
+        "purpose": "The verified seal at the moment it stamps; then it fades."
+      },
+      {
+        "name": "stage-contact",
+        "value": "radial-gradient(closest-side, rgb(0 0 0 / 0.7), transparent); 68px tall, inset 6%, 34px below",
+        "purpose": "Landing stage only: sets a piece on the stage."
+      },
+      {
+        "name": "stage-pool",
+        "value": "radial-gradient(closest-side, rgb(255 232 198 / 0.17), rgb(255 232 198 / 0.06) 50%, transparent); 1.5 ratio, up to 1250px, 70% above",
+        "purpose": "Landing stage only: the pool of light behind every staged piece; opacity follows --p."
+      },
+      {
+        "name": "hero-pool",
+        "value": "radial-gradient(closest-side, rgb(255 232 198 / 0.24), rgb(255 232 198 / 0.085) 50%, transparent); 165% wide, 1.45 ratio, 78% above",
+        "purpose": "Landing stage only: the house lights over the hero Pass."
+      },
+      {
+        "name": "pass-face",
+        "value": "radial-gradient(115% 95% at 30% -22%, rgb(255 206 146 / calc(0.17 * var(--p))), rgb(255 206 146 / calc(0.055 * var(--p))) 42%, transparent 72%), linear-gradient(180deg, transparent 55%, rgb(0 0 0 / 0.22))",
+        "purpose": "Landing stage only: overhead light on the Pass body (stub: 11%, shade 20%)."
+      },
+      {
+        "name": "lit-card-face",
+        "value": "radial-gradient(115% 90% at 30% -22%, rgb(255 206 146 / calc(0.15 * var(--p))), rgb(255 206 146 / calc(0.045 * var(--p))) 42%, transparent 72%), linear-gradient(180deg, transparent 55%, rgb(0 0 0 / 0.2))",
+        "purpose": "Landing stage only: the same light on plain-card pieces."
+      },
+      {
+        "name": "lit-top-border",
+        "value": "border-top-color: rgb(255 206 146 / 0.28) (Pass), 0.26 (lit card)",
+        "purpose": "Landing stage only: the lit top edge."
+      },
+      {
+        "name": "top-edge-highlight",
+        "value": "1px line, left 6%, width 72%, linear-gradient(90deg, transparent, rgb(255 232 198 / 0.6), transparent)",
+        "purpose": "Landing stage only: overhead light catching the top edge of a Pass."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "The stamp, and every landing stage move."
+      },
+      {
+        "name": "micro",
+        "value": "120-160ms ease-out",
+        "purpose": "Hovers and presses."
+      },
+      {
+        "name": "disclosure",
+        "value": "200ms",
+        "purpose": "Accordions and disclosures."
+      },
+      {
+        "name": "overlay-in",
+        "value": "240ms, fade plus 8px rise",
+        "purpose": "Modals and sheets."
+      },
+      {
+        "name": "stamp",
+        "value": "scale 1.12 -> 1, opacity 0 -> 1, 280ms ease-out; bloom fades 600ms",
+        "purpose": "The one authored moment: a solve verifies."
+      },
+      {
+        "name": "gold-pulse",
+        "value": "opacity 1 -> 0.35 -> 1, 2s ease-in-out infinite",
+        "purpose": "The live-timer dot only."
+      },
+      {
+        "name": "stage-line-rise",
+        "value": "translateY(112%) -> 0, 1100ms ease-out, staggered 60/170ms",
+        "purpose": "Landing stage: hero headline lines."
+      },
+      {
+        "name": "stage-fade-up",
+        "value": "opacity 0, translateY(14px) -> rest, 900ms ease-out",
+        "purpose": "Landing stage: hero subline and actions."
+      },
+      {
+        "name": "stage-pass-in",
+        "value": "perspective(1400px) translateY(72px) rotateX(18deg) -> rest, 1400ms ease-out, 300ms delay",
+        "purpose": "Landing stage: the hero Pass entrance."
+      },
+      {
+        "name": "stage-house-lights",
+        "value": "opacity 0 -> 1, 2200ms ease-out, 650ms delay",
+        "purpose": "Landing stage: the hero pool comes up."
+      },
+      {
+        "name": "stage-sheen",
+        "value": "one 100deg band at 8.5% sweeps across, 2400ms ease-out, 1100ms delay, once",
+        "purpose": "Landing stage: a lamp catching the hero Pass."
+      },
+      {
+        "name": "stage-hero-drift",
+        "value": "--q 0 -> 1 over 70% of a viewport: headline -110px, opacity to 0.25; Pass -36px, scale +3.5%",
+        "purpose": "Landing stage: leaving the opening shot."
+      },
+      {
+        "name": "stage-enter",
+        "value": "--p 0 -> 1 from 102% to 58% of the viewport; rise (72px, rotateX 12deg), turnRight/turnLeft (64px, 24px, rotateY 18deg), dolly (40px, scale 0.88 -> 1)",
+        "purpose": "Landing stage: per-beat piece entrances; neighbours differ."
+      },
+      {
+        "name": "stage-crane",
+        "value": "--b by beat centre; perspective(1700px) rotateX((0.5 - b) * 16deg) scale(1 - |b - 0.5| * 0.09); far layer 56px, near layer -40px",
+        "purpose": "Landing stage: the camera passing each beat."
+      },
+      {
+        "name": "stage-word-light",
+        "value": "word opacity 0.12 -> 1 in reading order; --p from 92% to 42% of the viewport",
+        "purpose": "Landing stage: statements light up across the reading line."
+      },
+      {
+        "name": "stage-reveal",
+        "value": "blur(7px) + opacity 0.5 -> clear, 600ms ease-out",
+        "purpose": "Landing stage: the code spoiler, cleared by the visitor."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "opacity <= 120ms; landing renders final (no scroll progress, no entrances, no sheen, no crane), seal already set",
+        "purpose": "prefers-reduced-motion everywhere."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "mobile",
+        "value": "390px"
+      },
+      {
+        "name": "tablet",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "desktop",
+        "value": "1280px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one gold action per view.",
+      "html": "<button class=\"ds-btn-primary\">Start battle</button>",
+      "css": ".ds-btn-primary { display:inline-flex; align-items:center; height:40px; padding:0 16px; border:0; border-radius:8px; background:var(--color-primary,#F5B83D); color:var(--color-on-primary,#1A1406); font:500 14px/20px Geist, system-ui, sans-serif; cursor:pointer; transition:background-color 150ms ease-out; } .ds-btn-primary:hover { background:var(--color-primary-hover,#FFC95E); } .ds-btn-primary:active { background:var(--color-primary-pressed,#E0A32B); } .ds-btn-primary:focus-visible { outline:2px solid var(--color-focus-ring,rgba(237,237,239,.72)); outline-offset:2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Next to a primary, or alone on screens with no gold action. Every in-piece demo button on the landing.",
+      "html": "<button class=\"ds-btn-secondary\">Reveal code</button>",
+      "css": ".ds-btn-secondary { display:inline-flex; align-items:center; height:40px; padding:0 16px; border:1px solid var(--color-hairline-strong,rgba(255,255,255,.14)); border-radius:8px; background:var(--color-surface-overlay,#202127); color:var(--color-text-primary,#EDEDEF); font:500 14px/20px Geist, system-ui, sans-serif; cursor:pointer; transition:background-color 150ms ease-out; } .ds-btn-secondary:hover { background:#272830; } .ds-btn-secondary:focus-visible { outline:2px solid var(--color-focus-ring,rgba(237,237,239,.72)); outline-offset:2px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Tertiary and toolbar actions.",
+      "html": "<button class=\"ds-btn-ghost\">Show all</button>",
+      "css": ".ds-btn-ghost { display:inline-flex; align-items:center; height:40px; padding:0 12px; border:0; border-radius:8px; background:transparent; color:var(--color-text-secondary,#A1A3AB); font:500 14px/20px Geist, system-ui, sans-serif; cursor:pointer; transition:background-color 150ms ease-out, color 150ms ease-out; } .ds-btn-ghost:hover { background:var(--color-surface-raised,#191A1E); color:var(--color-text-primary,#EDEDEF); } .ds-btn-ghost:focus-visible { outline:2px solid var(--color-focus-ring,rgba(237,237,239,.72)); outline-offset:2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Well fill, hairline border, strong hairline plus focus ring on focus.",
+      "html": "<input class=\"ds-input\" placeholder=\"LeetCode handle\" />",
+      "css": ".ds-input { height:40px; padding:0 12px; border:1px solid var(--color-hairline,rgba(255,255,255,.08)); border-radius:8px; background:var(--color-well,#0E0F12); color:var(--color-text-primary,#EDEDEF); font:400 15px/24px Geist, system-ui, sans-serif; transition:border-color 150ms ease-out; } .ds-input::placeholder { color:var(--color-text-tertiary,#84868F); } .ds-input:focus-visible { outline:2px solid var(--color-focus-ring,rgba(237,237,239,.72)); outline-offset:2px; border-color:var(--color-hairline-strong,rgba(255,255,255,.14)); }"
+    },
+    {
+      "name": "Pattern Chip",
+      "kind": "chip",
+      "refersTo": "chip-pattern",
+      "description": "Indigo, rounded full; links to the Pattern Hub.",
+      "html": "<a class=\"ds-chip-pattern\" href=\"#\">Sliding window</a>",
+      "css": ".ds-chip-pattern { display:inline-flex; align-items:center; height:24px; padding:0 10px; border-radius:9999px; background:var(--color-pattern-tint,#222433); color:var(--color-pattern,#8B91F7); font:500 12px/16px Geist, system-ui, sans-serif; text-decoration:none; } .ds-chip-pattern:hover { box-shadow:inset 0 0 0 1px rgba(139,145,247,.3); } .ds-chip-pattern:focus-visible { outline:2px solid var(--color-focus-ring,rgba(237,237,239,.72)); outline-offset:2px; }"
+    },
+    {
+      "name": "Verified Badge",
+      "kind": "chip",
+      "refersTo": "badge-verified",
+      "description": "Emerald, only for LeetCode-verified solves.",
+      "html": "<span class=\"ds-badge-verified\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg>Verified</span>",
+      "css": ".ds-badge-verified { display:inline-flex; align-items:center; gap:4px; height:24px; padding:0 8px; border-radius:6px; background:var(--color-verified-tint,#182925); color:var(--color-verified,#3DDC97); font:500 12px/16px Geist, system-ui, sans-serif; }"
+    },
+    {
+      "name": "Pass (app)",
+      "kind": "card",
+      "refersTo": "pass",
+      "description": "The signature artifact: body plus perforated stub, notches at the tear line.",
+      "html": "<div class=\"ds-pass\"><div class=\"ds-pass-body\"><div class=\"ds-pass-title\">Coin Change II</div><div class=\"ds-pass-time\">14:22</div></div><div class=\"ds-pass-stub\"><span>NO. 518</span><span>12 OCT 2026</span><span>SQUAD KSHATRIYA</span></div></div>",
+      "css": ".ds-pass { display:flex; max-width:560px; border:1px solid var(--color-hairline,rgba(255,255,255,.08)); border-radius:16px; background:var(--color-surface,#141518); overflow:hidden; } .ds-pass-body { flex:1; padding:32px; } .ds-pass-title { font:600 32px/1.1 \"Space Grotesk\", sans-serif; letter-spacing:-0.02em; color:var(--color-text-primary,#EDEDEF); } .ds-pass-time { margin-top:16px; font:500 48px/1 \"JetBrains Mono\", monospace; font-variant-numeric:tabular-nums slashed-zero; color:var(--color-text-primary,#EDEDEF); } .ds-pass-stub { flex:0 0 28%; display:flex; flex-direction:column; justify-content:center; gap:12px; padding:24px; background:var(--color-surface-raised,#191A1E); border-left:1px dashed var(--color-hairline-strong,rgba(255,255,255,.14)); font:500 12px/16px \"JetBrains Mono\", monospace; letter-spacing:.06em; color:var(--color-text-secondary,#A1A3AB); }"
+    },
+    {
+      "name": "Pass on the landing stage",
+      "kind": "custom",
+      "refersTo": "pass-stage",
+      "description": "Landing stage only: lit from above-left, notches cut through with a mask, stub 30%.",
+      "html": "<div class=\"ds-stage-pass\"><div class=\"ds-stage-pass-body\"><div class=\"ds-stage-pass-title\">Coin Change II</div><div class=\"ds-stage-pass-time\">14:22</div></div><div class=\"ds-stage-pass-stub\"><span>NO. 518</span><span>03 NOV 2026</span><span>SQUAD KSHATRIYA</span></div></div>",
+      "css": ".ds-stage-pass { position:relative; display:flex; max-width:640px; border:1px solid var(--color-hairline,rgba(255,255,255,.08)); border-top-color:rgb(255 206 146 / .28); border-radius:16px; overflow:clip; background:radial-gradient(115% 95% at 30% -22%, rgb(255 206 146 / .17), rgb(255 206 146 / .055) 42%, transparent 72%), linear-gradient(180deg, transparent 55%, rgb(0 0 0 / .22)), var(--color-surface,#141518); -webkit-mask:radial-gradient(circle 20px at calc(100% - 30%) 0, #0000 9.5px, #000 10.5px) top / 100% 51% no-repeat, radial-gradient(circle 20px at calc(100% - 30%) 100%, #0000 9.5px, #000 10.5px) bottom / 100% 51% no-repeat; mask:radial-gradient(circle 20px at calc(100% - 30%) 0, #0000 9.5px, #000 10.5px) top / 100% 51% no-repeat, radial-gradient(circle 20px at calc(100% - 30%) 100%, #0000 9.5px, #000 10.5px) bottom / 100% 51% no-repeat; } .ds-stage-pass::before { content:\"\"; position:absolute; top:0; left:6%; width:72%; height:1px; background:linear-gradient(90deg, transparent, rgb(255 232 198 / .6), transparent); } .ds-stage-pass-body { flex:1; padding:36px; } .ds-stage-pass-title { font:600 44px/1.1 \"Space Grotesk\", sans-serif; letter-spacing:-0.02em; color:var(--color-text-primary,#EDEDEF); } .ds-stage-pass-time { margin-top:16px; font:500 32px/1 \"JetBrains Mono\", monospace; font-variant-numeric:tabular-nums slashed-zero; color:var(--color-text-primary,#EDEDEF); } .ds-stage-pass-stub { flex:0 0 30%; display:flex; flex-direction:column; justify-content:center; gap:16px; padding:24px; background:radial-gradient(140% 90% at 15% -25%, rgb(255 206 146 / .11), transparent 65%), linear-gradient(180deg, transparent 55%, rgb(0 0 0 / .2)), var(--color-surface-raised,#191A1E); border-left:1px dashed var(--color-hairline-strong,rgba(255,255,255,.14)); font:500 12px/16px \"JetBrains Mono\", monospace; letter-spacing:.06em; color:var(--color-text-primary,#EDEDEF); }"
+    },
+    {
+      "name": "Example Tag",
+      "kind": "chip",
+      "refersTo": "example-tag",
+      "description": "Landing stage: marks every demo person and squad as an example.",
+      "html": "<span class=\"ds-example-tag\">Example</span>",
+      "css": ".ds-example-tag { display:inline-flex; align-items:center; height:20px; padding:0 6px; border:1px solid var(--color-hairline,rgba(255,255,255,.08)); border-radius:4px; color:var(--color-text-tertiary,#84868F); font:500 11px/16px Geist, system-ui, sans-serif; }"
+    },
+    {
+      "name": "Sarathi Avatar",
+      "kind": "custom",
+      "refersTo": "sarathi-avatar",
+      "description": "Documented exception: the guide's gold identity mark, app-wide.",
+      "html": "<span class=\"ds-sarathi\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9.25\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\"/><g stroke=\"currentColor\" stroke-width=\"1.25\" stroke-linecap=\"round\"><line x1=\"12\" y1=\"3\" x2=\"12\" y2=\"21\"/><line x1=\"12\" y1=\"3\" x2=\"12\" y2=\"21\" transform=\"rotate(45 12 12)\"/><line x1=\"12\" y1=\"3\" x2=\"12\" y2=\"21\" transform=\"rotate(90 12 12)\"/><line x1=\"12\" y1=\"3\" x2=\"12\" y2=\"21\" transform=\"rotate(135 12 12)\"/></g><circle cx=\"12\" cy=\"12\" r=\"2.75\" fill=\"currentColor\"/></svg></span>",
+      "css": ".ds-sarathi { display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:9999px; border:1px solid rgb(245 184 61 / .3); background:var(--color-primary-tint,#2A251C); color:var(--color-primary,#F5B83D); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Strava for code",
+    "overview": "**What this is.** Mahayuddh is where a squad of 2–7 developers practices DSA\ntogether: one daily problem, timed solves, verified proof, shared streaks,\n1v1 challenges, and side-by-side approaches. Think \"Strava for code\": effort\nis celebrated with friends, never surveilled.\n\n**The scene.** A developer opens Mahayuddh on a laptop after work or late at\nnight, in a dim room, with LeetCode in the next tab. Later they check it on\ntheir phone on the commute to see whether the squad streak survived. Dark is\nthe right answer for that light, not a genre choice.\n\n**The feel.** Precision software in the lineage of Linear, Raycast, and\nVercel: an obsidian canvas, surfaces stacked in thin hairline layers, a\ncalm type rhythm, and exactly one warm color that means \"go\". The interface\nstays quiet so the moments that matter (a verified solve, a streak that\nheld, a challenge from a friend) can be loud.\n\n**Signature move: the Pass.** The four artifacts people share (Today's\nBattle Pass, the Verified Proof card, the Squad Streak card, and the 1v1\nChallenge Pass) are built like physical event passes: a main body and a\nperforated stub, with notches cut into the edges at the tear line. The\nstub holds the serial details in small mono caps: problem number, date,\nsquad, verification. Nothing else in the product uses this shape. When\npeople see a perforated card on X or LinkedIn, it should be recognizably a\nMahayuddh Pass.\n\n**Principles every screen follows.**\n\n1. **One focal point.** Each screen has exactly one element that is\n   unmistakably the reason it exists, usually a Pass, a problem, or a single\n   primary action. Everything else is quieter in size, weight, and color.\n2. **Curiosity before completeness.** Show the gap, then let people close\n   it: \"3 of your squad solved this · fastest 14:22 by @priya\" beats a table\n   of times. Code from other people is hidden behind a Reveal control until\n   the viewer has made their own attempt or chooses to look.\n3. **Open loops stay visible.** An unbroken streak, an unanswered challenge,\n   and a weekly goal at 7/10 are always one glance away (the sidebar user\n   card, the Arena rail, the mobile top bar).\n4. **Progressive disclosure.** The top level shows a title, a difficulty,\n   who's involved, and one action. Runtime details, history, and edge cases\n   expand on demand through tabs, disclosures, and hover previews.\n5. **No dead ends.** Every finished action offers the next one. A solve\n   leads to \"Explain your approach\", \"Challenge someone to beat 14:22\", and\n   \"Compare with your squad\". An empty state always says what to do.\n6. **Honest data.** Show only what was measured. Verified and self-reported\n   solves look different. A recommendation with one reason says \"1 reason\".\n   Empty means empty. Nothing is back-filled.\n\n**Voice.** Plain, warm, and specific, the way a good teammate talks.\nSentence case everywhere. Name actions with verbs (\"Start battle\",\n\"Explain your approach\", \"Challenge Rahul\"). Numbers carry units (\"14m 22s\",\n\"7 of 10 solved\"). Product nouns are Arena, Battle, Revenge (re-attempting a\nproblem you failed), Squad, Streak, Proof, Approach, Pattern, Primer,\nNotebook, and Sheet. Never use jargon written to sound impressive; the\nbanned list is under Do's and Don'ts.\n\n**The landing stage (scoped register).** The public landing is the one\nplace the product is put on a stage. Warm light falls on its surfaces, its\npieces sit in 3D depth, the camera moves as the visitor scrolls, and the\nmotion is big. The app avoids all of this, and every other rule in this file\nstill binds every other screen. The stage lives in one landing-only\nstylesheet and never leaks into globals. Each section below ends with a\n\"Landing stage\" block that describes it as built.\n\n**The Stage Is Scoped Rule.** Light pools, lit faces, perspective,\nscroll-linked transforms, and the statement sizes belong to the public\nlanding only. If a signed-in screen seems to need one of them, the screen\nis wrong.",
+    "keyCharacteristics": [
+      "Obsidian canvas with surfaces stacked in hairline layers, depth from tone rather than shadow.",
+      "One warm gold that means go: the primary action, the live timer, the streak flame.",
+      "Emerald only for verified proof; indigo only for patterns and knowledge.",
+      "The Pass: a perforated event-pass artifact built to be shared.",
+      "Three faces, one role each: Space Grotesk display, Geist interface, JetBrains Mono measurement.",
+      "One authored moment, the stamp; everything else is subdued.",
+      "A scoped landing stage: one overhead lamp, 3D depth and scroll-driven camera moves on the public landing only."
+    ],
+    "rules": [
+      {
+        "name": "The Stage Is Scoped Rule",
+        "body": "Light pools, lit faces, perspective, scroll-linked transforms, and the statement sizes belong to the public landing only. If a signed-in screen seems to need one of them, the screen is wrong.",
+        "section": "overview"
+      },
+      {
+        "name": "The Identity Mark Exception",
+        "body": "Sarathi's avatar, the chariot-wheel mark in `primary` on `primary-tint` inside a 1px gold ring at 30% (36px, or 28px small), renders in gold app-wide. It is the guide's identity mark, not an action, and it is the only gold that is not the primary action, the live timer, or the streak flame. It never becomes a filled gold control, it doesn't count against the one-gold-button rule, and it doesn't license gold for any other identity (people, squads, badges, labels).",
+        "section": "colors"
+      },
+      {
+        "name": "The One Lamp Rule",
+        "body": "The stage has one light source, overhead and a little to the left. Every pool, face, and edge is lit from it. Nothing glows from within, and no hue (gold, emerald, indigo) is ever used as light.",
+        "section": "colors"
+      },
+      {
+        "name": "The Floor Rule",
+        "body": "On the stage, every piece sits on a contact shadow under its own pool of light. Nothing floats.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Final-Frame Rule",
+        "body": "Every landing motion travels toward a state that is already correct at rest. Scroll properties default to their final value, so motion only ever starts somewhere else.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Give every screen one focal point and let everything else step down.",
+      "Keep gold to the primary action and the streak. Keep emerald for verified proof and indigo for patterns.",
+      "Put the social line (\"3 of your squad solved this · fastest 14:22\") next to the primary action. That's where curiosity turns into action.",
+      "Show the next step after every completion: explain, challenge, compare.",
+      "Distinguish verified from self-reported every time a solve appears.",
+      "Write empty states that say what goes here and how to fill it.",
+      "Use real-looking data in mockups: real LeetCode problem names and numbers, plausible mm:ss times, Indian and international first names (Priya, Rahul, Arjun, Meera, Sam, Lena), and squads of 3–7.",
+      "Design mobile as the same product: same components, stacked by priority, with 44px targets.",
+      "On the landing, tag every demo person and squad \"Example\".",
+      "On the landing, light every piece from the one overhead lamp and set it on its contact shadow."
+    ],
+    "donts": [
+      "Don't use more than one gold filled button per view, gold headings, gradient text, or gold \"glow\" effects.",
+      "Don't add eyebrows, kickers, or tracked all-caps labels above headings.",
+      "Don't make page structure out of a grid of equal icon-plus-title cards. Don't nest cards inside cards.",
+      "Don't use the hero-metric template (huge number, tiny label, row of stat tiles) on general screens. Big numbers belong in Passes.",
+      "Don't use dense crypto-style data grids, sparkline walls, progress rings, or radar charts as decoration.",
+      "Don't add glassmorphism, neon edges, colored left-border callouts, or hard offset shadows.",
+      "Don't use emoji as icons, or mono type as a costume.",
+      "Don't use fake gamification: no XP, coins, points wagers, loot, levels, or casino-style celebrations. No countdown timers built to manufacture urgency. The daily pick says \"New pick at midnight\", not a ticking clock.",
+      "Don't add presence theater: no \"online now\" dots, no fake activity.",
+      "Don't carry the landing stage into the app: no light pools, lit faces, perspective, scroll-linked transforms, or statement sizes on signed-in screens.",
+      "Don't light anything with a hue. The lamp is the only light.",
+      "**Don't use these words or anything like them:** protocol, telemetry, tactical, vector (outside its DSA meaning), intel, operative, mission control, command center, wager, reputation points, algorithmic prescription, neural, quantum, synergy, unlock your potential, supercharge, level up, dominate, crush it, elite. Also no version-number theater like \"Arena v2.4\"."
+    ]
+  }
+}
