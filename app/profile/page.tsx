@@ -29,6 +29,9 @@ import {
 import { cn } from "@/lib/utils";
 import type { Squad } from "@/types/database";
 import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
+import { createClient } from "@/lib/supabase/client";
+import { SignInMethods } from "@/components/profile/SignInMethods";
+import { replayTour } from "@/components/tour/replay";
 
 const NO_SQUADS: Squad[] = [];
 
@@ -80,6 +83,11 @@ export default function ProfilePage() {
   const [revokeError, setRevokeError] = useState<string | null>(null);
   const [pushPerm, setPushPerm] = useState<PushPermissionState | null>(null);
   const [activeSection, setActiveSection] = useState("overview");
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [nameSaving, setNameSaving] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [tourError, setTourError] = useState<string | null>(null);
 
   // Server prefs with a localStorage offline fallback. The label under the
   // section says honestly where the last write landed.
@@ -273,6 +281,42 @@ export default function ProfilePage() {
   const activeSquad = squads.find((s) => s.id === profile?.active_squad_id) ?? null;
   const publicPath = `/u/${encodeURIComponent(displayName)}`;
 
+  const handleSaveName = async () => {
+    if (nameSaving) return;
+    const value = nameDraft.trim();
+    if (value === displayName) {
+      setEditingName(false);
+      setNameError(null);
+      return;
+    }
+    setNameSaving(true);
+    setNameError(null);
+    try {
+      const { data } = await createClient().auth.getSession();
+      const res = await fetch("/api/auth/profile", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${data.session?.access_token}`,
+        },
+        body: JSON.stringify({ username: value }),
+      });
+      if (res.ok) {
+        await refreshProfile();
+        setEditingName(false);
+      } else if (res.status === 400 || res.status === 409) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setNameError(body.error || "Couldn't save your name. Try again.");
+      } else {
+        setNameError("Couldn't save your name. Try again.");
+      }
+    } catch {
+      setNameError("Couldn't save your name. Try again.");
+    } finally {
+      setNameSaving(false);
+    }
+  };
+
   const sections = [
     { id: "overview", label: "Overview" },
     { id: "account", label: "Account" },
@@ -401,8 +445,82 @@ export default function ProfilePage() {
 
           <SettingsCard id="account" title="Account" description="Your identity on Mahayuddh.">
             <div className="divide-y divide-hairline">
-              <SettingsField label="Name">
-                <span className="font-medium">{displayName}</span>
+              <SettingsField
+                label="Name"
+                action={
+                  editingName ? (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="primary"
+                        loading={nameSaving}
+                        disabled={nameSaving}
+                        onClick={() => void handleSaveName()}
+                        className="h-11 shrink-0 px-3 text-xs md:h-8"
+                      >
+                        Save
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!nameSaving) {
+                            setEditingName(false);
+                            setNameError(null);
+                          }
+                        }}
+                        disabled={nameSaving}
+                        className={outlineAction}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNameDraft(displayName);
+                        setNameError(null);
+                        setEditingName(true);
+                      }}
+                      className={outlineAction}
+                    >
+                      Edit
+                    </button>
+                  )
+                }
+              >
+                {editingName ? (
+                  <div className="flex w-full flex-col gap-1">
+                    <input
+                      type="text"
+                      value={nameDraft}
+                      onChange={(e) => setNameDraft(e.target.value)}
+                      maxLength={30}
+                      autoFocus
+                      aria-label="Display name"
+                      className="h-11 md:h-9 w-full rounded-md border border-hairline bg-well px-3 text-sm text-text-primary"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void handleSaveName();
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          if (!nameSaving) {
+                            setEditingName(false);
+                            setNameError(null);
+                          }
+                        }
+                      }}
+                    />
+                    {nameError && (
+                      <p role="alert" className="text-xs text-error">
+                        {nameError}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <span className="font-medium">{displayName}</span>
+                )}
               </SettingsField>
               <SettingsField label="Username">
                 <span className="font-mono">@{displayName}</span>
@@ -415,6 +533,26 @@ export default function ProfilePage() {
                     Confirmed
                   </span>
                 )}
+              </SettingsField>
+              <SignInMethods />
+              <SettingsField
+                label="Walkthrough"
+                action={
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTourError(null);
+                      replayTour().catch(() => setTourError("Couldn't restart the tour. Try again."));
+                    }}
+                    className={outlineAction}
+                  >
+                    Replay the tour
+                  </button>
+                }
+              >
+                <span className="text-xs text-text-secondary md:text-sm">
+                  {tourError ?? "A short tour of the Arena, practice, squads and feed."}
+                </span>
               </SettingsField>
               <SettingsField
                 label="Sessions"
