@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { OWN_PROFILE_COLUMNS } from "@/lib/data/profiles";
 import { Profile } from "@/types/database";
 import { DataCacheProvider } from "@/lib/cache/query";
+import posthog from "posthog-js";
 
 /** Same user, same object: consumers keyed on `user` must not re-run on a token refresh. */
 function sameUser(prev: User | null, next: User | null): User | null {
@@ -149,6 +150,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       subscription.unsubscribe();
     };
   }, [supabase, fetchProfile]);
+
+  // Tag error reports with the account ID only (no name or email), so a
+  // crash can be traced to the account that hit it. No-op without PostHog.
+  const userId = user?.id ?? null;
+  useEffect(() => {
+    if (!posthog.__loaded) return;
+    if (userId) posthog.identify(userId);
+    else posthog.reset();
+  }, [userId]);
 
   const signOut = async () => {
     profileOwner.current = null;

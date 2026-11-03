@@ -1,3 +1,4 @@
+import { posthogAssetsHost } from "../posthog/config.ts";
 /**
  * Security response headers, as data.
  *
@@ -43,6 +44,25 @@ function supabaseConnectOrigin(): string | null {
   }
 }
 
+/**
+ * PostHog error tracking, when NEXT_PUBLIC_POSTHOG_HOST is set: the ingestion
+ * host receives events, the assets host serves the SDK's lazily loaded
+ * exception-capture script. Read from the environment like everything else
+ * deployment-specific; nothing is added when it is unset.
+ */
+function posthogOrigins(): { ingest: string; assets: string } | null {
+  const raw = process.env.NEXT_PUBLIC_POSTHOG_HOST?.trim();
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:") return null;
+    const ingest = `${u.protocol}//${u.host}`;
+    return { ingest, assets: posthogAssetsHost(ingest) };
+  } catch {
+    return null;
+  }
+}
+
 /** The development server needs eval (source maps) and a websocket to itself. */
 function devOnlyConnectSources(): string[] {
   return ["ws://localhost:*", "http://localhost:*", "https://localhost:*"];
@@ -63,6 +83,12 @@ export function contentSecurityPolicy(isDev: boolean): string {
 
   const script = ["'self'", "'unsafe-inline'"];
   if (isDev) script.push(...devOnlyScriptSources());
+
+  const posthog = posthogOrigins();
+  if (posthog) {
+    for (const o of new Set([posthog.ingest, posthog.assets])) if (!connect.includes(o)) connect.push(o);
+    if (!script.includes(posthog.assets)) script.push(posthog.assets);
+  }
 
   const directives: Array<[string, string[]]> = [
     ["default-src", ["'self'"]],
