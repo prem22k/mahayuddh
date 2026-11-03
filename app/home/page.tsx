@@ -124,6 +124,14 @@ export default function ArenaPage() {
   const userId = user?.id ?? null;
   const squadId = profile?.active_squad_id ?? null;
 
+  // First-run setup comes before the Arena. Only /home sends people there, so
+  // an invite, challenge or shared link always opens first; the setup waits
+  // for the next /home visit. The walkthrough starts here once it's done.
+  const needsOnboarding = Boolean(profile && !profile.onboarded_at);
+  useEffect(() => {
+    if (needsOnboarding) router.replace("/onboarding");
+  }, [needsOnboarding, router]);
+
   // Every read below goes through the client cache (lib/cache/query.tsx): a
   // revisit renders from cache at once and refreshes in the background; the
   // skeleton only shows on the very first load.

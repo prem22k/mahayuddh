@@ -81,7 +81,11 @@ function Finish() {
       const inviteCode = pending?.choices.inviteCode ?? inviteCodeFrom(nextPath);
       let landing = nextPath;
       if (token) {
-        const done = await finishSignup(token, { ...pending?.choices, inviteCode }, nextPath);
+        const done = await finishSignup(
+          token,
+          { ...pending?.choices, inviteCode, answeredJoinForm: Boolean(pending?.choices.answeredJoinForm) },
+          nextPath
+        );
         landing = done.landing;
         trackSignupCompleted(
           done.squadCreated ? `${provider}_signup_squad` : `${provider}_signup`,

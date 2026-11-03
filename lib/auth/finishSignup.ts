@@ -12,6 +12,12 @@ export interface SignupChoices {
   objective?: string | null;
   /** 8-character invite code when the visitor arrived from a squad invite. */
   inviteCode?: string | null;
+  /**
+   * The visitor answered the Join form (name, objective, squad, LeetCode), so
+   * the first-run setup on /onboarding has nothing left to ask. False for a
+   * provider sign-in from the Sign in tab, which asked nothing.
+   */
+  answeredJoinForm?: boolean;
 }
 
 export interface FinishedSignup {
@@ -85,15 +91,20 @@ export async function finishSignup(
     }
   }
 
-  if (choices.objective) {
+  const profilePatch = {
+    ...(choices.objective ? { objective: choices.objective } : {}),
+    ...(choices.answeredJoinForm ? { onboarded: true } : {}),
+  };
+  if (Object.keys(profilePatch).length > 0) {
     try {
       await fetch("/api/auth/profile", {
         method: "PATCH",
         headers: json,
-        body: JSON.stringify({ objective: choices.objective }),
+        body: JSON.stringify(profilePatch),
       });
     } catch (err) {
-      console.warn("Objective save failed; non-blocking:", err);
+      // Non-blocking: worst case the visitor sees /onboarding once.
+      console.warn("Objective/onboarded save failed; non-blocking:", err);
     }
   }
 

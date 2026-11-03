@@ -31,16 +31,7 @@ import {
 import type { OAuthProviderId } from "@/lib/auth/providers";
 import { SocialSignIn, providerLabel } from "@/components/auth/SocialSignIn";
 import { cn } from "@/lib/utils";
-
-// Objectives shape the Daily Battle "why" copy and the primer surface. They are
-// an intent signal, not a skill assessment (plan Step 3: max 5 fields, no test).
-const OBJECTIVES = [
-  { value: "internship", label: "Internship prep" },
-  { value: "fulltime", label: "Full-time roles" },
-  { value: "consistency", label: "Daily consistency" },
-] as const;
-
-type Objective = (typeof OBJECTIVES)[number]["value"];
+import { OBJECTIVES, type Objective } from "@/lib/objectives";
 
 /**
  * Suspense wrapper: LoginForm reads ?next= via useSearchParams, which opts the
@@ -316,6 +307,7 @@ function LoginForm({ providers }: { providers: OAuthProviderId[] }) {
           squadName: inviteCode ? null : squadName.trim() || null,
           objective: objective || null,
           inviteCode,
+          answeredJoinForm: true,
         },
         nextPath,
         provider,
@@ -402,7 +394,7 @@ function LoginForm({ providers }: { providers: OAuthProviderId[] }) {
         // saved first, exactly as for a social signup. With a session, they
         // are applied right here and the saved copy is discarded.
         savePendingSignup({
-          choices: { leetcodeHandle: lcHandle, squadName: newSquadName, objective, inviteCode },
+          choices: { leetcodeHandle: lcHandle, squadName: newSquadName, objective, inviteCode, answeredJoinForm: true },
           nextPath,
           provider: "email",
         });
@@ -450,7 +442,7 @@ function LoginForm({ providers }: { providers: OAuthProviderId[] }) {
             takePendingSignup();
             const done = await finishSignup(
               authData.session.access_token,
-              { leetcodeHandle: lcHandle, squadName: newSquadName, objective, inviteCode },
+              { leetcodeHandle: lcHandle, squadName: newSquadName, objective, inviteCode, answeredJoinForm: true },
               nextPath
             );
             if (!done.ok) {

@@ -7,6 +7,7 @@ import {
 import { readJsonBounded } from "@/lib/security/body";
 import { validateAvatarUrl } from "@/lib/security/urls";
 import type { Profile } from "@/types/database";
+import { OBJECTIVE_VALUES } from "@/lib/objectives";
 
 // Every response here is the caller's own profile, so it carries the
 // first-run columns too (same list as OWN_PROFILE_COLUMNS in lib/data).
@@ -135,7 +136,7 @@ export async function POST(request: Request) {
   }
 }
 
-const OBJECTIVES = ["internship", "fulltime", "consistency"] as const;
+const OBJECTIVES = OBJECTIVE_VALUES;
 
 // Narrow, whitelisted preference updates. Deliberately NOT a generic profile
 // editor: stats, handles and squad membership are all server-derived, and a

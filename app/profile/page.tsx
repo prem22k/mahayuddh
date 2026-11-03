@@ -27,6 +27,7 @@ import {
   outlineAction,
 } from "@/components/settings/SettingsCard";
 import { cn } from "@/lib/utils";
+import { OBJECTIVES } from "@/lib/objectives";
 import type { Squad } from "@/types/database";
 import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 import { createClient } from "@/lib/supabase/client";
@@ -698,11 +699,7 @@ export default function ProfilePage() {
             description="What are you practicing for?"
           >
             <div className="flex flex-wrap items-center gap-2">
-              {[
-                { value: "internship", label: "Internship prep" },
-                { value: "fulltime", label: "Full-time roles" },
-                { value: "consistency", label: "Daily consistency" },
-              ].map((o) => {
+              {OBJECTIVES.map((o) => {
                 const on = objective === o.value;
                 return (
                   <button

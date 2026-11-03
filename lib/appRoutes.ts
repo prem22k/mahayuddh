@@ -24,6 +24,7 @@ export const APP_PAGE_ROUTES = [
   "/login",
   "/notebook",
   "/notifications",
+  "/onboarding",
   "/offline",
   "/patterns",
   "/patterns/[topic]",
