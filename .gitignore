@@ -36,6 +36,8 @@ image*.png
 scripts/*
 !scripts/make-schema-idempotent.py
 !scripts/sync-contests.mjs
+# setup-social-login.sh is the documented provider setup (README, Deploy).
+!scripts/setup-social-login.sh
 
 # TypeScript cache
 *.tsbuildinfo

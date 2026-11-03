@@ -68,9 +68,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ profile: existingProfile as Profile });
     }
 
+    // Email signup sends `username` (the "Your name" field). Social providers
+    // don't: Google, LinkedIn and Apple send a display name (`full_name` /
+    // `name`), GitHub, GitLab and X a handle (`user_name` /
+    // `preferred_username`). Apple may send neither, so the email's local
+    // part is the last resort before a placeholder.
+    const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+    const firstText = (...keys: string[]) =>
+      keys.map((k) => meta[k]).find((v): v is string => typeof v === "string" && v.trim() !== "");
     let baseUsername =
-      user.user_metadata?.username ||
-      user.user_metadata?.name ||
+      firstText("username", "full_name", "name", "user_name", "preferred_username") ||
       user.email?.split("@")[0] ||
       "Squad Member";
 

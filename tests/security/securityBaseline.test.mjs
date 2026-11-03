@@ -695,7 +695,7 @@ describe("static invariants", () => {
     // Comments are stripped first: this file's own explanation of why the old
     // copy was an oracle quotes the old copy, and matching that would mean the
     // test fails because someone documented the fix correctly.
-    const src = stripComments(readFileSync("app/login/page.tsx", "utf8"));
+    const src = stripComments(readFileSync("app/login/LoginClient.tsx", "utf8"));
     // Any user-visible copy that asserts an account exists is an enumeration
     // oracle. The sign-in branch is already generic ("don't match an account").
     assert.ok(
@@ -706,7 +706,7 @@ describe("static invariants", () => {
 
   it("the sign-in branch is generic for a wrong password and an unknown account", async () => {
     const { readFileSync } = await import("node:fs");
-    const src = stripComments(readFileSync("app/login/page.tsx", "utf8"));
+    const src = stripComments(readFileSync("app/login/LoginClient.tsx", "utf8"));
     // "Invalid login credentials" is Supabase's combined answer. Surfacing it
     // verbatim is fine; branching on it to say "no such user" is not.
     assert.ok(
@@ -813,7 +813,7 @@ describe("static invariants", () => {
 describe("password recovery", () => {
   it("reset responses are identical whether the address has an account", async () => {
     const { readFileSync } = await import("node:fs");
-    const src = stripComments(readFileSync("app/login/page.tsx", "utf8"));
+    const src = stripComments(readFileSync("app/login/LoginClient.tsx", "utf8"));
     assert.ok(
       /If an account uses that email, a reset link is on its way/.test(src),
       "the reset confirmation must be one generic sentence"
@@ -826,7 +826,7 @@ describe("password recovery", () => {
 
   it("the reset request cannot burn unbounded email cost from one tap", async () => {
     const { readFileSync } = await import("node:fs");
-    const src = readFileSync("app/login/page.tsx", "utf8");
+    const src = readFileSync("app/login/LoginClient.tsx", "utf8");
     assert.ok(
       /RESET_COOLDOWN|reset_cooldown|cooldown/i.test(src),
       "a resend cooldown must gate repeated reset requests"
@@ -835,7 +835,7 @@ describe("password recovery", () => {
 
   it("recovery telemetry is counter-only, never the address", async () => {
     const { readFileSync } = await import("node:fs");
-    const src = readFileSync("app/login/page.tsx", "utf8");
+    const src = readFileSync("app/login/LoginClient.tsx", "utf8");
     assert.ok(
       /track\("password_reset_requested", \{\}\)/.test(src),
       "the reset event must carry no props (no email)"
@@ -890,7 +890,7 @@ describe("password recovery", () => {
 describe("login abuse friction", () => {
   it("consecutive failures back off and are counted without PII", async () => {
     const { readFileSync } = await import("node:fs");
-    const src = readFileSync("app/login/page.tsx", "utf8");
+    const src = readFileSync("app/login/LoginClient.tsx", "utf8");
     assert.ok(
       /BACKOFF_SEC|signin_lock|lockRemainingSec/.test(src),
       "a progressive backoff must exist on the sign-in form"
