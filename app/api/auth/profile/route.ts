@@ -169,6 +169,20 @@ export async function PATCH(request: Request) {
     if (value) patch.objective = value;
   }
 
+  // Display name (the `username` column; /u/<name> is the public page).
+  // 2-30 characters: letters and digits in any script, spaces, . _ and -.
+  // Runs of spaces collapse. Uniqueness ignores case (profiles_username_lower_unique).
+  if (body.username !== undefined) {
+    const value = typeof body.username === "string" ? body.username.trim().replace(/\s+/g, " ") : "";
+    if (value.length < 2 || value.length > 30 || !/^[\p{L}\p{N}][\p{L}\p{N} ._-]*$/u.test(value)) {
+      return NextResponse.json(
+        { error: "Names are 2-30 characters: letters, numbers, spaces, dots, dashes or underscores, starting with a letter or number." },
+        { status: 400 }
+      );
+    }
+    patch.username = value;
+  }
+
   // First-run flags. The server stamps the time; the client only says
   // done/not done. Onboarding can't be undone from the client (it would show
   // the setup again); the tour can, so profile can offer a replay.
@@ -178,7 +192,7 @@ export async function PATCH(request: Request) {
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json(
-      { error: "Nothing to update. Supported fields: objective, onboarded, tour_completed" },
+      { error: "Nothing to update. Supported fields: username, objective, onboarded, tour_completed" },
       { status: 400 }
     );
   }
@@ -191,6 +205,10 @@ export async function PATCH(request: Request) {
     .maybeSingle();
 
   if (error) {
+    // 23505: unique violation. Only the display name can collide here.
+    if (error.code === "23505" && patch.username) {
+      return NextResponse.json({ error: "That name is taken. Try another." }, { status: 409 });
+    }
     return NextResponse.json({ error: "Couldn't save that. Retry." }, { status: 500 });
   }
   return NextResponse.json({ profile: data });
