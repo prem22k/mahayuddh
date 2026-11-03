@@ -42,7 +42,7 @@ export function ProblemTabs<T extends string>({
   return (
     <div
       role="tablist"
-      className="-mx-4 flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden items-center gap-4 overflow-x-auto border-b border-hairline px-4 md:mx-0 md:gap-6 md:px-0"
+      className="-mx-4 flex scrollbar-none [&::-webkit-scrollbar]:hidden items-center gap-4 overflow-x-auto border-b border-hairline px-4 md:mx-0 md:gap-6 md:px-0"
     >
       {tabs.map((t, i) => {
         const active = t.value === value;

@@ -42,7 +42,7 @@ export function ChallengePassPreview({
     >
       <div className="flex min-w-0 flex-1 flex-col gap-3 p-4">
         <div className="flex items-start justify-between gap-2 border-b border-hairline pb-2">
-          <span className="min-w-0 break-words text-xs font-medium leading-4 text-text-primary">
+          <span className="min-w-0 wrap-break-word text-xs font-medium leading-4 text-text-primary">
             {fromHandle ?? "A squad mate"} challenged you
           </span>
           <span className="shrink-0 font-mono text-[10px] font-medium uppercase leading-4 tracking-[0.06em] text-text-disabled">
@@ -53,7 +53,7 @@ export function ChallengePassPreview({
         <div>
           <p
             className={cn(
-              "break-words font-display text-[19px] font-semibold leading-snug tracking-[-0.015em]",
+              "wrap-break-word font-display text-[19px] font-semibold leading-snug tracking-[-0.015em]",
               title ? "text-text-primary" : "text-text-disabled"
             )}
           >
@@ -65,7 +65,7 @@ export function ChallengePassPreview({
         </div>
 
         <div className="flex flex-col items-center rounded-md border border-hairline bg-well px-2.5 py-3 text-center">
-          <span className="font-mono text-[10px] font-medium uppercase leading-4 tracking-[0.1em] text-text-tertiary">
+          <span className="font-mono text-[10px] font-medium uppercase leading-4 tracking-widest text-text-tertiary">
             Target objective
           </span>
           <span className="mt-1 font-mono text-[26px] font-semibold uppercase leading-[1.1] tracking-[-0.02em] text-text-primary tnum md:text-[28px]">
@@ -79,7 +79,7 @@ export function ChallengePassPreview({
             A note is hidden until you finish.
           </p>
         ) : note ? (
-          <p className="break-words rounded-sm border border-hairline bg-well/70 px-2.5 py-2 text-xs italic leading-4 text-text-secondary">
+          <p className="wrap-break-word rounded-sm border border-hairline bg-well/70 px-2.5 py-2 text-xs italic leading-4 text-text-secondary">
             &ldquo;{note}&rdquo;
           </p>
         ) : null}

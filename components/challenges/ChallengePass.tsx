@@ -96,10 +96,10 @@ export function ChallengePass({
           <div className="min-w-0">
             <Heading
               className={cn(
-                "break-words font-display font-semibold text-text-primary",
+                "wrap-break-word font-display font-semibold text-text-primary",
                 page
-                  ? "text-xl leading-tight tracking-[-0.015em] md:text-2xl"
-                  : "text-[17px] leading-tight tracking-[-0.015em] md:text-xl"
+                  ? "text-xl leading-tight tracking-[-0.015em] md:text-2xl md:leading-8"
+                  : "text-[17px] leading-tight tracking-[-0.015em] md:text-xl md:leading-7"
               )}
             >
               {headline}
@@ -170,7 +170,7 @@ export function ChallengePass({
       ) : (
         <div className="flex flex-col items-center gap-1 rounded-md border border-hairline bg-well p-4 text-center md:flex-row md:items-center md:justify-between md:p-5 md:text-left">
           <div>
-            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.1em] text-text-tertiary">
+            <div className="font-mono text-[11px] font-medium uppercase tracking-widest text-text-tertiary">
               Target objective
             </div>
             <div className="mt-1 font-mono text-[38px] font-medium uppercase leading-none tracking-[-0.02em] text-text-primary tnum md:text-[44px]">
@@ -269,7 +269,7 @@ export function ChallengeStub({ item, variant = "inbox" }: { item: Suggestion; v
       ) : (
         <div className="flex items-center justify-between gap-3 md:hidden">
           <div className="min-w-0 space-y-0.5 font-mono font-medium uppercase tracking-[0.06em]">
-            <p className="break-words text-[11px] leading-4 text-text-secondary">
+            <p className="wrap-break-word text-[11px] leading-4 text-text-secondary">
               {from} · {to}
             </p>
             <p className="truncate text-[10px] leading-4 text-text-tertiary tnum">

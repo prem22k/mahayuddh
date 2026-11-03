@@ -130,7 +130,7 @@ export default function SquadWallPage() {
 
   return (
     <div className="mx-auto w-full max-w-reading space-y-6 md:space-y-10">
-      <div className="space-y-2 md:space-y-3">
+      <div>
         <Link
           href="/squad"
           className="inline-flex min-h-[44px] items-center gap-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary md:min-h-0"
@@ -139,7 +139,7 @@ export default function SquadWallPage() {
           <span>{squadName}</span>
         </Link>
 
-        <header className="flex flex-col gap-1 md:gap-1.5">
+        <header className="mt-2 flex flex-col gap-1 md:mt-3 md:gap-1.5">
           <div className="flex items-center justify-between gap-3">
             <h1 className="font-display text-2xl font-semibold tracking-tight text-text-primary md:text-3xl">
               {squadName}&rsquo;s wall
@@ -170,7 +170,7 @@ export default function SquadWallPage() {
                 <h2 className="font-display text-lg font-semibold tracking-tight text-text-primary md:text-2xl">
                   Nothing on the wall yet
                 </h2>
-                <p className="text-xs leading-relaxed text-text-secondary md:text-sm">
+                <p className="text-xs leading-relaxed text-text-secondary md:text-sm md:leading-5">
                   Milestones show up here as your squad hits them, like a first hard solve, a 7-day squad streak, or a
                   finished goal.
                 </p>
@@ -189,7 +189,7 @@ export default function SquadWallPage() {
       ) : (
         <>
           {latest && (
-            <article className="group relative overflow-hidden rounded-xl border border-hairline bg-surface p-4 shadow-sm transition-colors hover:border-hairline-strong md:p-6">
+            <article className="group relative overflow-hidden rounded-xl border border-hairline bg-surface p-4 shadow-xs transition-colors hover:border-hairline-strong md:p-6">
               <div aria-hidden className="absolute inset-x-0 top-0 h-px bg-edge-highlight" />
               <div className="flex flex-col gap-4 md:gap-5">
                 <div className="flex items-center justify-between gap-3">
@@ -229,7 +229,7 @@ export default function SquadWallPage() {
                       {formatLongDay(latest.occurred_at)}
                     </time>
                     {latest.detail && (
-                      <p className="pt-1 text-xs leading-relaxed text-text-secondary md:pt-0 md:text-sm">
+                      <p className="pt-1 text-xs leading-relaxed text-text-secondary md:pt-0 md:text-sm md:leading-5">
                         {latest.detail}
                       </p>
                     )}
@@ -274,7 +274,7 @@ export default function SquadWallPage() {
                           <span
                             aria-hidden
                             className={cn(
-                              "absolute -left-[21px] top-1.5 h-2 w-2 rounded-full border md:-left-[31px] md:h-2.5 md:w-2.5",
+                              "absolute left-[-21px] top-1.5 h-2 w-2 rounded-full border md:left-[-31px] md:h-2.5 md:w-2.5",
                               verified
                                 ? "border-verified/50 bg-verified-tint"
                                 : "border-hairline bg-surface-raised transition-colors group-hover:border-primary"
@@ -288,7 +288,7 @@ export default function SquadWallPage() {
                                   {verified && <VerifiedBadge className="h-5 px-1.5 text-[10px] md:h-6 md:text-[11px]" />}
                                 </div>
                                 {m.detail && (
-                                  <p className="text-[11px] leading-5 text-text-secondary md:text-xs">{m.detail}</p>
+                                  <p className="text-[11px] leading-5 text-text-secondary md:text-xs md:leading-4">{m.detail}</p>
                                 )}
                               </div>
                               <time

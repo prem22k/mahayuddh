@@ -105,7 +105,7 @@ export function NoteReader({
         value={shareName}
         onChange={(e) => onShareNameChange(e.target.value)}
         placeholder="@username"
-        className="h-10 min-w-0 flex-1 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
+        className="h-10 min-w-0 flex-1 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-hidden"
       />
       <button
         type="submit"

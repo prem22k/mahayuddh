@@ -372,7 +372,7 @@ export default function SquadJoinPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-canvas text-text-primary">
-      <header className="mx-auto flex h-14 w-full max-w-[1120px] items-center justify-between border-b border-hairline px-4 sm:px-8">
+      <header className="mx-auto flex h-14 w-full max-w-content items-center justify-between border-b border-hairline px-4 sm:px-8">
         <Link href="/welcome" className="flex items-center gap-2.5">
           <LogoMark className="h-[22px] w-[22px]" />
           <span className="font-display text-base font-semibold tracking-tight">Mahayuddh</span>
@@ -385,12 +385,12 @@ export default function SquadJoinPage() {
         </Link>
       </header>
 
-      <main className="mx-auto flex w-full max-w-[1120px] flex-1 flex-col items-center px-4 pb-16 pt-6 sm:justify-center sm:py-12">
+      <main className="mx-auto flex w-full max-w-content flex-1 flex-col items-center px-4 pb-16 pt-6 sm:justify-center sm:py-12">
         <div className="w-full max-w-[560px]">{card}</div>
         {pending ? <InviteLinesSkeleton /> : preview && lines}
       </main>
 
-      <footer className="mx-auto flex w-full max-w-[1120px] items-center justify-between gap-3 border-t border-hairline px-4 py-6 text-xs text-text-tertiary sm:px-8">
+      <footer className="mx-auto flex w-full max-w-content items-center justify-between gap-3 border-t border-hairline px-4 py-6 text-xs text-text-tertiary sm:px-8">
         <span>
           Mahayuddh <span aria-hidden>·</span> Practice with your own people
         </span>

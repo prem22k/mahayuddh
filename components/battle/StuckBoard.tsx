@@ -759,7 +759,7 @@ function RequestCard({
                   className={cn(
                     "flex min-h-[44px] items-center justify-center gap-1.5 whitespace-nowrap rounded-sm border px-3 py-1.5 text-xs font-medium leading-4 transition-colors md:min-h-0",
                     selected
-                      ? "border-pattern/40 bg-pattern-tint font-semibold text-pattern shadow-sm"
+                      ? "border-pattern/40 bg-pattern-tint font-semibold text-pattern shadow-xs"
                       : allowed
                         ? "border-transparent text-text-secondary hover:bg-surface-raised hover:text-text-primary"
                         : "cursor-not-allowed border-transparent text-text-disabled opacity-60"
@@ -789,7 +789,7 @@ function RequestCard({
               rows={4}
               maxLength={4000}
               placeholder={replyPlaceholder(replyLevel)}
-              className="w-full resize-y rounded-lg border border-hairline bg-well p-3.5 text-[15px] leading-6 text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none"
+              className="w-full resize-y rounded-lg border border-hairline bg-well p-3.5 text-[15px] leading-6 text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-hidden"
             />
             <div className="flex items-start justify-between gap-3 px-1 font-mono text-xs font-medium text-text-tertiary">
               <span className="flex items-start gap-1.5">

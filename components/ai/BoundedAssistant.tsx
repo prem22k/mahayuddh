@@ -168,7 +168,7 @@ export function BoundedAssistant({
           rows={3}
           maxLength={8000}
           placeholder={copy.placeholder}
-          className="mt-1.5 w-full rounded-md border border-hairline bg-well p-3 text-sm leading-6 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
+          className="mt-1.5 w-full rounded-md border border-hairline bg-well p-3 text-sm leading-6 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-hidden"
         />
       </label>
 

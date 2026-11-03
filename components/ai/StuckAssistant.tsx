@@ -139,7 +139,7 @@ export function StuckAssistant({
         onChange={(e) => setRequest(e.target.value)}
         rows={2}
         placeholder="What have you tried? (optional)"
-        className="w-full resize-y rounded-lg border border-hairline bg-well p-3 text-sm leading-5 text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none"
+        className="w-full resize-y rounded-lg border border-hairline bg-well p-3 text-sm leading-5 text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-hidden"
       />
 
       <button

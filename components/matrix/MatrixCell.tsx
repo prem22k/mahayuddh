@@ -153,7 +153,7 @@ export function MatrixCell({
             </span>
           )}
           <span
-            className="absolute left-1/2 top-full -mt-[5px] h-2.5 w-2.5 -translate-x-1/2 rotate-45 border-b border-r border-hairline-strong bg-surface-overlay"
+            className="absolute left-1/2 top-full mt-[-5px] h-2.5 w-2.5 -translate-x-1/2 rotate-45 border-b border-r border-hairline-strong bg-surface-overlay"
             aria-hidden
           />
         </span>

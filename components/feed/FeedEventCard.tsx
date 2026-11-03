@@ -185,7 +185,7 @@ function RowMenu({
             onClick={() => setOpen(false)}
             className="fixed inset-0 z-10 cursor-default"
           />
-          <div className="popover-panel absolute right-0 top-full z-20 mt-1 min-w-[9rem] p-1.5">
+          <div className="popover-panel absolute right-0 top-full z-20 mt-1 min-w-36 p-1.5">
             {/* Feed events have no delete path yet, so the menu offers only what
                 works: report and block, on other people's posts. */}
             {FEED_ACTIONS.filter((a) => a.id !== "delete").map((a) => (

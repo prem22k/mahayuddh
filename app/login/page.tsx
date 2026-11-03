@@ -731,7 +731,7 @@ function LoginForm() {
                       />
                     </div>
 
-                    <fieldset className="m-0 border-0 p-0">
+                    <fieldset className="border-0 p-0">
                       <legend className={cn(authLabelCls, "p-0")}>What are you practicing for?</legend>
                       <div className="flex flex-wrap gap-1.5">
                         {OBJECTIVES.map((o) => (

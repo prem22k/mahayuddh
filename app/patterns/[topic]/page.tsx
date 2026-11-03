@@ -333,7 +333,7 @@ export default function PatternPage() {
               />
             </div>
           ) : (
-            <ol className="divide-y divide-hairline md:border-t md:border-hairline">
+            <ol className="md:border-t md:border-hairline">
               {starters.map((s, i) => {
                 const st = ownStatus[s.title_slug];
                 const verified = st === "solved" && Boolean(ownVerified[s.title_slug]);
@@ -344,7 +344,7 @@ export default function PatternPage() {
                   <li
                     key={s.title_slug}
                     className={cn(
-                      "group relative flex min-h-14 flex-wrap items-center gap-x-3 gap-y-3 px-4 py-2.5 md:flex-nowrap md:gap-4 md:px-6 md:py-2",
+                      "group relative flex min-h-14 flex-wrap items-center gap-x-3 gap-y-3 border-hairline px-4 py-2.5 not-first:border-t md:flex-nowrap md:gap-4 md:px-6 md:py-2",
                       isNext ? "bg-primary-tint/25" : "transition-colors hover:bg-surface-raised/40"
                     )}
                   >
@@ -561,7 +561,7 @@ export default function PatternPage() {
                         by @{r.author_profile?.username ?? "vault"}
                       </p>
                       {r.content.trim() && (
-                        <pre className="mt-1 whitespace-pre-wrap break-words rounded-xs border border-hairline bg-well p-2.5 font-mono text-xs leading-[18px] text-text-secondary">
+                        <pre className="mt-1 whitespace-pre-wrap wrap-break-word rounded-xs border border-hairline bg-well p-2.5 font-mono text-xs leading-[18px] text-text-secondary">
                           <span className="line-clamp-4">{r.content.trim()}</span>
                         </pre>
                       )}

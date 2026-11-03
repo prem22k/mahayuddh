@@ -11,7 +11,7 @@ export function boardRowCls(highlight = false) {
   return cn(
     "group relative flex h-14 items-center gap-3 px-3 transition-colors md:gap-4 md:rounded-md md:border md:px-4",
     highlight
-      ? "bg-surface-overlay max-md:border-l-2 max-md:border-l-primary md:border-hairline-strong md:shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]"
+      ? "bg-surface-overlay max-md:border-l-2 max-md:border-l-primary md:border-hairline-strong md:shadow-lifted"
       : "bg-surface hover:bg-surface-raised md:border-hairline md:hover:border-hairline-strong md:hover:bg-surface"
   );
 }

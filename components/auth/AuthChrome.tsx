@@ -21,7 +21,7 @@ export function AuthFrame({
 }) {
   return (
     <div className="flex min-h-screen select-none flex-col bg-canvas text-text-primary">
-      <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center border-b border-hairline bg-surface/80 px-4 backdrop-blur md:hidden">
+      <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center border-b border-hairline bg-surface/80 px-4 backdrop-blur-sm md:hidden">
         <Wordmark />
       </header>
       <div className="flex flex-1 flex-col items-center px-4 pb-12 pt-5 md:justify-center md:py-16">
@@ -103,6 +103,6 @@ export function PasswordToggle({
 }
 
 export const authInputCls =
-  "w-full h-11 md:h-10 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-disabled transition-colors hover:border-hairline-strong focus:border-[rgba(255,255,255,0.28)] focus:shadow-[0_0_0_2px_rgba(237,237,239,0.2)] focus:outline-none";
+  "w-full h-11 md:h-10 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-disabled transition-colors hover:border-hairline-strong focus:border-[rgba(255,255,255,0.28)] focus:shadow-[0_0_0_2px_rgba(237,237,239,0.2)] focus:outline-hidden";
 
 export const authLabelCls = "mb-1.5 block text-xs font-medium text-text-secondary";

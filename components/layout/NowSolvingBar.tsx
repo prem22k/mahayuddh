@@ -515,7 +515,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
       {/* ── REVENGE COMPLETE (Step 17). A solve that answers a recorded failure
           is a different event from a solve: it closes a loop the user opened. ── */}
       {revengeResult && (
-        <div className="fixed bottom-24 left-1/2 z-[160] w-[26rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 space-y-2 rounded-xl border border-verified/30 bg-surface-raised p-4 shadow-overlay">
+        <div className="fixed bottom-24 left-1/2 z-160 w-104 max-w-[calc(100vw-2rem)] -translate-x-1/2 space-y-2 rounded-xl border border-verified/30 bg-surface-raised p-4 shadow-overlay">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-xs font-medium uppercase tracking-wide text-verified">
@@ -579,7 +579,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
 
       {/* ── Scratchpad Popover ─────────────────────────── */}
       {isScratchpadOpen && activeProblem && (
-        <div className="popover-panel fixed bottom-24 right-6 z-[150] w-96 max-w-[calc(100vw-3rem)] p-4">
+        <div className="popover-panel fixed bottom-24 right-6 z-150 w-96 max-w-[calc(100vw-3rem)] p-4">
           <div className="flex items-center justify-between border-b border-hairline pb-2">
             <span className="pl-1 text-xs font-semibold text-text-primary">
               Notes • {activeProblem.title}
@@ -597,7 +597,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
               onChange={(e) => handleSaveNote(e.target.value)}
               placeholder="Write your intuition, time/space complexity, or edge cases..."
               rows={4}
-              className="w-full resize-none rounded-md border border-hairline bg-well p-2.5 font-mono text-xs text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
+              className="w-full resize-none rounded-md border border-hairline bg-well p-2.5 font-mono text-xs text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-hidden"
             />
             <div className="mt-2 flex items-center justify-between pl-1 text-xs text-text-tertiary">
               <span>Saved on this device for this problem</span>

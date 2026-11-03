@@ -52,7 +52,7 @@ function fmtDur(sec: number | null): string {
 type Tab = "Your battles" | "Squad approaches" | "Your approach" | "Practice with AI";
 
 const fieldCls =
-  "mt-1 w-full rounded-md border border-hairline bg-well px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none";
+  "mt-1 w-full rounded-md border border-hairline bg-well px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-hidden";
 const labelCls = "text-xs font-medium leading-4 text-text-secondary";
 
 // Stable empty values: a fresh [] or {} per render would re-run every memo.
@@ -649,7 +649,7 @@ export default function ProblemPage() {
                         rows={3}
                         maxLength={5000}
                         placeholder="Core idea in two sentences. What was the key insight?"
-                        className="mt-1.5 w-full rounded-md border border-hairline bg-well p-3 text-sm leading-6 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
+                        className="mt-1.5 w-full rounded-md border border-hairline bg-well p-3 text-sm leading-6 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-hidden"
                       />
                     </label>
                     <button

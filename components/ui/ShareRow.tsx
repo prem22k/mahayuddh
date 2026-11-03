@@ -129,7 +129,7 @@ export function ShareRow({
         onClick={() => setOpen(false)}
         className="fixed inset-0 z-10 cursor-default"
       />
-      <div className="absolute right-0 top-full mt-1.5 z-20 min-w-[9.5rem] popover-panel p-1.5">
+      <div className="absolute right-0 top-full mt-1.5 z-20 min-w-38 popover-panel p-1.5">
         {shareTargets(absolute(), body()).map((t) => (
           <a
             key={t.id}

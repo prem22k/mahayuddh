@@ -544,7 +544,7 @@ export default function SquadPage() {
                             onClick={() => setShowGoalMenu(false)}
                             className="fixed inset-0 z-10 cursor-default"
                           />
-                          <div role="menu" className="popover-panel absolute right-0 top-full z-20 mt-1.5 min-w-[10rem] p-1.5">
+                          <div role="menu" className="popover-panel absolute right-0 top-full z-20 mt-1.5 min-w-40 p-1.5">
                             <button
                               type="button"
                               role="menuitem"

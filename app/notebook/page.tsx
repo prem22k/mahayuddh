@@ -334,7 +334,7 @@ export default function NotebookPage() {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search your notes"
-        className="h-10 w-full rounded-md border border-hairline bg-well pl-9 pr-3 text-sm leading-5 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
+        className="h-10 w-full rounded-md border border-hairline bg-well pl-9 pr-3 text-sm leading-5 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-hidden"
       />
     </label>
   );
@@ -379,7 +379,7 @@ export default function NotebookPage() {
           <div
             role="tablist"
             aria-label="Notebook sections"
-            className="-mx-4 flex gap-6 overflow-x-auto px-4 [box-shadow:inset_0_-1px_0_theme(colors.hairline)] [scrollbar-width:none] lg:mx-0 lg:overflow-visible lg:px-0 lg:[box-shadow:none]"
+            className="-mx-4 flex gap-6 overflow-x-auto px-4 [box-shadow:inset_0_-1px_0_var(--color-hairline)] scrollbar-none lg:mx-0 lg:overflow-visible lg:px-0 lg:[box-shadow:none]"
           >
             {tabs.map((t) => {
               const active = tab === t.id;
@@ -418,7 +418,7 @@ export default function NotebookPage() {
             <div
               role="group"
               aria-label="Filter notes by pattern"
-              className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:flex-wrap md:px-0"
+              className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 scrollbar-none md:mx-0 md:flex-wrap md:px-0"
             >
               <span className="mr-1 hidden font-mono text-xs font-medium leading-4 text-text-tertiary md:inline">
                 Filter
@@ -571,7 +571,7 @@ export default function NotebookPage() {
             <div
               role="group"
               aria-label="Filter vault by category"
-              className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:flex-wrap md:px-0"
+              className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 scrollbar-none md:mx-0 md:flex-wrap md:px-0"
             >
               <span className="mr-1 hidden font-mono text-xs font-medium leading-4 text-text-tertiary md:inline">
                 Filter
@@ -739,7 +739,7 @@ export default function NotebookPage() {
                 placeholder="What did this teach you?"
                 maxLength={120}
                 required
-                className="h-10 w-full rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
+                className="h-10 w-full rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-hidden"
               />
             </div>
             <div>
@@ -752,7 +752,7 @@ export default function NotebookPage() {
                 onChange={(e) => setBody(e.target.value)}
                 rows={8}
                 placeholder="Markdown: what did you learn? Code fences welcome."
-                className="w-full resize-y rounded-md border border-hairline bg-well p-3 font-mono text-sm leading-6 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
+                className="w-full resize-y rounded-md border border-hairline bg-well p-3 font-mono text-sm leading-6 text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-hidden"
               />
             </div>
             <div className="space-y-1.5">
@@ -797,7 +797,7 @@ export default function NotebookPage() {
                   value={shareName}
                   onChange={(e) => setShareName(e.target.value)}
                   placeholder="Share 1:1 with @username"
-                  className="h-10 flex-1 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none"
+                  className="h-10 flex-1 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-hidden"
                 />
                 <Button type="button" variant="secondary" onClick={() => handleShare(editing.id)}>
                   Share

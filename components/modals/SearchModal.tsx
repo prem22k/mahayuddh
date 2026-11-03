@@ -400,7 +400,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
     <ModalShell
       label="Search problems, patterns, people, actions"
       onClose={onClose}
-      zIndexClass="z-[300]"
+      zIndexClass="z-300"
       maxWidthClass="max-w-[640px]"
       alignTop
       panelClassName="overflow-hidden rounded-lg p-0 max-md:rounded-xl"
@@ -414,7 +414,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder="Search problems, patterns, primers, people…"
-          className="h-full w-full bg-transparent text-[15px] text-text-primary placeholder:text-text-tertiary focus:outline-none"
+          className="h-full w-full bg-transparent text-[15px] text-text-primary placeholder:text-text-tertiary focus:outline-hidden"
           aria-label="Search"
           role="combobox"
           aria-expanded={flat.length > 0}
@@ -432,7 +432,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
           <div
             role="group"
             aria-label="Filter results"
-            className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto [scrollbar-width:none]"
+            className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto scrollbar-none"
           >
             <span className="hidden shrink-0 text-xs text-text-tertiary md:inline">Filter:</span>
             {filters.map((f) => {
@@ -473,7 +473,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
         id="palette-results"
         role="listbox"
         aria-label="Results"
-        className="max-h-[max(240px,min(60vh,calc(100dvh_-_20vw_-_13rem)))] overflow-y-auto p-2"
+        className="max-h-[max(240px,min(60vh,calc(100dvh-20vw-13rem)))] overflow-y-auto p-2"
       >
         {visibleGroups.length === 0 ? (
           <div className="px-4 py-10 text-center text-sm leading-6 text-text-secondary">

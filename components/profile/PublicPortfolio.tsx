@@ -102,7 +102,7 @@ export function PublicPortfolio(p: PublicPortfolioProps) {
             </div>
 
             <div className="col-span-2 row-start-2 min-w-0 space-y-1.5 md:col-span-1 md:col-start-2 md:row-start-1 md:self-center">
-              <h1 className="font-display text-2xl font-semibold leading-tight tracking-[-0.02em] text-text-primary md:text-3xl">
+              <h1 className="font-display text-2xl font-semibold leading-tight tracking-[-0.02em] text-text-primary md:text-3xl md:leading-9">
                 {p.displayName}
               </h1>
               <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-secondary">

@@ -44,7 +44,7 @@ const secondaryBtn =
 
 const sectionInner = "mx-auto w-full max-w-content px-4 md:px-8";
 const h2Cls =
-  "font-display text-2xl font-semibold leading-tight tracking-tight text-text-primary sm:text-3xl md:text-4xl";
+  "font-display text-2xl font-semibold leading-tight tracking-tight text-text-primary sm:text-3xl sm:leading-9 md:text-4xl md:leading-10";
 const cardCls = "max-w-[620px] rounded-lg border border-hairline bg-surface p-3 md:p-5";
 
 /** Barcode bar widths/heights for the hero stub. Decorative only. */
@@ -79,7 +79,7 @@ function Moment({
       <span
         aria-hidden
         className={cn(
-          "absolute -left-[31px] top-1 h-3.5 w-3.5 rounded-full border transition-colors md:-left-[39px]",
+          "absolute left-[-31px] top-1 h-3.5 w-3.5 rounded-full border transition-colors md:left-[-39px]",
           dot === "verified"
             ? "border-verified bg-verified"
             : "border-hairline-strong bg-surface-raised group-hover:border-primary group-hover:bg-primary"
@@ -144,10 +144,10 @@ export default function WelcomePage() {
                     <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary motion-safe:animate-gold-pulse" />
                     Pass #001 · Daily battle
                   </span>
-                  <h1 className="max-w-[620px] font-display text-[32px] font-semibold leading-[1.08] tracking-tight text-text-primary sm:text-4xl md:text-5xl lg:text-[54px] lg:leading-[1.05]">
+                  <h1 className="max-w-[620px] font-display text-[32px] font-semibold leading-[1.08] tracking-tight text-text-primary sm:text-4xl sm:leading-10 md:text-5xl md:leading-none lg:text-[54px] lg:leading-[1.05]">
                     Practice DSA with your people.
                   </h1>
-                  <p className="mt-4 max-w-[580px] text-sm leading-relaxed text-text-secondary sm:mt-6 sm:text-lg">
+                  <p className="mt-4 max-w-[580px] text-sm leading-relaxed text-text-secondary sm:mt-6 sm:text-lg sm:leading-7">
                     One problem a day, timed and verified. Your squad sees who solved it, how
                     fast, and how they thought about it.
                   </p>
@@ -185,7 +185,7 @@ export default function WelcomePage() {
                         </dt>
                         <dd
                           className={cn(
-                            "mt-0.5 flex items-center gap-1 text-[11px] font-medium uppercase leading-4 md:gap-1.5 md:text-sm md:font-semibold",
+                            "mt-0.5 flex items-center gap-1 text-[11px] font-medium uppercase leading-4 md:gap-1.5 md:text-sm md:leading-5 md:font-semibold",
                             f.verified ? "text-verified" : "text-text-secondary md:text-text-primary"
                           )}
                         >
@@ -244,7 +244,7 @@ export default function WelcomePage() {
         className="w-full pt-14 md:border-t md:border-hairline md:bg-well/40 md:py-32"
       >
         <div className={sectionInner}>
-          <div className="mb-5 max-w-[680px] md:mb-16">
+          <div className="mb-5 max-w-reading md:mb-16">
             <h2 className={h2Cls}>One day in a squad.</h2>
             <p className="mt-1 text-[13px] leading-5 text-text-tertiary md:mt-3 md:text-base md:leading-6 md:text-text-secondary">
               How five friends keep an unbroken streak without meetings, calls, or silent
@@ -346,7 +346,7 @@ export default function WelcomePage() {
                 <p className="font-mono text-[10px] uppercase text-pattern md:mb-1 md:text-xs md:text-text-tertiary">
                   Core idea · your approach
                 </p>
-                <p className="rounded-xs border border-hairline bg-well p-2 text-xs italic leading-relaxed text-text-secondary md:border-0 md:bg-transparent md:p-0 md:text-sm md:text-text-primary">
+                <p className="rounded-xs border border-hairline bg-well p-2 text-xs italic leading-relaxed text-text-secondary md:border-0 md:bg-transparent md:p-0 md:text-sm md:leading-5 md:text-text-primary">
                   “Outer loop goes through coins, inner loop amounts from coin to amount.
                   Reversing the loops counts permutations instead of unique combinations.”
                 </p>
@@ -388,7 +388,7 @@ export default function WelcomePage() {
         className="w-full scroll-mt-20 overflow-hidden pt-14 md:border-t md:border-hairline md:py-32"
       >
         <div className={sectionInner}>
-          <div className="mb-4 max-w-[680px] md:mb-16">
+          <div className="mb-4 max-w-reading md:mb-16">
             <h2 className={h2Cls}>Proof you&apos;ll actually want to share.</h2>
             <p className="mt-1 text-[13px] leading-5 text-text-tertiary md:mt-3 md:text-base md:leading-6 md:text-text-secondary">
               Built like physical event passes with perforated stubs and serial stamps. No
@@ -521,7 +521,7 @@ export default function WelcomePage() {
               ].map((line) => (
                 <li
                   key={line}
-                  className="flex items-center gap-1.5 text-sm leading-snug text-text-secondary md:gap-3.5 md:border-b md:border-hairline md:pb-4 md:text-lg"
+                  className="flex items-center gap-1.5 text-sm leading-snug text-text-secondary md:gap-3.5 md:border-b md:border-hairline md:pb-4 md:text-lg md:leading-7"
                 >
                   <span aria-hidden className="md:font-mono md:text-sm md:text-text-tertiary">
                     —
@@ -547,10 +547,10 @@ export default function WelcomePage() {
                     <span className="mb-3.5 inline-flex items-center font-mono text-[10px] font-medium uppercase tracking-wider text-primary md:mb-4 md:rounded-xs md:border md:border-primary/20 md:bg-primary-tint md:px-2 md:py-0.5 md:text-[11px] md:tracking-normal">
                       Ready to enter
                     </span>
-                    <h2 className="font-display text-[22px] font-semibold leading-tight tracking-tight text-text-primary sm:text-3xl">
+                    <h2 className="font-display text-[22px] font-semibold leading-tight tracking-tight text-text-primary sm:text-3xl sm:leading-9">
                       Your first battle takes two minutes.
                     </h2>
-                    <p className="mt-3 text-[13px] leading-relaxed text-text-secondary md:text-sm">
+                    <p className="mt-3 text-[13px] leading-relaxed text-text-secondary md:text-sm md:leading-5">
                       Start solo today, or bring your friends to lock in a squad streak from day one.
                     </p>
                   </div>

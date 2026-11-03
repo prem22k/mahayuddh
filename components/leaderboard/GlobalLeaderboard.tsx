@@ -101,7 +101,7 @@ export function GlobalLeaderboard() {
             }}
             aria-label="Pattern to rank by, for example Graphs"
             placeholder="Pattern, e.g. Graphs"
-            className="h-10 min-h-[44px] min-w-0 flex-1 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:min-h-0 md:max-w-xs"
+            className="h-10 min-h-[44px] min-w-0 flex-1 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-hidden md:min-h-0 md:max-w-xs"
           />
           <Button
             variant="secondary"

@@ -369,7 +369,7 @@ export function FeedComposer({
 
 
   const selectCls =
-    "w-full min-h-[44px] rounded-md border border-hairline bg-well px-3 py-2 text-sm text-text-primary focus:border-hairline-strong focus:outline-none md:min-h-10";
+    "w-full min-h-[44px] rounded-md border border-hairline bg-well px-3 py-2 text-sm text-text-primary focus:border-hairline-strong focus:outline-hidden md:min-h-10";
 
   const picker = useMemo(() => {
     const empty = (msg: string, cta?: { label: string; href: string }) => (
@@ -604,7 +604,7 @@ export function FeedComposer({
       label="Post to feed"
       onClose={onClose}
       variant="sheet"
-      zIndexClass="z-[300]"
+      zIndexClass="z-300"
       maxWidthClass="max-w-[560px]"
       panelClassName="flex max-h-[92dvh] flex-col overflow-hidden p-0 md:max-h-[calc(100dvh-32px)]"
     >
@@ -722,7 +722,7 @@ export function FeedComposer({
               onChange={(e) => setCaption(e.target.value.slice(0, 280))}
               rows={2}
               placeholder="Finally saw why the loop order matters."
-              className="w-full resize-y rounded-md border border-hairline bg-well px-3 py-2.5 text-[15px] leading-6 text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none max-md:rounded-lg max-md:text-sm"
+              className="w-full resize-y rounded-md border border-hairline bg-well px-3 py-2.5 text-[15px] leading-6 text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-hidden max-md:rounded-lg max-md:text-sm"
             />
           </section>
         )}
@@ -840,7 +840,7 @@ export function FeedComposer({
             onClick={() => void doSubmit()}
             disabled={!canSubmit || busy}
             loading={busy}
-            className="h-11 flex-[2] font-semibold md:h-10 md:flex-none md:px-6 md:font-medium"
+            className="h-11 flex-2 font-semibold md:h-10 md:flex-none md:px-6 md:font-medium"
           >
             {!busy && (
               <>

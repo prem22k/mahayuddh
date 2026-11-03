@@ -65,7 +65,7 @@ export function FeaturedApproachPass({
             {proof && (
               <div>
                 {time && (
-                  <p className="font-mono text-3xl font-medium leading-none tracking-[-0.02em] text-text-primary tnum md:text-4xl">
+                  <p className="font-mono text-3xl font-medium leading-none tracking-[-0.02em] text-text-primary tnum md:text-4xl md:leading-10">
                     {time}
                   </p>
                 )}

@@ -144,7 +144,7 @@ export function UserStatsDossierModal({
       label={`Practice summary for ${displayName}`}
       onClose={onClose}
       variant="sheet"
-      zIndexClass="z-[300]"
+      zIndexClass="z-300"
       maxWidthClass="max-w-[560px]"
       panelClassName="max-h-[92vh] overflow-y-auto rounded-lg p-5 max-md:rounded-t-xl max-md:pt-8 md:p-7"
     >
@@ -156,7 +156,7 @@ export function UserStatsDossierModal({
               <Avatar name={displayName} src={profile.avatar_url} size="lg" className="border border-hairline-strong" />
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-2">
-                  <h2 className="min-w-0 font-display text-xl font-semibold leading-tight tracking-tight text-text-primary [overflow-wrap:anywhere] md:text-[22px]">
+                  <h2 className="min-w-0 font-display text-xl font-semibold leading-tight tracking-tight text-text-primary wrap-anywhere md:text-[22px]">
                     {displayName}
                     {isSelf && (
                       <span className="whitespace-nowrap text-base font-normal tracking-normal text-text-tertiary"> (you)</span>
@@ -201,7 +201,7 @@ export function UserStatsDossierModal({
               <p className="flex items-baseline gap-1.5">
                 <span
                   className={cn(
-                    "font-display text-[28px] font-semibold leading-none tracking-[-0.02em] tnum md:text-3xl",
+                    "font-display text-[28px] font-semibold leading-none tracking-[-0.02em] tnum md:text-3xl md:leading-9",
                     linked ? "text-text-primary" : "text-text-tertiary"
                   )}
                 >
@@ -227,7 +227,7 @@ export function UserStatsDossierModal({
               <p className="flex items-baseline gap-1.5">
                 <span
                   className={cn(
-                    "font-display text-[28px] font-semibold leading-none tracking-[-0.02em] tnum md:text-3xl",
+                    "font-display text-[28px] font-semibold leading-none tracking-[-0.02em] tnum md:text-3xl md:leading-9",
                     rating == null ? "text-text-tertiary" : "text-text-primary"
                   )}
                 >

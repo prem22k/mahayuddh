@@ -92,13 +92,13 @@ export default function SquadRecapsPage() {
 
   return (
     <div className="w-full space-y-8">
-      <div className="space-y-4">
+      <div>
         <Link href={`/squad`} className="inline-flex min-h-[44px] items-center gap-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary md:min-h-0">
           <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.5} />
           <span>{squadName}</span>
         </Link>
 
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <header className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="type-title text-text-primary md:type-display-md">Weekly recaps</h1>
             <p className="mt-1 text-sm leading-5 text-text-tertiary md:text-[15px] md:leading-6 md:text-text-secondary">

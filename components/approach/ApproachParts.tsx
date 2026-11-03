@@ -49,7 +49,7 @@ export function ApproachHeaderCard({
         <div className="flex min-w-0 items-center gap-3">
           <Avatar name={username} src={avatarUrl} size="md" className="md:h-10 md:w-10 md:text-sm" />
           <div className="min-w-0">
-            <div className="truncate text-[15px] font-semibold leading-5 tracking-[-0.01em] text-text-primary md:text-base">
+            <div className="truncate text-[15px] font-semibold leading-5 tracking-[-0.01em] text-text-primary md:text-base md:leading-6">
               @{username}
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-4 text-text-tertiary">
@@ -130,7 +130,7 @@ export function CoreIdeaCard({ text }: { text: string }) {
     >
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-hairline-strong to-transparent"
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-hairline-strong to-transparent"
       />
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-xs font-medium leading-4 text-text-tertiary">Core idea</h2>
