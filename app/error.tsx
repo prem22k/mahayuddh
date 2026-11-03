@@ -1,4 +1,5 @@
 "use client";
+import { useReportError } from "@/lib/posthog/useReportError";
 
 import { useEffect } from "react";
 import { ErrorScreen } from "@/components/errors/ErrorScreen";
@@ -10,6 +11,7 @@ export default function ErrorPage({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useReportError(error);
   useEffect(() => {
     console.error(error);
   }, [error]);

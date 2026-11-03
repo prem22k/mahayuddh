@@ -1,6 +1,8 @@
 "use client";
+import { useReportError } from "@/lib/posthog/useReportError";
 
-export default function SheetsError({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function SheetsError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  useReportError(error);
   return (
     <div className="p-12 text-center space-y-4" role="alert">
       <h2 className="text-base font-bold text-text-primary">Roadmap failed to load.</h2>
