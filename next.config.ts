@@ -1,30 +1,16 @@
 import type { NextConfig } from "next";
 import path from "path";
 import { securityHeaders, noStoreHeaders } from "./lib/security/headers";
+import { AVATAR_HOSTS } from "./lib/security/urls";
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname),
   // No framework fingerprint on responses (control 15 hygiene).
   poweredByHeader: false,
   images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "assets.leetcode.com",
-      },
-      {
-        protocol: "https",
-        hostname: "leetcode.com",
-      },
-      {
-        protocol: "https",
-        hostname: "lh3.googleusercontent.com",
-      },
-      {
-        protocol: "https",
-        hostname: "avatars.githubusercontent.com",
-      },
-    ],
+    // Same hosts the avatar URL validator accepts (lib/security/urls.ts), so
+    // the two can't disagree about which pictures render.
+    remotePatterns: AVATAR_HOSTS.map((hostname) => ({ protocol: "https" as const, hostname })),
   },
   /**
    * Security response headers.

@@ -13,6 +13,7 @@ export const APP_PAGE_ROUTES = [
   "/",
   "/a/[id]",
   "/approach/[id]",
+  "/auth/finish",
   "/auth/update-password",
   "/b/[id]",
   "/c/[id]",

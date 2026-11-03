@@ -19,6 +19,12 @@ export const AVATAR_HOSTS = [
   "leetcode.com",
   "lh3.googleusercontent.com",
   "avatars.githubusercontent.com",
+  // Social sign-in profile pictures (GitLab uploads and Gravatar, LinkedIn, X).
+  // Apple sends none.
+  "gitlab.com",
+  "secure.gravatar.com",
+  "media.licdn.com",
+  "pbs.twimg.com",
 ] as const;
 
 const AVATAR_HOST_SET = new Set<string>(AVATAR_HOSTS.map((h) => h.toLowerCase()));
