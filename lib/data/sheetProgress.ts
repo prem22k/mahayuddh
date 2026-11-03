@@ -9,12 +9,13 @@ export const PINNED_SHEETS = [
 
 export type SheetProgress = { total: number; solved: number };
 
-// The sidebar mounts on every page; without a cache each navigation would
-// refetch three sheets plus the user's statuses. Progress only moves when the
-// user solves something, so a few minutes of staleness is fine for a hint.
-const TTL_MS = 5 * 60_000;
-let cache: { userId: string; at: number; value: Record<string, SheetProgress | null> } | null = null;
-let inflight: Promise<Record<string, SheetProgress | null>> | null = null;
+// Caching belongs to the client cache (lib/cache), which keys this per user
+// as "pinned-sheet-progress", keeps it fresh for five minutes across
+// navigations, and can be invalidated after a solve or a LeetCode sync. This
+// module used to keep its own five-minute copy too, which no invalidation
+// could reach: the sidebar kept old percentages after a sync or a solve. Only
+// concurrent calls are shared now.
+let inflight: { userId: string; promise: Promise<Record<string, SheetProgress | null>> } | null = null;
 
 /**
  * Measured progress for the pinned sheets: list size plus the user's own
@@ -24,9 +25,8 @@ let inflight: Promise<Record<string, SheetProgress | null>> | null = null;
 export async function getPinnedSheetProgress(
   userId: string
 ): Promise<Record<string, SheetProgress | null>> {
-  if (cache && cache.userId === userId && Date.now() - cache.at < TTL_MS) return cache.value;
-  if (inflight) return inflight;
-  inflight = (async () => {
+  if (inflight && inflight.userId === userId) return inflight.promise;
+  const promise = (async () => {
     const statuses = await getUserStatusesBySlugs(userId).catch(() => null);
     const solved = new Set(
       (statuses ?? []).filter((s) => s.status === "solved").map((s) => s.problem_slug)
@@ -49,10 +49,10 @@ export async function getPinnedSheetProgress(
         }
       })
     );
-    cache = { userId, at: Date.now(), value: out };
     return out;
   })().finally(() => {
-    inflight = null;
+    if (inflight?.promise === promise) inflight = null;
   });
-  return inflight;
+  inflight = { userId, promise };
+  return promise;
 }

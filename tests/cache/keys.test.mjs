@@ -57,3 +57,16 @@ describe("serializedOwnerPrefix (cleanup on user change)", () => {
     assert.equal(anon.startsWith(serializedOwnerPrefix("user-a")), false);
   });
 });
+
+describe("ownedBy", () => {
+  it("matches every key of the owner and nothing of anyone else", async () => {
+    const { ownedBy } = await import("../../lib/cache/keys.ts");
+    assert.equal(ownedBy(["u1", "pinned-sheet-progress"], "u1"), true);
+    assert.equal(ownedBy(["u1", "my-statuses", 3], "u1"), true);
+    assert.equal(ownedBy(["u2", "pinned-sheet-progress"], "u1"), false);
+    assert.equal(ownedBy(["anon", "all-problems"], null), true);
+    assert.equal(ownedBy(["anon", "all-problems"], "u1"), false);
+    assert.equal(ownedBy("@\"u1\",x", "u1"), false);
+    assert.equal(ownedBy(null, "u1"), false);
+  });
+});

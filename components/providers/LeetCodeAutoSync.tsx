@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import { useAuth } from "./AuthProvider";
+import { useLeetCodeSynced } from "@/lib/leetcode/useLeetCodeSynced";
 
 export function LeetCodeAutoSync() {
-  const { profile, refreshProfile, session } = useAuth();
+  const { profile, session } = useAuth();
+  const leetcodeSynced = useLeetCodeSynced();
   const lastSyncRef = useRef<number>(0);
   const knownSolvedSlugsRef = useRef<Set<string>>(new Set());
 
@@ -29,6 +31,20 @@ export function LeetCodeAutoSync() {
 
       if (!res.ok) return;
       const data = await res.json();
+
+      // Refresh what's on screen only when the sync changed something: new
+      // solves recorded from LeetCode, or totals that differ from the profile.
+      // This runs on every focus, so an unconditional refetch of every cached
+      // query would be a burst per user per tab switch.
+      const s = data?.stats as { totalEasy?: number; totalMedium?: number; totalHard?: number } | undefined;
+      const totalsChanged =
+        !!s &&
+        (s.totalEasy !== profile?.total_easy ||
+          s.totalMedium !== profile?.total_medium ||
+          s.totalHard !== profile?.total_hard);
+      if ((Number(data?.inferredSolved) || 0) > 0 || totalsChanged) {
+        void leetcodeSynced();
+      }
 
       if (data?.recentSubmissions && Array.isArray(data.recentSubmissions)) {
         let newlyDetected = 0;
@@ -65,13 +81,12 @@ export function LeetCodeAutoSync() {
           } catch {
             // ignore
           }
-          void refreshProfile();
         }
       }
     } catch {
       // Background sync silent fail
     }
-  }, [profile?.leetcode_username, refreshProfile, session?.access_token]);
+  }, [profile?.leetcode_username, profile?.total_easy, profile?.total_medium, profile?.total_hard, leetcodeSynced, session?.access_token]);
 
   useEffect(() => {
     if (!profile?.leetcode_username) return;

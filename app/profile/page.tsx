@@ -29,10 +29,11 @@ import {
 import { cn } from "@/lib/utils";
 import { OBJECTIVES } from "@/lib/objectives";
 import type { Squad } from "@/types/database";
-import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
+import { useCachedQuery } from "@/lib/cache/query";
 import { createClient } from "@/lib/supabase/client";
 import { SignInMethods } from "@/components/profile/SignInMethods";
 import { replayTour } from "@/components/tour/replay";
+import { useLeetCodeSynced } from "@/lib/leetcode/useLeetCodeSynced";
 
 const NO_SQUADS: Squad[] = [];
 
@@ -71,7 +72,7 @@ const squadInitials = (name: string) =>
 export default function ProfilePage() {
   const { user, profile, session, signOut, refreshProfile, loading: authLoading } = useAuth();
   const userId = user?.id ?? null;
-  const invalidate = useInvalidate();
+  const leetcodeSynced = useLeetCodeSynced();
 
   const [connectOpen, setConnectOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -197,8 +198,7 @@ export default function ProfilePage() {
     setSyncMsg(null);
     try {
       const ok = await syncUserProfileStats(user.id, profile.leetcode_username);
-      await refreshProfile();
-      await invalidate("squad-profiles", "my-statuses", "my-squads");
+      await leetcodeSynced();
       setSyncMsg(
         ok
           ? { tone: "ok", text: "Synced just now." }
@@ -911,10 +911,6 @@ export default function ProfilePage() {
       <ConnectLeetCodeModal
         isOpen={connectOpen}
         onClose={() => setConnectOpen(false)}
-        onConnected={async () => {
-          await refreshProfile();
-          await invalidate("squad-profiles", "my-statuses", "my-squads");
-        }}
       />
 
       {revokeOpen && (
