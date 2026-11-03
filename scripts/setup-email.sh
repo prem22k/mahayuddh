@@ -280,16 +280,55 @@ if confirm "Apply now?"; then
   python3 -I - "$body" <<'PY'
 import json, os, sys
 site = "{{ .SiteURL }}"
-def page(title, intro, cta, href, outro):
-    return f"""<div style="margin:0;padding:32px 16px;background:#0a0b0e;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#ededef">
-  <div style="max-width:440px;margin:0 auto;background:#141518;border:1px solid #26272c;border-radius:12px;padding:28px">
-    <p style="margin:0 0 20px;font-size:15px;font-weight:600;color:#f5b83d">Mahayuddh</p>
-    <h1 style="margin:0 0 12px;font-size:20px;line-height:28px;color:#ededef">{title}</h1>
-    <p style="margin:0 0 24px;font-size:14px;line-height:22px;color:#a1a3ab">{intro}</p>
-    <a href="{href}" style="display:inline-block;background:#f5b83d;color:#1a1406;text-decoration:none;font-weight:600;font-size:14px;padding:12px 20px;border-radius:8px">{cta}</a>
-    <p style="margin:24px 0 0;font-size:12px;line-height:18px;color:#84868f">{outro}</p>
-  </div>
-</div>"""
+# Auth emails as a Mahayuddh Pass: obsidian ticket, gold action, perforated
+# stub with the serial lines. Email-client safe: tables, inline styles,
+# bgcolor fallbacks, system and mono font stacks, a hidden inbox preheader,
+# and the raw link under the button for clients that block it. Links expire
+# with mailer_otp_exp (3600s), hence "1 hour".
+SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace"
+def serial(label, value):
+    return f"""<td valign="top" style="padding:0 16px 0 0;font-family:{MONO};font-size:10px;line-height:16px;letter-spacing:0.08em;text-transform:uppercase;color:#84868f">{label}<br><span style="font-size:12px;line-height:18px;letter-spacing:0.06em;color:#ededef">{value}</span></td>"""
+def page(preheader, title, intro, cta, href, kind, outro):
+    return f"""<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#0a0b0e">{preheader}&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0a0b0e" style="background:#0a0b0e">
+  <tr><td align="center" style="padding:40px 16px 48px">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px">
+      <tr><td style="padding:0 4px 20px">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td valign="middle" style="padding:0 10px 0 0"><img src="{site}/icon-192.png" width="28" height="28" alt="" style="display:block;border:0;border-radius:7px"></td>
+          <td valign="middle" style="font-family:{SANS};font-size:16px;font-weight:600;letter-spacing:-0.01em;color:#ededef">Mahayuddh</td>
+        </tr></table>
+      </td></tr>
+      <tr><td bgcolor="#141518" style="background:#141518;border-radius:16px 16px 0 0;border-top:1px solid #2b2c32;padding:32px 32px 28px">
+        <h1 style="margin:0 0 12px;font-family:{SANS};font-size:26px;line-height:32px;font-weight:600;letter-spacing:-0.02em;color:#ededef">{title}</h1>
+        <p style="margin:0 0 28px;font-family:{SANS};font-size:15px;line-height:24px;color:#a1a3ab">{intro}</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td bgcolor="#f5b83d" style="background:#f5b83d;border-radius:8px"><a href="{href}" style="display:inline-block;padding:14px 24px;font-family:{SANS};font-size:15px;font-weight:600;line-height:20px;color:#1a1406;text-decoration:none;border-radius:8px">{cta}&nbsp;&rarr;</a></td>
+        </tr></table>
+        <p style="margin:20px 0 0;font-family:{SANS};font-size:13px;line-height:20px;color:#84868f">The link works once and expires in 1 hour.</p>
+      </td></tr>
+      <tr><td bgcolor="#141518" style="background:#141518;line-height:0;font-size:0">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td width="11" height="22" bgcolor="#0a0b0e" style="background:#0a0b0e;border-radius:0 11px 11px 0;font-size:0;line-height:0">&nbsp;</td>
+          <td style="padding:0 6px"><div style="border-top:1px dashed #34363d;height:0;line-height:0;font-size:0">&nbsp;</div></td>
+          <td width="11" height="22" bgcolor="#0a0b0e" style="background:#0a0b0e;border-radius:11px 0 0 11px;font-size:0;line-height:0">&nbsp;</td>
+        </tr></table>
+      </td></tr>
+      <tr><td bgcolor="#191a1e" style="background:#191a1e;border-radius:0 0 16px 16px;padding:18px 32px 22px">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          {serial("Type", kind)}{serial("Valid", "1 hour")}{serial("Uses", "Once")}
+        </tr></table>
+      </td></tr>
+      <tr><td style="padding:24px 4px 0;font-family:{SANS};font-size:12px;line-height:18px;color:#84868f">
+        Button not working? Paste this link into your browser:<br>
+        <a href="{href}" style="color:#a1a3ab;text-decoration:underline;word-break:break-all">{href}</a>
+      </td></tr>
+      <tr><td style="padding:20px 4px 0;font-family:{SANS};font-size:12px;line-height:18px;color:#84868f">{outro}</td></tr>
+      <tr><td style="padding:28px 4px 0;font-family:{SANS};font-size:12px;line-height:18px;color:#55575e">Mahayuddh &middot; Practice DSA with your people &middot; <a href="{site}" style="color:#55575e;text-decoration:underline">mahayuddh.vercel.app</a></td></tr>
+    </table>
+  </td></tr>
+</table>"""
 confirm_href = site + "/auth/confirm?token_hash={{ .TokenHash }}&type=email&next={{ .RedirectTo }}"
 recovery_href = site + "/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=" + site + "/auth/update-password"
 patch = {
@@ -302,16 +341,18 @@ patch = {
     "rate_limit_email_sent": 30,
     "mailer_subjects_confirmation": "Confirm your Mahayuddh account",
     "mailer_templates_confirmation_content": page(
+        "Confirm your email to start practising with your squad.",
         "Confirm your email",
-        "You signed up for Mahayuddh with {{ .Email }}. Confirm it's you to start practising.",
-        "Confirm and continue", confirm_href,
+        'You signed up for Mahayuddh with <span style="color:#ededef">{{ .Email }}</span>. Confirm it\'s you and your first battle is ready.',
+        "Confirm email", confirm_href, "Confirm email",
         "Didn't sign up? Ignore this email and no account is activated."),
     "mailer_subjects_recovery": "Reset your Mahayuddh password",
     "mailer_templates_recovery_content": page(
+        "Your password reset link. It works once and expires in 1 hour.",
         "Reset your password",
-        "Someone asked to reset the password for {{ .Email }}. The link works once and expires soon.",
-        "Choose a new password", recovery_href,
-        "Didn't ask? Ignore this email; your password stays the same."),
+        'Someone asked to reset the password for <span style="color:#ededef">{{ .Email }}</span>. If that was you, choose a new one.',
+        "Choose a new password", recovery_href, "Password reset",
+        "Didn't ask? Ignore this email and your password stays the same."),
     "mailer_autoconfirm": False,
     "security_manual_linking_enabled": True,
 }
