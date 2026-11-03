@@ -25,6 +25,7 @@ import {
   finishSignup,
   inviteCodeFrom,
   savePendingSignup,
+  takePendingSignup,
   trackSignupCompleted,
 } from "@/lib/auth/finishSignup";
 import type { OAuthProviderId } from "@/lib/auth/providers";
@@ -396,6 +397,16 @@ function LoginForm({ providers }: { providers: OAuthProviderId[] }) {
           return;
         }
 
+        // With email confirmation on, signUp returns no session: the setup
+        // runs when the emailed link lands on /auth/finish, so the choices are
+        // saved first, exactly as for a social signup. With a session, they
+        // are applied right here and the saved copy is discarded.
+        savePendingSignup({
+          choices: { leetcodeHandle: lcHandle, squadName: newSquadName, objective, inviteCode },
+          nextPath,
+          provider: "email",
+        });
+        const finish = `/auth/finish?next=${encodeURIComponent(nextPath)}`;
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: emailAddr,
           password,
@@ -404,6 +415,7 @@ function LoginForm({ providers }: { providers: OAuthProviderId[] }) {
               username: handle,
               leetcode_username: lcHandle,
             },
+            emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(finish)}`,
           },
         });
 
@@ -435,6 +447,7 @@ function LoginForm({ providers }: { providers: OAuthProviderId[] }) {
           // ponytail: no pre-signup LeetCode handle validation; add server-side
           // handle check when instant-handle-feedback matters.
           if (authData.session) {
+            takePendingSignup();
             const done = await finishSignup(
               authData.session.access_token,
               { leetcodeHandle: lcHandle, squadName: newSquadName, objective, inviteCode },

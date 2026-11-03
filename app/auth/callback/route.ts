@@ -25,6 +25,15 @@ export async function GET(request: Request) {
   }
 
   const providerError = searchParams.get("error");
+
+  // No code but already signed in: an emailed link was verified by
+  // /auth/confirm, whose RedirectTo points back through here. Nothing to
+  // exchange; continue.
+  if (!code && !providerError) {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getUser();
+    if (data.user) return NextResponse.redirect(`${origin}${next}`);
+  }
   const reason = !providerError
     ? "auth_callback_failed"
     : providerError === "access_denied"

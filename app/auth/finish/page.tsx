@@ -20,7 +20,8 @@ import {
  * A brand-new account gets the same setup as an email signup (profile, the
  * Join choices saved before the provider redirect, invite join) and lands
  * where email signup would. A returning account just continues to ?next=.
- * "New" means created in the last 10 minutes: the Join tab can be used by
+ * "New" means created, or its email confirmed, in the last 10 minutes (an
+ * emailed confirmation link lands here too). The Join tab can be used by
  * someone who already has an account, and their saved choices must not
  * create a second squad or overwrite their objective.
  */
@@ -60,8 +61,13 @@ function Finish() {
 
     const pending = takePendingSignup();
     const provider = user.app_metadata?.provider ?? pending?.provider ?? "oauth";
-    const createdAt = Date.parse(user.created_at ?? "");
-    const isNew = Number.isFinite(createdAt) && Date.now() - createdAt < NEW_ACCOUNT_WINDOW_MS;
+    // New = created just now (social signup) or its email confirmed just now
+    // (email signup, possibly hours after the form was sent).
+    const recent = (iso: string | undefined | null) => {
+      const t = Date.parse(iso ?? "");
+      return Number.isFinite(t) && Date.now() - t < NEW_ACCOUNT_WINDOW_MS;
+    };
+    const isNew = recent(user.created_at) || recent(user.email_confirmed_at);
 
     if (!isNew) {
       track("signin_completed", { next: nextPath, via: provider });
