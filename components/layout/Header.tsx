@@ -108,6 +108,7 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
           onClick={onSearchOpen}
           className="flex h-11 w-11 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:hidden"
           aria-label="Search"
+          data-tour="search-header"
         >
           <Search className="h-5 w-5" strokeWidth={1.5} />
         </button>
@@ -130,6 +131,7 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
           onClick={onMenuToggle}
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:hidden"
           aria-label="Open navigation menu"
+          data-tour="you-menu"
         >
           <Menu className="h-5 w-5" strokeWidth={1.5} />
         </button>

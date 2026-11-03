@@ -10,6 +10,7 @@ import { MobileTabBar } from "./MobileTabBar";
 import { MobileDrawer } from "./MobileDrawer";
 import { SearchModal } from "../modals/SearchModal";
 import { LeetCodeAutoSync } from "@/components/providers/LeetCodeAutoSync";
+import { FirstRunTour } from "@/components/tour/FirstRunTour";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { isPublicSharePath } from "@/lib/publicPaths";
 import { isAppPage } from "@/lib/appRoutes";
@@ -121,6 +122,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <NowSolvingBar onSearchOpen={() => setIsSearchOpen(true)} />
       <MobileTabBar />
+      <FirstRunTour />
 
       <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
       <LeetCodeAutoSync />
