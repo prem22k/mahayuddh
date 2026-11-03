@@ -26,3 +26,5 @@ jobs:
       # creates and destroys rows in the real project).
       - run: npm run test:security
       - run: npm run test:static
+      # The session gate's page list must match app/ (lib/appRoutes.ts).
+      - run: npm run test:routes
