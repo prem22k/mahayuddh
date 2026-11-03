@@ -1,6 +1,5 @@
 import webpush from "web-push";
 import { isAllowedPushHost } from "@/lib/security/pushEndpoint";
-import { LEGAL } from "./legal";
 
 /** Hostname or "" when the endpoint will not parse. Never throws. */
 function safeHostname(endpoint: string): string {
@@ -12,12 +11,14 @@ function safeHostname(endpoint: string): string {
 }
 
 // Configure web-push with VAPID credentials. Never throws: a missing or
-// malformed key (e.g. a placeholder in .env.local) must degrade to
-// push-disabled, not crash module evaluation during `next build`.
+// malformed value (e.g. a placeholder in .env.local) must degrade to
+// push-disabled, not crash module evaluation during `next build`. All three
+// come from the environment; VAPID_SUBJECT (a mailto: or https: contact) has
+// no fallback in code.
 try {
-  if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY && process.env.VAPID_SUBJECT) {
     webpush.setVapidDetails(
-      process.env.VAPID_SUBJECT || `mailto:${LEGAL.contactEmail}`,
+      process.env.VAPID_SUBJECT,
       process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
       process.env.VAPID_PRIVATE_KEY
     );

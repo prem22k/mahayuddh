@@ -295,11 +295,24 @@ export function practiceNextFromRecommendation(reasonCount: number): {
  * source of truth. Nothing in this repository sets either variable, which is
  * why no AI feature has ever returned an invented answer.
  */
+let warnedIncompleteAiConfig = false;
+
+/**
+ * A provider key AND its endpoint and model (AI_BASE_URL, AI_MODEL). The
+ * endpoint and model have no defaults in code, so a key alone leaves AI off;
+ * that is logged once so it can't be mistaken for an outage.
+ */
 export function isProviderConfigured(): boolean {
-  return Boolean(
+  const hasKey = Boolean(
     process.env.OPENAI_API_KEY ||
       process.env.ANTHROPIC_API_KEY ||
       process.env.GEMINI_API_KEY ||
       process.env.KILO_API_KEY
   );
+  const hasTarget = Boolean(process.env.AI_BASE_URL?.trim() && process.env.AI_MODEL?.trim());
+  if (hasKey && !hasTarget && !warnedIncompleteAiConfig) {
+    warnedIncompleteAiConfig = true;
+    console.warn("AI is off: a provider key is set but AI_BASE_URL and/or AI_MODEL is not.");
+  }
+  return hasKey && hasTarget;
 }
