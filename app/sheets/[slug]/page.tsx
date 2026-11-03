@@ -560,7 +560,7 @@ function SheetContent() {
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search this sheet"
               aria-label="Search this sheet"
-              className="h-10 min-h-[44px] w-full rounded-md border border-hairline bg-well pl-9 pr-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none md:h-9 md:min-h-0 md:text-[13px] md:placeholder:text-text-disabled"
+              className="h-10 min-h-[44px] w-full rounded-md border border-hairline bg-well pl-9 pr-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-hidden md:h-9 md:min-h-0 md:text-[13px] md:placeholder:text-text-disabled"
             />
           </div>
           <StatusFilterControl value={statusFilter} onChange={setStatusFilter} />
@@ -581,7 +581,7 @@ function SheetContent() {
           >
             <span
               className={cn(
-                "h-4 w-4 rounded-full shadow-sm",
+                "h-4 w-4 rounded-full shadow-xs",
                 showSquad ? "bg-canvas" : "h-3.5 w-3.5 bg-text-secondary"
               )}
             />
@@ -918,7 +918,7 @@ function StatusFilterControl({
             className={cn(
               "flex h-8 min-h-[44px] items-center rounded-full border px-3 text-xs font-medium leading-4 transition-colors md:h-7 md:min-h-0 md:rounded-xs md:border-0 md:text-[13px]",
               active
-                ? "border-hairline-strong bg-surface-overlay text-text-primary md:shadow-sm"
+                ? "border-hairline-strong bg-surface-overlay text-text-primary md:shadow-xs"
                 : "border-hairline text-text-secondary hover:text-text-primary"
             )}
           >

@@ -55,7 +55,7 @@ const VERDICT_STYLE: Record<GateVerdict, { cls: string; Icon: typeof Check; word
 const cardCls = "rounded-xl border border-hairline bg-surface";
 const sectionLabelCls = "font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-text-tertiary";
 const inputCls =
-  "w-full rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-disabled transition-colors focus:border-hairline-strong focus:outline-none";
+  "w-full rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-disabled transition-colors focus:border-hairline-strong focus:outline-hidden";
 const selectCls = cn(inputCls, "h-11 appearance-none pr-9 md:h-10");
 const secondaryBtn =
   "inline-flex h-11 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-hairline bg-surface-overlay px-4 text-sm font-medium text-text-primary transition-colors hover:border-hairline-strong hover:bg-[#272830] disabled:cursor-not-allowed disabled:text-text-disabled md:h-10";
@@ -535,7 +535,7 @@ function ObservationSection({
                   className={cn(
                     "min-h-[44px] cursor-pointer rounded-xs px-2 py-1.5 text-xs font-medium transition-colors md:min-h-0",
                     on
-                      ? "bg-surface-overlay text-text-primary shadow-sm"
+                      ? "bg-surface-overlay text-text-primary shadow-xs"
                       : "text-text-secondary hover:text-text-primary"
                   )}
                 >
@@ -779,7 +779,7 @@ function TriageRow({
             onChange={(e) =>
               setDraft({ ...draft, label: (e.target.value || null) as TriageLabel | null })
             }
-            className="h-11 cursor-pointer appearance-none rounded-md border border-hairline bg-surface-raised pl-2.5 pr-7 text-xs font-medium text-text-primary transition-colors focus:border-hairline-strong focus:outline-none md:h-8"
+            className="h-11 cursor-pointer appearance-none rounded-md border border-hairline bg-surface-raised pl-2.5 pr-7 text-xs font-medium text-text-primary transition-colors focus:border-hairline-strong focus:outline-hidden md:h-8"
           >
             <option value="">undecided</option>
             {(Object.keys(TRIAGE_LABELS) as TriageLabel[]).map((l) => (

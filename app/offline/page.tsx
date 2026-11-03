@@ -67,7 +67,7 @@ export default function OfflinePage() {
   return (
     <div className={cn("flex flex-col bg-canvas text-text-primary", user ? "min-h-[70vh]" : "min-h-screen")}>
       {!user && (
-        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between border-b border-hairline bg-canvas/80 px-4 backdrop-blur-sm sm:px-8">
+        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between border-b border-hairline bg-canvas/80 px-4 backdrop-blur-xs sm:px-8">
           <Wordmark />
           <span className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-2.5 py-1 font-mono text-xs font-medium text-text-tertiary">
             <span

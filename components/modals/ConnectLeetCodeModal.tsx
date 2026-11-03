@@ -204,7 +204,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
     { value: "session", label: "Session" },
   ] as const;
   const inputCls =
-    "h-11 w-full rounded-md border border-hairline bg-well px-3 font-mono text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:h-10";
+    "h-11 w-full rounded-md border border-hairline bg-well px-3 font-mono text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-hidden md:h-10";
   const labelCls = "mb-1.5 block text-xs font-medium text-text-secondary";
   const cardCls = "space-y-2.5 rounded-lg border border-hairline bg-well p-4";
   const inlineLink = "text-text-primary underline decoration-hairline-strong underline-offset-2 hover:decoration-text-primary";
@@ -213,7 +213,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
     <ModalShell
       label="Sync LeetCode status"
       onClose={onClose}
-      zIndexClass="z-[350]"
+      zIndexClass="z-350"
       variant="sheet"
       maxWidthClass="max-w-[520px]"
       panelClassName="max-h-[90vh] overflow-y-auto p-5 max-md:pt-8 md:p-6"

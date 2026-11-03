@@ -26,7 +26,7 @@ export function ModalShell({
   children,
   // Above the shell chrome: the mobile tab bar and solve dock sit at z-100,
   // and the dock's own popovers go up to z-160.
-  zIndexClass = "z-[300]",
+  zIndexClass = "z-300",
   maxWidthClass = "max-w-lg",
   alignTop = false,
   panelClassName,

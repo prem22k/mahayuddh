@@ -184,9 +184,9 @@ export function ValidationSkeleton() {
       >
         <div className="min-w-0 flex-1 space-y-1">
           <SkeletonLine className="h-[35px] md:h-10" bar="h-6 md:h-7" width="w-48" />
-          <SkeletonLine className="h-6" bar="h-3" width="w-[30rem] max-w-full" />
+          <SkeletonLine className="h-6" bar="h-3" width="w-120 max-w-full" />
           <div>
-            <SkeletonLine className="h-5" bar="h-2.5" width="w-full max-w-[36rem]" />
+            <SkeletonLine className="h-5" bar="h-2.5" width="w-full max-w-xl" />
             <SkeletonLine className="h-5" bar="h-2.5" width="w-1/3" />
           </div>
         </div>

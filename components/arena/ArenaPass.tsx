@@ -147,7 +147,7 @@ export function SquadSolvedLine({ hasSquad, avatars, solverNames, fastest }: Sol
   }
   return (
     <div className="flex items-center gap-3 md:border-y md:border-hairline md:py-3">
-      {avatars.length > 0 && <AvatarStack people={avatars} className="shrink-0 [&>*]:ring-surface" />}
+      {avatars.length > 0 && <AvatarStack people={avatars} className="shrink-0 *:ring-surface" />}
       <p className="text-[13px] leading-5 text-text-secondary md:text-xs md:leading-5">
         {who}
         {fastest && (
@@ -261,7 +261,7 @@ export function PassUnavailable({
   return (
     <div className="flex min-h-[200px] flex-col justify-center gap-4 md:min-h-[260px]" role="status">
       <div className="flex flex-col gap-1.5">
-        <h2 className="font-display text-xl font-semibold leading-tight tracking-[-0.015em] text-text-primary md:text-2xl">
+        <h2 className="font-display text-xl font-semibold leading-tight tracking-[-0.015em] text-text-primary md:text-2xl md:leading-8">
           {title}
         </h2>
         <p className="text-sm leading-6 text-text-secondary">{body}</p>

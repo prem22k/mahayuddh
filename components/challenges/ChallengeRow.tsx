@@ -73,7 +73,7 @@ export function ChallengeRow({
       className={cn(
         "group relative rounded-lg border border-hairline p-3.5 transition-colors hover:border-hairline-strong md:px-5 md:py-3 md:hover:bg-surface-raised",
         // An open ⋯ menu must sit above the next row's buttons.
-        "has-[[aria-expanded=true]]:z-20",
+        "has-aria-expanded:z-20",
         dim ? "bg-surface/60 opacity-80" : "bg-surface"
       )}
     >
@@ -101,7 +101,7 @@ export function ChallengeRow({
             <Link
               href={`/c/${item.id}`}
               className={cn(
-                "min-w-0 text-sm font-semibold leading-5 after:absolute after:inset-0 after:rounded-lg hover:underline hover:decoration-hairline-strong hover:underline-offset-[3px] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-text-primary/70 md:truncate",
+                "min-w-0 text-sm font-semibold leading-5 after:absolute after:inset-0 after:rounded-lg hover:underline hover:decoration-hairline-strong hover:underline-offset-[3px] focus-visible:outline-hidden focus-visible:after:ring-2 focus-visible:after:ring-text-primary/70 md:truncate",
                 dim ? "text-text-secondary" : "text-text-primary"
               )}
             >

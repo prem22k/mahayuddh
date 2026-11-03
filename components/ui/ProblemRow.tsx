@@ -90,7 +90,7 @@ export function ProblemRow({
         <span className="shrink-0 font-mono text-xs text-text-tertiary tnum">{number}</span>
         <Link
           href={href}
-          className="min-w-0 truncate text-[15px] font-medium leading-6 text-text-primary after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-text-primary/70"
+          className="min-w-0 truncate text-[15px] font-medium leading-6 text-text-primary after:absolute after:inset-0 after:rounded-lg focus-visible:outline-hidden focus-visible:after:ring-2 focus-visible:after:ring-text-primary/70"
         >
           {title}
         </Link>
@@ -147,7 +147,7 @@ export function FilterChips({
     <div
       className={cn(
         "flex flex-wrap gap-2",
-        scroll && "max-md:-mx-4 max-md:flex-nowrap max-md:overflow-x-auto max-md:px-4 max-md:[scrollbar-width:none]"
+        scroll && "max-md:-mx-4 max-md:flex-nowrap max-md:overflow-x-auto max-md:px-4 max-md:scrollbar-none"
       )}
       role="group"
       aria-label={label}

@@ -199,7 +199,7 @@ export function RecapNumbers({ body }: { body: RecapBody }) {
             )}
           >
             <div className="flex items-start justify-between gap-2">
-              <span className="font-display text-[28px] font-semibold leading-none tracking-[-0.02em] text-text-primary tnum lg:text-4xl">
+              <span className="font-display text-[28px] font-semibold leading-none tracking-[-0.02em] text-text-primary tnum lg:text-4xl lg:leading-10">
                 {c.value}
               </span>
               <Icon className="h-[18px] w-[18px] text-text-tertiary sm:hidden" strokeWidth={1.5} aria-hidden />

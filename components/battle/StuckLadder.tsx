@@ -73,7 +73,7 @@ export function StuckLadder({
     return (
       <div
         role="status"
-        className="fixed bottom-24 left-1/2 z-[150] flex w-[28rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 items-start gap-3 rounded-lg border border-hairline-strong bg-surface-raised p-4 shadow-overlay"
+        className="fixed bottom-24 left-1/2 z-150 flex w-md max-w-[calc(100vw-2rem)] -translate-x-1/2 items-start gap-3 rounded-lg border border-hairline-strong bg-surface-raised p-4 shadow-overlay"
       >
         <CircleCheck className="mt-0.5 h-5 w-5 shrink-0 text-pattern" strokeWidth={1.5} aria-hidden />
         <div className="min-w-0">
@@ -93,7 +93,7 @@ export function StuckLadder({
     <div
       role="dialog"
       aria-label={`Stuck on ${problemTitle}`}
-      className="fixed bottom-24 left-1/2 z-[150] flex max-h-[70vh] w-[28rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-col gap-4 overflow-y-auto rounded-lg border border-hairline-strong bg-surface-raised p-4 shadow-overlay"
+      className="fixed bottom-24 left-1/2 z-150 flex max-h-[70vh] w-md max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-col gap-4 overflow-y-auto rounded-lg border border-hairline-strong bg-surface-raised p-4 shadow-overlay"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -191,7 +191,7 @@ export function StuckLadder({
               className={cn(
                 "flex min-h-[44px] cursor-pointer items-center justify-center rounded-sm px-2 py-1.5 text-xs font-medium leading-4 transition-colors md:min-h-0",
                 visibility === v
-                  ? "bg-surface-overlay text-text-primary shadow-sm"
+                  ? "bg-surface-overlay text-text-primary shadow-xs"
                   : "text-text-secondary hover:text-text-primary"
               )}
             >

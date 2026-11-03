@@ -130,7 +130,7 @@ export function MobileDrawer({ onClose }: { onClose: () => void }) {
             type="button"
             onClick={() => setSheetsOpen((v) => !v)}
             aria-expanded={sheetsOpen}
-            className="flex min-h-[44px] w-full items-center justify-between px-3 font-mono text-xs font-medium uppercase tracking-[0.1em] text-text-tertiary"
+            className="flex min-h-[44px] w-full items-center justify-between px-3 font-mono text-xs font-medium uppercase tracking-widest text-text-tertiary"
           >
             Sheets
             <ChevronDown

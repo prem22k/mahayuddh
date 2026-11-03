@@ -168,7 +168,7 @@ export function ChainTrack({
       <ol
         aria-label={label}
         className={cn(
-          "flex items-center overflow-x-auto rounded-md border border-hairline bg-well p-3 [scrollbar-width:none]",
+          "flex items-center overflow-x-auto rounded-md border border-hairline bg-well p-3 scrollbar-none",
           className
         )}
       >
@@ -202,7 +202,7 @@ export function ChainTrack({
   }
 
   return (
-    <ol aria-label={label} className={cn("flex items-start overflow-x-auto pb-1 [scrollbar-width:none]", className)}>
+    <ol aria-label={label} className={cn("flex items-start overflow-x-auto pb-1 scrollbar-none", className)}>
       {nodes.map((n, i) => {
         const prev = nodes[i - 1];
         const gap = prev && prev.sec != null && n.sec != null ? fmtDelta(n.sec - prev.sec) : null;

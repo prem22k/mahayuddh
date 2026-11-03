@@ -147,7 +147,7 @@ export function SettingsSwitch({
       >
         <span
           className={cn(
-            "h-4 w-4 rounded-full shadow-sm transition-transform",
+            "h-4 w-4 rounded-full shadow-xs transition-transform",
             on ? "translate-x-4 bg-canvas md:translate-x-5" : "h-3.5 w-3.5 bg-text-secondary"
           )}
         />

@@ -161,7 +161,7 @@ export default async function SeasonResultPage({
           </p>
           <StatusChip status={result.status} />
         </div>
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-4 md:mt-2">
           <h1 className="type-display-md text-text-primary">{result.name}</h1>
           <StatusChip status={result.status} className="mt-1.5 hidden md:inline-flex" />
         </div>
@@ -262,7 +262,7 @@ export default async function SeasonResultPage({
           {stats.map((s) => (
             <div
               key={s.short}
-              className="rounded-lg border border-hairline bg-surface p-3 md:flex md:flex-1 md:flex-col md:items-center md:rounded-none md:border-0 md:bg-transparent md:px-2 md:py-0"
+              className="rounded-lg border border-hairline bg-surface p-3 md:flex md:flex-1 md:flex-col md:items-center md:rounded-none md:border-y-0 md:border-l-0 md:bg-transparent md:px-2 md:py-0 md:last:border-r-0"
             >
               <p className="flex items-baseline gap-1">
                 <span className="font-display text-[28px] font-semibold leading-[1.1] tracking-[-0.02em] text-text-primary tnum md:font-mono md:text-xl md:font-medium md:leading-7 md:tracking-normal">

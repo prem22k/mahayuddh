@@ -786,7 +786,7 @@ export default function ProfilePage() {
         <ModalShell
           label="Sign out everywhere"
           variant="sheet"
-          zIndexClass="z-[300]"
+          zIndexClass="z-300"
           onClose={() => {
             if (!revoking) setRevokeOpen(false);
           }}
@@ -828,7 +828,7 @@ export default function ProfilePage() {
         <ModalShell
           label="Delete account"
           variant="sheet"
-          zIndexClass="z-[300]"
+          zIndexClass="z-300"
           onClose={() => setDeleteOpen(false)}
           maxWidthClass="max-w-[480px]"
           panelClassName="max-md:pt-8"
@@ -863,7 +863,7 @@ export default function ProfilePage() {
                   ? `Please delete my Mahayuddh account.\n\nUsername: ${profile.username}`
                   : "Please delete my Mahayuddh account."
               )}`}
-              className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium leading-5 transition-colors focus-visible:outline-none select-none bg-surface-overlay text-text-primary hover:bg-[#272830] h-10 px-4 min-h-[44px]"
+              className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium leading-5 transition-colors focus-visible:outline-hidden select-none bg-surface-overlay text-text-primary hover:bg-[#272830] h-10 px-4 min-h-[44px]"
             >
               Email a deletion request
             </a>

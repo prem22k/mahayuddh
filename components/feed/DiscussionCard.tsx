@@ -124,7 +124,7 @@ export function DiscussionCard({ d }: { d: Discussion }) {
               onChange={(e) => setDraft(e.target.value)}
               placeholder="Add what you tried…"
               aria-label="Reply"
-              className="h-10 min-h-[44px] min-w-0 flex-1 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:min-h-0"
+              className="h-10 min-h-[44px] min-w-0 flex-1 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-hidden md:min-h-0"
             />
             <Button
               type="submit"

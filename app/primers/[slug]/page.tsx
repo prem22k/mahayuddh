@@ -226,7 +226,7 @@ export default function PrimerPage() {
           {/* Mobile table of contents: one scrolling row of jump chips. */}
           <nav
             aria-label="Jump to"
-            className="-mx-4 flex items-center gap-2 overflow-x-auto border-y border-hairline px-4 py-1 [scrollbar-width:none] lg:hidden"
+            className="-mx-4 flex items-center gap-2 overflow-x-auto border-y border-hairline px-4 py-1 scrollbar-none lg:hidden"
           >
             <span className="shrink-0 font-mono text-xs font-medium leading-4 text-text-tertiary">Jump</span>
             {toc.map((t) => (
@@ -258,7 +258,7 @@ export default function PrimerPage() {
             href={`/patterns/${encodeURIComponent(primer.pattern)}`}
             className="self-start"
           />
-          <h1 className="font-display text-[32px] font-semibold leading-[1.1] tracking-[-0.02em] text-text-primary md:text-[44px] md:leading-[1.05] md:tracking-[-0.025em]">
+          <h1 className="font-display text-[32px] font-semibold leading-[1.1] tracking-[-0.02em] text-text-primary md:text-[44px] md:leading-[1.05] md:tracking-tight">
             {primer.title}
           </h1>
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -528,7 +528,7 @@ export default function PrimerPage() {
                   aria-current={active ? "location" : undefined}
                   onClick={() => scrollTo(t.id)}
                   className={cn(
-                    "-ml-[9px] flex w-[calc(100%+9px)] items-center justify-between gap-2 rounded-r-sm border-l-2 px-2.5 py-1.5 text-left text-xs font-medium leading-4 transition-colors",
+                    "ml-[-9px] flex w-[calc(100%+9px)] items-center justify-between gap-2 rounded-r-sm border-l-2 px-2.5 py-1.5 text-left text-xs font-medium leading-4 transition-colors",
                     active
                       ? "border-text-primary bg-surface-raised text-text-primary"
                       : "border-transparent text-text-secondary hover:bg-surface-raised/50 hover:text-text-primary"

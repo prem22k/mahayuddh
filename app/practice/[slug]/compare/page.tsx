@@ -457,7 +457,7 @@ export default function ComparePage() {
             <div
               ref={trackRef}
               onScroll={onTrackScroll}
-              className="relative -mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="relative -mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2 pt-1 scrollbar-none [&::-webkit-scrollbar]:hidden"
             >
               {allRows.map((row) => (
                 <ApproachCard
@@ -678,7 +678,7 @@ function ApproachCard({
           <p className="mb-1 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-text-tertiary md:mb-1.5 md:text-[11px]">
             Core idea
           </p>
-          <p className="text-xs leading-normal text-text-primary md:text-sm">“{a.core_idea}”</p>
+          <p className="text-xs leading-normal text-text-primary md:text-sm md:leading-5">“{a.core_idea}”</p>
         </div>
 
         {(row.time || row.space) && (

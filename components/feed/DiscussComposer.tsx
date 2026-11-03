@@ -84,7 +84,7 @@ export function DiscussComposer({
   };
 
   const inputCls =
-    "w-full min-h-[44px] rounded-md border border-hairline bg-well px-3 py-2.5 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none";
+    "w-full min-h-[44px] rounded-md border border-hairline bg-well px-3 py-2.5 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-hidden";
   const labelCls =
     "mb-1.5 block text-sm font-medium text-text-primary max-md:font-mono max-md:text-xs max-md:uppercase max-md:tracking-[0.06em] max-md:text-text-tertiary";
 
@@ -93,7 +93,7 @@ export function DiscussComposer({
       label="Start a discussion"
       onClose={onClose}
       variant="sheet"
-      zIndexClass="z-[300]"
+      zIndexClass="z-300"
       maxWidthClass="max-w-[560px]"
       panelClassName="flex max-h-[92dvh] flex-col overflow-hidden p-0 md:max-h-[calc(100dvh-32px)]"
     >
@@ -145,7 +145,7 @@ export function DiscussComposer({
               onChange={(e) => setBody(e.target.value)}
               rows={5}
               placeholder="Try solving it without the hash map first — what breaks?"
-              className="w-full resize-y rounded-md border border-hairline bg-well px-3 py-2.5 text-[15px] leading-6 text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none max-md:text-sm"
+              className="w-full resize-y rounded-md border border-hairline bg-well px-3 py-2.5 text-[15px] leading-6 text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-hidden max-md:text-sm"
             />
           </label>
 
@@ -204,7 +204,7 @@ export function DiscussComposer({
             type="submit"
             disabled={!verdict.ok || globalBlocked || busy}
             loading={busy}
-            className="h-11 flex-[2] font-semibold md:h-10 md:flex-none md:px-6 md:font-medium"
+            className="h-11 flex-2 font-semibold md:h-10 md:flex-none md:px-6 md:font-medium"
           >
             {!busy && "Post"}
           </Button>

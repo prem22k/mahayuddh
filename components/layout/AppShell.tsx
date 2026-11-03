@@ -90,7 +90,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Mobile drawer S2 */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-[200] flex md:hidden">
+        <div className="fixed inset-0 z-200 flex md:hidden">
           <div
             className="modal-scrim fixed inset-0"
             onClick={() => setIsMobileMenuOpen(false)}

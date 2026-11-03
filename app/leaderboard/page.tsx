@@ -530,7 +530,7 @@ export default function LeaderboardPage() {
                       </span>
                       <span
                         className={cn(
-                          "font-mono text-xs font-medium leading-none tnum md:w-8 md:text-center md:text-sm",
+                          "font-mono text-xs font-medium leading-none tnum md:w-8 md:text-center md:text-sm md:leading-5",
                           deltaTone(delta)
                         )}
                         title={
@@ -674,7 +674,7 @@ export default function LeaderboardPage() {
               value={inputHandle}
               onChange={(e) => setInputHandle(e.target.value)}
               placeholder="Your LeetCode username"
-              className="h-10 min-h-[44px] min-w-0 flex-1 rounded-md border border-hairline bg-well px-3.5 font-mono text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:min-h-0 md:w-52 md:flex-none"
+              className="h-10 min-h-[44px] min-w-0 flex-1 rounded-md border border-hairline bg-well px-3.5 font-mono text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-hidden md:min-h-0 md:w-52 md:flex-none"
               required
             />
             <Button type="submit" variant="secondary" loading={isConnectingHandle} disabled={!inputHandle.trim()}>

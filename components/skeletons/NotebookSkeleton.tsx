@@ -35,7 +35,7 @@ export function NotebookSkeleton() {
             <SkeletonLine className="h-9" bar="h-7" width="w-40" />
             <Skeleton className="h-5 w-16 shrink-0 rounded-xs" />
           </div>
-          <div className="-mx-4 flex gap-6 px-4 [box-shadow:inset_0_-1px_0_theme(colors.hairline)] lg:mx-0 lg:px-0 lg:[box-shadow:none]">
+          <div className="-mx-4 flex gap-6 px-4 [box-shadow:inset_0_-1px_0_var(--color-hairline)] lg:mx-0 lg:px-0 lg:[box-shadow:none]">
             <Repeat count={4}>
               {(i) => (
                 <div key={i} className="flex h-11 shrink-0 items-center">

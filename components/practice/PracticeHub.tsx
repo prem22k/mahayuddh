@@ -268,7 +268,7 @@ export function PracticeHub() {
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12 lg:gap-8">
         {/* Focal column */}
         <section aria-labelledby="due-heading" className="min-w-0 space-y-3 lg:col-span-8">
-          <div className="flex items-center gap-2.5 md:mb-0.5">
+          <div className="flex items-center gap-2.5">
             <h2
               id="due-heading"
               className="text-lg font-semibold leading-[26px] tracking-[-0.01em] text-text-primary"

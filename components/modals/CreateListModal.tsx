@@ -115,7 +115,7 @@ export function CreateListModal({
     <ModalShell
       label="Create new problem list"
       onClose={onClose}
-      zIndexClass="z-[300]"
+      zIndexClass="z-300"
       maxWidthClass="max-w-xl"
       panelClassName="shadow-[0_25px_70px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col max-h-[85vh]"
     >
@@ -154,7 +154,7 @@ export function CreateListModal({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Google Interview Prep, Graph Masterclass"
-              className="w-full px-3.5 py-2 bg-well border border-hairline focus:border-primary/60 rounded-xl text-xs text-text-primary placeholder:text-text-disabled focus:outline-none transition-colors"
+              className="w-full px-3.5 py-2 bg-well border border-hairline focus:border-primary/60 rounded-xl text-xs text-text-primary placeholder:text-text-disabled focus:outline-hidden transition-colors"
             />
           </div>
 
@@ -168,7 +168,7 @@ export function CreateListModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="e.g. Must-solve problems discussed during squad mock interview"
-              className="w-full px-3.5 py-2 bg-well border border-hairline focus:border-primary/60 rounded-xl text-xs text-text-primary placeholder:text-text-disabled focus:outline-none transition-colors"
+              className="w-full px-3.5 py-2 bg-well border border-hairline focus:border-primary/60 rounded-xl text-xs text-text-primary placeholder:text-text-disabled focus:outline-hidden transition-colors"
             />
           </div>
 
@@ -197,7 +197,7 @@ export function CreateListModal({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search problems by name or category..."
-                className="w-full pl-8 pr-3 py-1.5 bg-surface-overlay border border-hairline rounded-xl text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-primary/60"
+                className="w-full pl-8 pr-3 py-1.5 bg-surface-overlay border border-hairline rounded-xl text-xs text-text-primary placeholder:text-text-disabled focus:outline-hidden focus:border-primary/60"
               />
             </div>
 
@@ -235,7 +235,7 @@ export function CreateListModal({
                               : "border-hairline-strong text-transparent"
                           )}
                         >
-                          <Check className="w-3 h-3 stroke-[3]" />
+                          <Check className="w-3 h-3 stroke-3" />
                         </div>
                         <span className="font-medium truncate">{p.title}</span>
                         <span

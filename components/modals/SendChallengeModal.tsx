@@ -314,7 +314,7 @@ export function SendChallengeModal({
 
   const labelCls = "text-[13px] font-medium leading-5 text-text-secondary";
   const fieldCls =
-    "rounded-md border border-hairline bg-well text-sm text-text-primary placeholder:text-text-disabled hover:border-hairline-strong focus:border-hairline-strong focus:outline-none";
+    "rounded-md border border-hairline bg-well text-sm text-text-primary placeholder:text-text-disabled hover:border-hairline-strong focus:border-hairline-strong focus:outline-hidden";
 
   return (
     <ModalShell
@@ -322,7 +322,7 @@ export function SendChallengeModal({
       onClose={onClose}
       variant="sheet"
       // Above the shell's battle dock and phone tab bar, like the other composers.
-      zIndexClass="z-[300]"
+      zIndexClass="z-300"
       maxWidthClass="max-w-[740px]"
       panelClassName="flex max-h-[92dvh] flex-col overflow-hidden p-0 md:max-h-[calc(100dvh-2rem)]"
     >
@@ -344,7 +344,7 @@ export function SendChallengeModal({
               <Swords className="h-[18px] w-[18px]" strokeWidth={1.5} aria-hidden />
             </span>
             <div className="min-w-0">
-              <h2 className="font-display text-xl font-semibold leading-tight tracking-[-0.015em] text-text-primary md:text-2xl">
+              <h2 className="font-display text-xl font-semibold leading-tight tracking-[-0.015em] text-text-primary md:text-2xl md:leading-8">
                 {title}
               </h2>
               <p className="mt-0.5 truncate text-[13px] leading-5 text-text-secondary">{subtitle}</p>
@@ -446,7 +446,7 @@ export function SendChallengeModal({
                         autoComplete="off"
                         aria-labelledby="ch-problem-label"
                         placeholder="Search by title or number"
-                        className="h-11 w-full rounded-sm border border-hairline bg-surface pl-9 pr-3 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:h-10"
+                        className="h-11 w-full rounded-sm border border-hairline bg-surface pl-9 pr-3 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-hidden md:h-10"
                       />
                     </div>
                     {results.length > 0 && (
@@ -523,7 +523,7 @@ export function SendChallengeModal({
                             onChange={(e) =>
                               setProblem((p) => (p ? { ...p, difficulty: e.target.value as Difficulty } : p))
                             }
-                            className="h-9 rounded-sm border border-hairline bg-surface px-2 text-xs text-text-secondary focus:border-hairline-strong focus:outline-none md:h-7"
+                            className="h-9 rounded-sm border border-hairline bg-surface px-2 text-xs text-text-secondary focus:border-hairline-strong focus:outline-hidden md:h-7"
                           >
                             <option value="Easy">Easy</option>
                             <option value="Medium">Medium</option>
@@ -595,7 +595,7 @@ export function SendChallengeModal({
                       }}
                       placeholder="m:ss"
                       aria-label="Time to beat, minutes and seconds"
-                      className="type-mono-lg h-11 w-32 rounded-md border border-hairline bg-surface px-3 text-center text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-none md:h-10"
+                      className="type-mono-lg h-11 w-32 rounded-md border border-hairline bg-surface px-3 text-center text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-hidden md:h-10"
                     />
                     <div className="flex min-w-0 flex-col">
                       {timeHint && <span className="text-xs leading-4 text-text-secondary">{timeHint}</span>}
@@ -657,14 +657,14 @@ export function SendChallengeModal({
                     min={todayISO()}
                     value={deadline}
                     onChange={(e) => setDeadline(e.target.value)}
-                    className="h-11 rounded-sm border border-hairline bg-surface px-2 font-mono text-xs text-text-primary [color-scheme:dark] focus:border-hairline-strong focus:outline-none md:h-8"
+                    className="h-11 rounded-sm border border-hairline bg-surface px-2 font-mono text-xs text-text-primary scheme-dark focus:border-hairline-strong focus:outline-hidden md:h-8"
                   />
                 </div>
               </div>
             </div>
 
             {/* Live preview (top of the sheet on phones, right column on desktop) */}
-            <div className="order-first flex min-w-0 flex-col gap-2 md:order-none">
+            <div className="order-first flex min-w-0 flex-col gap-2 md:order-0">
               <div className="flex items-center justify-between px-1">
                 <span className="font-mono text-[11px] font-medium uppercase leading-4 tracking-[0.06em] text-text-tertiary">
                   Pass preview
