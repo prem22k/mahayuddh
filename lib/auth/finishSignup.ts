@@ -146,7 +146,10 @@ export function inviteCodeFrom(nextPath: string): string | null {
 }
 
 const PENDING_KEY = "mahayuddh:pending-signup";
+// A provider sends the visitor straight back; an emailed confirmation link can
+// be opened hours later.
 const PENDING_TTL_MS = 30 * 60_000;
+const PENDING_EMAIL_TTL_MS = 24 * 60 * 60_000;
 
 interface PendingSignup {
   choices: SignupChoices;
@@ -158,8 +161,9 @@ interface PendingSignup {
 /**
  * Social signup leaves the page for the provider, so the Join choices are kept
  * in this browser until /auth/finish picks them up. They hold no secrets
- * (objective, squad name, LeetCode handle, invite code) and expire after 30
- * minutes so an abandoned attempt can't apply itself to a later sign-in.
+ * (objective, squad name, LeetCode handle, invite code) and expire (30
+ * minutes for a provider, 24 hours for an email confirmation) so an abandoned
+ * attempt can't apply itself to a later sign-in.
  */
 export function savePendingSignup(p: Omit<PendingSignup, "savedAt">): void {
   try {
@@ -176,7 +180,8 @@ export function takePendingSignup(): PendingSignup | null {
     localStorage.removeItem(PENDING_KEY);
     if (!raw) return null;
     const p = JSON.parse(raw) as PendingSignup;
-    if (typeof p?.savedAt !== "number" || Date.now() - p.savedAt > PENDING_TTL_MS) return null;
+    const ttl = p?.provider === "email" ? PENDING_EMAIL_TTL_MS : PENDING_TTL_MS;
+    if (typeof p?.savedAt !== "number" || Date.now() - p.savedAt > ttl) return null;
     return p;
   } catch {
     return null;

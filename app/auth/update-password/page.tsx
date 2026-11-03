@@ -14,6 +14,7 @@ import {
   authLabelCls,
 } from "@/components/auth/AuthChrome";
 import { cn } from "@/lib/utils";
+import { isRecentEmailLinkSession } from "@/lib/auth/emailLinkSession";
 
 /**
  * Password update after a recovery link (controls 3, 4).
@@ -38,21 +39,12 @@ function UpdatePasswordForm() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      const user = data.user as unknown as {
-        amr?: Array<{ method?: string } | string>;
-      } | null;
-      const amr = user?.amr ?? [];
-      // A normal signed-in session must NOT reach this form: only a recovery
-      // session (amr contains "recovery") may set the password here. Without
-      // this gate, any logged-in user could change their password without
-      // proving ownership of the emailed link.
-      const isRecovery = amr.some((entry) =>
-        typeof entry === "string"
-          ? entry === "recovery"
-          : entry?.method === "recovery"
-      );
-      if (!data.user || !isRecovery) {
+    // Only a session that came from the emailed reset link, minutes ago, may
+    // set the password here (see lib/auth/emailLinkSession). Without this
+    // gate any signed-in user could change their password without proving
+    // they own the address.
+    supabase.auth.getSession().then(({ data }) => {
+      if (!isRecentEmailLinkSession(data.session?.access_token)) {
         router.replace("/login?error=auth_callback_failed");
         return;
       }

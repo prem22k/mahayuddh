@@ -38,6 +38,8 @@ scripts/*
 !scripts/sync-contests.mjs
 # setup-social-login.sh is the documented provider setup (README, Deploy).
 !scripts/setup-social-login.sh
+# setup-email.sh is the documented email setup (README, Deploy).
+!scripts/setup-email.sh
 
 # TypeScript cache
 *.tsbuildinfo

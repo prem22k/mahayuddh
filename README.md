@@ -146,6 +146,8 @@ Vercel Hobby, Tokyo region (beside the DB). Push to `main` → CI gate → auto-
 
 Social sign-in (Google, GitHub, Apple, GitLab, LinkedIn, X): run `bash scripts/setup-social-login.sh`. It walks through each provider's console, then switches the providers on in Supabase and sets the Site URL and redirect URLs. `/login` shows a button for each provider Supabase reports as enabled (refreshed every 5 minutes). Apple's secret expires every 6 months; re-run the script to rotate it.
 
+Email (Gmail SMTP, confirmation on, manual identity linking on): run `bash scripts/setup-email.sh`. Auth emails link to `/auth/confirm`, which verifies the one-time token on the server, so a confirmation or reset link works on any device.
+
 ## Contributing
 
 Small modular commits, conventional style (`feat(scope): …`). Typecheck + security suite must stay green. Never invent data in UI; never weaken a security control to make a test pass.

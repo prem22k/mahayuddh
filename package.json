@@ -34,7 +34,8 @@
     "test:ai:e2e": "node tests/ai/endToEnd.mjs",
     "test:integration:battles": "node tests/integration/battles.mjs",
     "test:cache": "node --no-warnings --test tests/cache/keys.test.mjs",
-    "test:routes": "node --no-warnings --test tests/routes/appRoutes.test.mjs"
+    "test:routes": "node --no-warnings --test tests/routes/appRoutes.test.mjs",
+    "test:auth": "node --no-warnings --test tests/auth/emailLinkSession.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

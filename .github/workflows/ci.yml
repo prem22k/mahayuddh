@@ -28,3 +28,5 @@ jobs:
       - run: npm run test:static
       # The session gate's page list must match app/ (lib/appRoutes.ts).
       - run: npm run test:routes
+      # The password-reset form's email-link gate (lib/auth/emailLinkSession.ts).
+      - run: npm run test:auth
