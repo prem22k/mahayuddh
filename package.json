@@ -35,7 +35,8 @@
     "test:integration:battles": "node tests/integration/battles.mjs",
     "test:cache": "node --no-warnings --test tests/cache/keys.test.mjs",
     "test:routes": "node --no-warnings --test tests/routes/appRoutes.test.mjs",
-    "test:auth": "node --no-warnings --test tests/auth/emailLinkSession.test.mjs"
+    "test:auth": "node --no-warnings --test tests/auth/emailLinkSession.test.mjs",
+    "test:posthog": "node --no-warnings --test tests/posthog/scrub.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -44,6 +45,8 @@
     "clsx": "^2.1.1",
     "lucide-react": "^1.16.0",
     "next": "^16.4.4",
+    "posthog-js": "^1.444.4",
+    "posthog-node": "^5.61.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "swr": "^2.5.1",

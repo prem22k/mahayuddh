@@ -1,6 +1,8 @@
 "use client";
+import { useReportError } from "@/lib/posthog/useReportError";
 
-export default function SuggestionsError({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function SuggestionsError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  useReportError(error);
   return (
     <div className="p-12 text-center space-y-4" role="alert">
       <h2 className="text-base font-bold text-text-primary">Challenges failed to load.</h2>

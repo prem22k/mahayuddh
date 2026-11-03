@@ -1,4 +1,5 @@
 "use client";
+import { useReportError } from "@/lib/posthog/useReportError";
 
 import { useEffect } from "react";
 import "./globals.css";
@@ -11,6 +12,7 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useReportError(error);
   const backupUrl = process.env.NEXT_PUBLIC_BACKUP_URL;
 
   useEffect(() => {
