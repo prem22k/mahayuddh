@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import { PUBLIC_PROFILE_COLUMNS } from "@/lib/data/profiles";
+import { OWN_PROFILE_COLUMNS } from "@/lib/data/profiles";
 import { Profile } from "@/types/database";
 import { DataCacheProvider } from "@/lib/cache/query";
 
@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // 1. Try fast read from profiles table
         const { data, error } = await supabase
           .from("profiles")
-          .select(PUBLIC_PROFILE_COLUMNS)
+          .select(OWN_PROFILE_COLUMNS)
           .eq("id", userId)
           .maybeSingle();
 

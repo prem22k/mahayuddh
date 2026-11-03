@@ -32,6 +32,10 @@ export interface Profile {
   leetcode_session_encrypted: string | null;
   leetcode_session_synced_at: string | null;
   created_at: string;
+  /** Own profile only (OWN_PROFILE_COLUMNS): first-run setup done or skipped. */
+  onboarded_at?: string | null;
+  /** Own profile only: walkthrough finished or dismissed. */
+  tour_completed_at?: string | null;
 }
 
 export interface CustomList {

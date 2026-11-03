@@ -8,8 +8,10 @@ import { readJsonBounded } from "@/lib/security/body";
 import { validateAvatarUrl } from "@/lib/security/urls";
 import type { Profile } from "@/types/database";
 
+// Every response here is the caller's own profile, so it carries the
+// first-run columns too (same list as OWN_PROFILE_COLUMNS in lib/data).
 const PUBLIC_PROFILE_SELECT =
-  "id,username,leetcode_username,avatar_url,active_squad_id,contest_rating,global_rank,streak,total_easy,total_medium,total_hard,contest_attended,contest_global_rank,contest_top_percentage,last_synced_at,created_at";
+  "id,username,leetcode_username,avatar_url,active_squad_id,contest_rating,global_rank,streak,total_easy,total_medium,total_hard,contest_attended,contest_global_rank,contest_top_percentage,last_synced_at,created_at,onboarded_at,tour_completed_at";
 
 async function getAuthedUserId(request: Request) {
   const token = extractBearerToken(request);
@@ -154,7 +156,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Request body too large." }, { status: 413 });
   }
   const body = (parsed.value ?? {}) as Record<string, unknown>;
-  const patch: Record<string, string> = {};
+  const patch: Record<string, string | null> = {};
 
   if (typeof body.objective === "string") {
     const value = body.objective.trim().toLowerCase();
@@ -167,9 +169,16 @@ export async function PATCH(request: Request) {
     if (value) patch.objective = value;
   }
 
+  // First-run flags. The server stamps the time; the client only says
+  // done/not done. Onboarding can't be undone from the client (it would show
+  // the setup again); the tour can, so profile can offer a replay.
+  if (body.onboarded === true) patch.onboarded_at = new Date().toISOString();
+  if (body.tour_completed === true) patch.tour_completed_at = new Date().toISOString();
+  if (body.tour_completed === false) patch.tour_completed_at = null;
+
   if (Object.keys(patch).length === 0) {
     return NextResponse.json(
-      { error: "Nothing to update. Supported fields: objective" },
+      { error: "Nothing to update. Supported fields: objective, onboarded, tour_completed" },
       { status: 400 }
     );
   }
