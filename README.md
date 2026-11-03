@@ -144,6 +144,8 @@ In production, `.github/workflows/sync.yml` runs the LeetCode sync every 3h, the
 
 Vercel Hobby, Tokyo region (beside the DB). Push to `main` → CI gate → auto-deploy. Required Vercel env: Supabase URL/keys, service-role key, `CRON_SECRET`, `LEETCODE_SESSION_SECRET`, `NEXT_PUBLIC_SITE_URL`; optional: AI keys, VAPID keys. Supabase Auth dashboard must allowlist `<site>/auth/callback`. Render free tier holds a suspended, pre-verified spare (`render.yaml`).
 
+Social sign-in (Google, GitHub, Apple, GitLab, LinkedIn, X): run `bash scripts/setup-social-login.sh`. It walks through each provider's console, then switches the providers on in Supabase and sets the Site URL and redirect URLs. `/login` shows a button for each provider Supabase reports as enabled (refreshed every 5 minutes). Apple's secret expires every 6 months; re-run the script to rotate it.
+
 ## Contributing
 
 Small modular commits, conventional style (`feat(scope): …`). Typecheck + security suite must stay green. Never invent data in UI; never weaken a security control to make a test pass.
