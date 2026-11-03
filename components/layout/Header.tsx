@@ -34,6 +34,11 @@ const SECTION_NAMES: Record<string, string> = {
   profile: "Profile",
   validation: "Quality gates",
   welcome: "Welcome",
+  notifications: "Notifications",
+  privacy: "Privacy",
+  terms: "Terms",
+  offline: "Offline",
+  auth: "Account",
   // Short public routes: /u profile, /b proof, /c challenge, /a approach.
   u: "Profile",
   b: "Proof",
@@ -44,7 +49,9 @@ const SECTION_NAMES: Record<string, string> = {
 function breadcrumbFor(pathname: string | null): string {
   if (!pathname || pathname === "/") return "Arena";
   const head = pathname.split("/").filter(Boolean)[0] || "home";
-  return SECTION_NAMES[head] ?? head.charAt(0).toUpperCase() + head.slice(1);
+  // Never echo an unknown URL segment back as a title (a mistyped link would
+  // read "Does-not-exist" in the header of the 404 page).
+  return SECTION_NAMES[head] ?? "Mahayuddh";
 }
 
 /** Honest relative sync label from the profile row (never hardcoded). */
