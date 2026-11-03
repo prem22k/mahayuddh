@@ -14,6 +14,7 @@ import { getServiceClient } from "@/lib/supabase/service";
 import { logSecurityEvent } from "@/lib/security/log";
 import {
   AI_CALLS_PER_HOUR,
+  AI_CALLS_PER_USER_PER_HOUR,
   decideStuckAssistant,
   isProviderConfigured,
   practiceNextFromRecommendation,
@@ -78,6 +79,29 @@ const DENIED_FOR_NON_MEMBER: GateContext = {
  * Falls back to the caller's own active squad when they name none, which is what
  * the UI always sends in practice.
  */
+/** Outcomes where no request reached a model; they cost nothing and do not count. */
+const UNCHARGED_OUTCOMES = "(refused,disabled,no_provider,rate_limited)";
+
+/**
+ * Calls this person can still make this hour, across every squad and solo
+ * practice. Fails closed: if the count cannot be read, the answer is 0, so a
+ * database hiccup degrades to "try again later" rather than an unmetered guide.
+ */
+async function userCallsRemaining(
+  supabase: NonNullable<ReturnType<typeof getServiceClient>>,
+  userId: string
+): Promise<number> {
+  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { count, error } = await supabase
+    .from("ai_calls")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gt("created_at", since)
+    .not("outcome", "in", UNCHARGED_OUTCOMES);
+  if (error || typeof count !== "number") return 0;
+  return Math.max(0, AI_CALLS_PER_USER_PER_HOUR - count);
+}
+
 export async function getAiGate(
   squadId: string | null,
   userId: string | null
@@ -96,7 +120,15 @@ export async function getAiGate(
       .maybeSingle();
     targetSquad = (profile as { active_squad_id: string | null } | null)?.active_squad_id ?? null;
   }
-  if (!targetSquad) return { squadId: null, aiEnabled: false, remainingBudget: 0, notAMember: false };
+  // Solo practice: Sarathi is on for everyone, metered per person.
+  if (!targetSquad) {
+    return {
+      squadId: null,
+      aiEnabled: true,
+      remainingBudget: await userCallsRemaining(supabase, userId),
+      notAMember: false,
+    };
+  }
 
   const { data: member } = await supabase
     .from("squad_members")
@@ -113,15 +145,18 @@ export async function getAiGate(
     return { ...DENIED_FOR_NON_MEMBER, squadId: targetSquad };
   }
 
-  const [{ data: squad }, { data: remaining }] = await Promise.all([
+  const [{ data: squad }, { data: remaining }, userRemaining] = await Promise.all([
     supabase.from("squads").select("ai_enabled").eq("id", targetSquad).maybeSingle(),
     supabase.rpc("ai_calls_remaining", { p_squad: targetSquad }),
+    userCallsRemaining(supabase, userId),
   ]);
+  const squadRemaining = typeof remaining === "number" ? remaining : AI_CALLS_PER_HOUR;
   return {
     squadId: targetSquad,
-    // Default OFF. A squad with no row, or with the column false, gets false.
+    // On by default since 20261103000000; the column can still switch a squad off.
     aiEnabled: Boolean((squad as { ai_enabled: boolean } | null)?.ai_enabled),
-    remainingBudget: typeof remaining === "number" ? remaining : AI_CALLS_PER_HOUR,
+    // The tighter of the squad's hourly budget and the caller's own.
+    remainingBudget: Math.min(squadRemaining, userRemaining),
     notAMember: false,
   };
 }

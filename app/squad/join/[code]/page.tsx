@@ -11,6 +11,7 @@ import { safeNext } from "@/lib/safeNext";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
+import { ErrorScreen } from "@/components/errors/ErrorScreen";
 import { Avatar } from "@/components/ui/Avatar";
 import { InviteCardSkeleton, InviteLinesSkeleton } from "@/components/skeletons/SquadJoinSkeleton";
 import { getMySquads, joinSquad, switchActiveSquad } from "@/lib/data/squads";
@@ -160,27 +161,16 @@ export default function SquadJoinPage() {
   const card = pending ? (
     <InviteCardSkeleton />
   ) : error && !preview ? (
-    <InviteCard>
-      <PassHeader code={code} status={{ label: "Unavailable", tone: "error" }} />
-      <div className="text-center">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">
-          That invite code doesn&apos;t work
-        </h1>
-      </div>
-      <p
-        role="alert"
-        className="mt-5 rounded-md border border-error/30 bg-error-tint p-3 text-center text-sm leading-6 text-error"
-      >
-        {error} Check it with the person who sent it.
-      </p>
-      <Button
-        variant="secondary"
-        className="mt-3 h-11 w-full min-h-[44px] border border-hairline"
-        onClick={() => router.push("/welcome")}
-      >
-        Start your own squad
-      </Button>
-    </InviteCard>
+    <ErrorScreen
+      variant="inline"
+      code="404"
+      title="That invite code isn't valid or has expired"
+      body="Check the code with the person who sent it, or start your own squad."
+      actions={[
+        { label: "Start your own squad", href: "/welcome", primary: true },
+        { label: "Go to Arena", href: "/home" },
+      ]}
+    />
   ) : preview ? (
     <InviteCard>
       <PassHeader

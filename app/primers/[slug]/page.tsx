@@ -12,6 +12,7 @@ import { StatusGlyph, type ProblemStatus } from "@/components/ui/ProblemRow";
 import { CodeBlock } from "@/components/approach/CodeBlock";
 import { InlineText } from "@/components/notebook/RichText";
 import { EmptyState, ErrorCard } from "@/components/ui/States";
+import { ErrorScreen } from "@/components/errors/ErrorScreen";
 import { PrimerSkeleton } from "@/components/skeletons/PrimersSkeleton";
 import { ShareRow } from "@/components/ui/ShareRow";
 import { TrackVisit } from "@/components/ui/TrackVisit";
@@ -172,17 +173,16 @@ export default function PrimerPage() {
   }
   if (!primer) {
     return (
-      <div className="mx-auto max-w-reading">
-        <EmptyState
-          heading="This primer does not exist"
-          body="It may be deleted, or the link is wrong."
-          action={
-            <Link href="/primers">
-              <Button variant="secondary">All primers</Button>
-            </Link>
-          }
-        />
-      </div>
+      <ErrorScreen
+        variant="inline"
+        code="404"
+        title="Primer not found"
+        body="This primer doesn't exist or may have been moved."
+        actions={[
+          { label: "All primers", href: "/primers", primary: true },
+          { label: "Browse problems", href: "/practice" },
+        ]}
+      />
     );
   }
 

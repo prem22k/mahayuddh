@@ -8,6 +8,7 @@ import { ApproachSkeleton } from "@/components/skeletons/ApproachSkeleton";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { EmptyState, ErrorCard } from "@/components/ui/States";
+import { ErrorScreen } from "@/components/errors/ErrorScreen";
 import { ShareRow } from "@/components/ui/ShareRow";
 import { ApproachHeaderCard, CoreIdeaCard, ApproachDetails } from "@/components/approach/ApproachParts";
 import { ApproachCode } from "@/components/approach/ApproachCode";
@@ -132,17 +133,16 @@ export default function ApproachPage() {
   }
   if (!approach) {
     return (
-      <div className="mx-auto max-w-reading">
-        <EmptyState
-          heading="This approach does not exist"
-          body="It may be private to its author, or deleted."
-          action={
-            <Link href="/practice">
-              <Button variant="secondary">Back to practice</Button>
-            </Link>
-          }
-        />
-      </div>
+      <ErrorScreen
+        variant="inline"
+        code="404"
+        title="Approach not found"
+        body="This approach doesn't exist, or its author made it private or deleted it."
+        actions={[
+          { label: "Back to practice", href: "/practice", primary: true },
+          { label: "Go to Arena", href: "/home" },
+        ]}
+      />
     );
   }
 

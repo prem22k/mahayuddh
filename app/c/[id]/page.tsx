@@ -7,6 +7,7 @@ import { Forward, LogIn, Play, SearchX, Swords, Waypoints } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { Button } from "@/components/ui/Button";
+import { ErrorScreen } from "@/components/errors/ErrorScreen";
 import { ChallengeLinkSkeleton } from "@/components/skeletons/ChallengeLinkSkeleton";
 import { ChallengePass, type ProblemMeta } from "@/components/challenges/ChallengePass";
 import { ChainTrack, chainNames } from "@/components/challenges/ChainTrack";
@@ -71,21 +72,16 @@ export default function ChallengeDeepLinkPage() {
   if (loading) return <ChallengeLinkSkeleton />;
   if (notFound || !item) {
     return (
-      <div className={frame}>
-        <div className="mx-auto max-w-md rounded-xl border border-hairline bg-surface px-6 py-12 text-center">
-          <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-hairline bg-surface-raised text-text-secondary">
-            <SearchX className="h-6 w-6" strokeWidth={1.5} aria-hidden />
-          </span>
-          <p className="type-title text-text-primary">This challenge doesn&apos;t exist or was withdrawn.</p>
-          <p className="mb-6 mt-2 text-[15px] leading-6 text-text-secondary">Start your own battle instead.</p>
-          <Link
-            href="/"
-            className="inline-flex min-h-[44px] items-center rounded-md bg-primary px-5 text-sm font-medium leading-5 text-on-primary hover:bg-primary-hover"
-          >
-            Start a battle
-          </Link>
-        </div>
-      </div>
+      <ErrorScreen
+        variant="inline"
+        code="404"
+        title="Challenge not found"
+        body="This challenge doesn't exist or was withdrawn. Start your own battle instead."
+        actions={[
+          { label: "Start a battle", href: "/", primary: true },
+          { label: "Browse problems", href: "/practice" },
+        ]}
+      />
     );
   }
 

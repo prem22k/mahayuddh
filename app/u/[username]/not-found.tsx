@@ -1,10 +1,16 @@
-import { ArtifactNotFound } from "@/components/recap/ArtifactNotFound";
+import { ErrorScreen } from "@/components/errors/ErrorScreen";
 
-export default function ProfileNotFound() {
+export default function UserNotFound() {
   return (
-    <ArtifactNotFound
-      heading="No one here by that name"
-      body="There's no Mahayuddh profile at this address. The handle may be misspelled, or it may have changed."
+    <ErrorScreen
+      variant="inline"
+      code="404"
+      title="No player called that"
+      body="Check the username spelling, or search for members in your squad."
+      actions={[
+        { label: "Leaderboard", href: "/leaderboard", primary: true },
+        { label: "Go to Arena", href: "/home" },
+      ]}
     />
   );
 }
