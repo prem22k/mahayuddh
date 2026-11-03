@@ -44,6 +44,16 @@ export async function GET(request: Request) {
   const target = next.startsWith("/auth/finish")
     ? (safeNext(new URL(next, origin).searchParams.get("next")) ?? "/home")
     : next;
+  // Connecting a provider from the profile (linkIdentity) comes back here
+  // signed in. Its failures belong on the profile card: /login would just
+  // forward a signed-in visitor on and drop the message.
+  if (new URL(target, origin).pathname === "/profile") {
+    const code = searchParams.get("error_code");
+    const linkError =
+      code === "identity_already_exists" ? "taken" : providerError === "access_denied" ? "cancelled" : "failed";
+    return NextResponse.redirect(`${origin}/profile?link_error=${linkError}`);
+  }
+
   const login = new URL("/login", origin);
   login.searchParams.set("error", reason);
   // A failed reset link must not send a later plain sign-in to the
