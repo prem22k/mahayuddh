@@ -34,9 +34,11 @@
 -- the auth schema stubbed) with zero errors, after which all 15 RPCs and 43 tables
 -- the app calls existed, and a trigger was observed firing rather than merely
 -- being present.
--- Last regenerated 2026-11-02 from the local stack (`db dump --local`) after
--- applying every migration through 20261102000003; the previous dump predated
--- 20261004000000-08, so a fresh install had no leaderboard snapshots, no
+-- Last regenerated 2026-11-03 from the local stack (`db dump --local`) after
+-- applying every migration through 20261103000001 (Sarathi for everyone,
+-- first-run columns). The 2026-11-02 regeneration covered through
+-- 20261102000003; the dump before that predated 20261004000000-08, so a
+-- fresh install had no leaderboard snapshots, no
 -- notification prefs and none of the function-grant hardening. The privilege
 -- blocks after the seed rows restore what a dump cannot express. Verified in a
 -- rolled-back transaction: starting from Supabase's default grants (anon could
@@ -2282,6 +2284,8 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "joined_via_referral" "uuid",
     "username_lower" "text" GENERATED ALWAYS AS ("lower"("username")) STORED,
     "streak_updated_at" timestamp with time zone,
+    "onboarded_at" timestamp with time zone,
+    "tour_completed_at" timestamp with time zone,
     CONSTRAINT "profiles_avatar_url_check" CHECK ((("avatar_url" IS NULL) OR (("avatar_url" ~~ 'https://%'::"text") AND ("char_length"("avatar_url") <= 2048) AND (("avatar_url" = 'https://assets.leetcode.com'::"text") OR ("avatar_url" ~~ 'https://assets.leetcode.com/%'::"text") OR ("avatar_url" = 'https://leetcode.com'::"text") OR ("avatar_url" ~~ 'https://leetcode.com/%'::"text") OR ("avatar_url" = 'https://lh3.googleusercontent.com'::"text") OR ("avatar_url" ~~ 'https://lh3.googleusercontent.com/%'::"text") OR ("avatar_url" = 'https://avatars.githubusercontent.com'::"text") OR ("avatar_url" ~~ 'https://avatars.githubusercontent.com/%'::"text"))))),
     CONSTRAINT "profiles_objective_check" CHECK ((("objective" IS NULL) OR ("objective" = ANY (ARRAY['internship'::"text", 'fulltime'::"text", 'consistency'::"text"])))),
     CONSTRAINT "profiles_stats_nonnegative" CHECK (((COALESCE("contest_rating", (0)::double precision) >= (0)::double precision) AND (COALESCE("streak", 0) >= 0) AND (COALESCE("total_easy", 0) >= 0) AND (COALESCE("total_medium", 0) >= 0) AND (COALESCE("total_hard", 0) >= 0) AND (COALESCE("contest_attended", 0) >= 0)))
@@ -2300,6 +2304,14 @@ COMMENT ON COLUMN "public"."profiles"."joined_via_referral" IS 'The referral lin
 
 
 COMMENT ON COLUMN "public"."profiles"."username_lower" IS 'Generated, so username stays exactly as typed for display while every lookup is case-insensitive. Index is unique: "Alice" and "alice" are one account.';
+
+
+
+COMMENT ON COLUMN "public"."profiles"."onboarded_at" IS 'First-run setup finished or skipped. Null = show it on the next /home visit.';
+
+
+
+COMMENT ON COLUMN "public"."profiles"."tour_completed_at" IS 'Walkthrough finished or dismissed. Null = show it once onboarded_at is set.';
 
 
 
@@ -2776,7 +2788,7 @@ CREATE TABLE IF NOT EXISTS "public"."squads" (
     "shared_goal_text" "text",
     "season_name" "text",
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "ai_enabled" boolean DEFAULT false NOT NULL,
+    "ai_enabled" boolean DEFAULT true NOT NULL,
     "is_demo" boolean DEFAULT false NOT NULL,
     CONSTRAINT "squads_description_check" CHECK ((("description" IS NULL) OR ("octet_length"("description") <= 2000))),
     CONSTRAINT "squads_name_check" CHECK ((("char_length"("name") >= 1) AND ("char_length"("name") <= 60)))
@@ -2786,7 +2798,7 @@ CREATE TABLE IF NOT EXISTS "public"."squads" (
 ALTER TABLE "public"."squads" OWNER TO "postgres";
 
 
-COMMENT ON COLUMN "public"."squads"."ai_enabled" IS '§45: AI features are a per-squad experiment, off by default. Set by the platform, never by a member.';
+COMMENT ON COLUMN "public"."squads"."ai_enabled" IS 'Sarathi (AI practice guide) for this squad. On by default since 20261103000000; set by the platform, never by a member.';
 
 
 
@@ -3806,6 +3818,10 @@ CREATE INDEX IF NOT EXISTS "ai_calls_feature_idx" ON "public"."ai_calls" USING "
 
 
 CREATE INDEX IF NOT EXISTS "ai_calls_squad_idx" ON "public"."ai_calls" USING "btree" ("squad_id", "created_at" DESC);
+
+
+
+CREATE INDEX IF NOT EXISTS "ai_calls_user_created_idx" ON "public"."ai_calls" USING "btree" ("user_id", "created_at" DESC);
 
 
 
@@ -6530,6 +6546,14 @@ GRANT SELECT("streak_updated_at") ON TABLE "public"."profiles" TO "authenticated
 
 
 
+GRANT SELECT("onboarded_at") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
+GRANT SELECT("tour_completed_at") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
 GRANT ALL ON TABLE "public"."content_impact" TO "anon";
 GRANT ALL ON TABLE "public"."content_impact" TO "authenticated";
 GRANT ALL ON TABLE "public"."content_impact" TO "service_role";
@@ -6762,6 +6786,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
+
 
 
 
@@ -7050,3 +7075,8 @@ GRANT ALL ON FUNCTION "public"."validation_squads"() TO "anon";
 GRANT ALL ON FUNCTION "public"."validation_squads"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") TO "authenticated";
+
+-- First-run columns (migration 20261103000001) are read by the signed-in user
+-- only. The column grant above includes every column, so take them back from
+-- anon to match production.
+revoke select (onboarded_at, tour_completed_at) on public.profiles from anon;
