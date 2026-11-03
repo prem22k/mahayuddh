@@ -14,20 +14,7 @@
  */
 export const EMAIL_LINK_MAX_AGE_S = 15 * 60;
 
-type Amr = { method?: string; timestamp?: number } | string;
-
-function decodeClaims(accessToken: string): { amr?: Amr[] } | null {
-  const payload = accessToken.split(".")[1];
-  if (!payload) return null;
-  try {
-    const b64 = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
-    const json =
-      typeof atob === "function" ? atob(b64) : Buffer.from(b64, "base64").toString("utf8");
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
+import { decodeJwtClaims } from "./jwtClaims.ts";
 
 /**
  * True when the token's authentication includes an emailed link ("otp" or
@@ -39,7 +26,7 @@ export function isRecentEmailLinkSession(
   maxAgeS: number = EMAIL_LINK_MAX_AGE_S
 ): boolean {
   if (!accessToken) return false;
-  const amr = decodeClaims(accessToken)?.amr;
+  const amr = decodeJwtClaims(accessToken)?.amr;
   if (!Array.isArray(amr)) return false;
   return amr.some((entry) => {
     if (typeof entry === "string") return entry === "recovery" || entry === "otp";
