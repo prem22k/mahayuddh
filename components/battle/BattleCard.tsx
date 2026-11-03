@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Swords, Check, Link2, Users, Trophy } from "lucide-react";
@@ -9,6 +9,8 @@ import { DifficultyBadgeNew, PatternChip } from "@/components/ui/Badge";
 import { copyText } from "@/lib/clipboard";
 import { track } from "@/lib/analytics";
 import { useSolving } from "@/components/providers/SolvingProvider";
+import { useCachedQuery } from "@/lib/cache/query";
+import { getActiveSquadMembers } from "@/lib/data/squads";
 import {
   BattleCardCore,
   BattleCardFull,
@@ -17,6 +19,8 @@ import {
 } from "@/lib/battleCard";
 
 type Card = BattleCardCore | BattleCardFull | BattleCardPublic;
+
+const NO_SQUAD_MEMBERS: { id: string; username: string }[] = [];
 
 function isFull(card: Card): card is BattleCardFull {
   return "ownerId" in card;
@@ -47,47 +51,46 @@ export function BattleCard({
 }) {
   const router = useRouter();
   const { startSolving } = useSolving();
-  const [card, setCard] = useState<Card | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [challenging, setChallenging] = useState(false);
-  const [squadMembers, setSquadMembers] = useState<{ id: string; username: string }[]>([]);
+  const [challengeOpen, setChallengeOpen] = useState(false);
   const [target, setTarget] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  const cardQuery = useCachedQuery(
+    battleId ? ["battle-card", battleId] : null,
+    async () => {
       const res = await fetch(`/api/battle-cards/${battleId}`);
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Couldn't load this card.");
-      setCard(json.card as Card);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't load this card.");
-    } finally {
-      setLoading(false);
+      return json.card as Card;
     }
-  }, [battleId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  );
+  const card = cardQuery.data ?? null;
+  const loading = cardQuery.isLoading;
+  const error = cardQuery.error
+    ? cardQuery.error instanceof Error
+      ? cardQuery.error.message
+      : "Couldn't load this card."
+    : null;
 
   // Squad members are the only people you can challenge from a card: the
   // challenge flow is deliberately not a global user directory (§61).
-  const openChallenge = async () => {
-    setChallenging(true);
-    try {
-      const { getActiveSquadMembers } = await import("@/lib/data/squads");
-      const members = await getActiveSquadMembers();
-      setSquadMembers(members);
-      if (members.length > 0) setTarget(members[0].id);
-    } catch {
-      setError("Couldn't load your squad. Join one to challenge someone.");
-    } finally {
-      setChallenging(false);
+  const squadMembersQuery = useCachedQuery(
+    challengeOpen ? ["active-squad-members"] : null,
+    getActiveSquadMembers
+  );
+  const squadMembers = squadMembersQuery.data ?? NO_SQUAD_MEMBERS;
+  const squadError = squadMembersQuery.error
+    ? "Couldn't load your squad. Join one to challenge someone."
+    : null;
+
+  useEffect(() => {
+    if (squadMembers.length > 0 && !target) {
+      setTarget(squadMembers[0].id);
     }
+  }, [squadMembers, target]);
+
+  const openChallenge = () => {
+    setChallengeOpen(true);
   };
 
   if (loading) {
@@ -115,18 +118,22 @@ export function BattleCard({
     );
   }
 
-  if (error || !card) {
+  if (error && !card) {
     return (
       <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-error/30 bg-error-tint p-4">
-        <p className="text-sm leading-6 text-error">{error ?? "Card unavailable."}</p>
+        <p className="text-sm leading-6 text-error">{error}</p>
         <button
-          onClick={load}
+          onClick={() => void cardQuery.refresh()}
           className="inline-flex h-11 items-center rounded-md border border-error/30 bg-error/10 px-3 text-xs font-medium text-error transition-colors hover:bg-error/20 md:h-9"
         >
           Retry
         </button>
       </div>
     );
+  }
+
+  if (!card) {
+    return null;
   }
 
   const solvedLabel = card.solvedSec != null ? formatDuration(card.solvedSec) : null;
@@ -232,9 +239,8 @@ export function BattleCard({
         </button>
 
         <button
-          onClick={async () => {
-            if (challenging) return;
-            await openChallenge();
+          onClick={() => {
+            openChallenge();
           }}
           className={actionCls}
         >
@@ -277,6 +283,11 @@ export function BattleCard({
         </button>
       </div>
 
+      {challengeOpen && squadError && squadMembers.length === 0 && (
+        <div className="border-t border-hairline pt-3 text-xs text-error">
+          {squadError}
+        </div>
+      )}
       {/* Challenge picker. Squad members only — no global user search (§61). */}
       {squadMembers.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-3">

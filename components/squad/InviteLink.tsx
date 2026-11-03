@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Check, Link2 } from "lucide-react";
 import { copyText } from "@/lib/clipboard";
 import { track } from "@/lib/analytics";
@@ -8,6 +8,9 @@ import { ShareRow } from "@/components/ui/ShareRow";
 import { getOrCreateMyReferralLink, getMyReferralLinks, type ReferralLink } from "@/lib/data/referrals";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { InviteLinkSkeleton } from "@/components/skeletons/SquadSkeleton";
+import { useCachedQuery } from "@/lib/cache/query";
+
+const NO_LINKS: ReferralLink[] = [];
 
 /**
  * Loop D — your invite link (§56, §40, §57).
@@ -24,32 +27,26 @@ import { InviteLinkSkeleton } from "@/components/skeletons/SquadSkeleton";
  * link.
  */
 export function InviteLink({ squadId, squadName }: { squadId: string; squadName: string }) {
-  const [link, setLink] = useState<ReferralLink | null>(null);
-  const [all, setAll] = useState<ReferralLink[]>([]);
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // First mint in flight: show the block's shape, not the retry button.
-  const [loaded, setLoaded] = useState(false);
 
-  const load = useCallback(async () => {
-    setError(null);
-    try {
-      // Mint on first view so the link is always ready to copy, then read the
-      // full list so a member with several squads sees all of them.
-      const mine = await getOrCreateMyReferralLink(squadId);
-      setLink(mine);
-      setAll(await getMyReferralLinks());
-    } catch (err) {
-      setError(dataErrorMessage(err, "Couldn't get an invite link."));
-    } finally {
-      setLoaded(true);
+  const query = useCachedQuery(
+    squadId ? ["my-referral-links", squadId] : null,
+    async () => {
+      const [mine, all] = await Promise.all([
+        getOrCreateMyReferralLink(squadId),
+        getMyReferralLinks(),
+      ]);
+      return { mine, all };
     }
-  }, [squadId]);
+  );
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const link = query.data?.mine ?? null;
+  const all = query.data?.all ?? NO_LINKS;
+  const error =
+    query.error && !query.data
+      ? dataErrorMessage(query.error, "Couldn't get an invite link.")
+      : null;
 
   const copy = async () => {
     if (!link) return;
@@ -63,14 +60,14 @@ export function InviteLink({ squadId, squadName }: { squadId: string; squadName:
     }
   };
 
-  if (!loaded) return <InviteLinkSkeleton />;
+  if (query.isLoading) return <InviteLinkSkeleton />;
 
   if (error) {
     return (
       <div className="flex items-center justify-between gap-3 rounded-md border border-hairline bg-well px-3 py-2">
         <p className="text-[11px] leading-4 text-text-secondary">{error}</p>
         <button
-          onClick={() => void load()}
+          onClick={() => void query.refresh()}
           className="inline-flex h-8 min-h-[44px] shrink-0 items-center rounded-sm px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0"
         >
           Retry
@@ -84,7 +81,7 @@ export function InviteLink({ squadId, squadName }: { squadId: string; squadName:
       <button
         onClick={async () => {
           setBusy(true);
-          await load();
+          await query.refresh();
           setBusy(false);
         }}
         disabled={busy}

@@ -23,7 +23,7 @@ import {
   snapshotRanks,
   type SnapshotRow,
 } from "@/lib/data/leaderboard";
-import { createClient } from "@/lib/supabase/client";
+import { getSquadMemberIds } from "@/lib/data/squads";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ConnectLeetCodeModal } from "@/components/modals/ConnectLeetCodeModal";
 import { UserStatsDossierModal } from "@/components/profile/UserStatsDossierModal";
@@ -42,6 +42,7 @@ import {
   boardRankCls,
   boardRowCls,
 } from "@/components/leaderboard/rowStyles";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
 type MetricKey = "verified" | "streak" | "hard" | "rating";
 type PeriodKey = "week" | "all";
@@ -114,26 +115,19 @@ function deltaTone(label: string): string {
 
 const LONG_BOARD = 8;
 
+const NO_PROFILES: Profile[] = [];
+const NO_STRINGS: string[] = [];
+const NO_COUNTS = new Map<string, number>();
+
 export default function LeaderboardPage() {
   const { user, profile, refreshProfile, loading: authLoading } = useAuth();
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const invalidate = useInvalidate();
+
   const [tab, setTab] = useState<"squad" | "global">("squad");
-  const [squadIds, setSquadIds] = useState<Set<string>>(new Set());
   const [metric, setMetric] = useState<string>("Verified solves");
   const [period, setPeriod] = useState<PeriodKey>("week");
   const [hideUnconnected, setHideUnconnected] = useState(false);
   const [inspectedProfile, setInspectedProfile] = useState<Profile | null>(null);
-
-  // Week-scope windows: measured event counts, not lifetime totals.
-  const [windowVerified, setWindowVerified] = useState<Map<string, number>>(new Map());
-  const [windowActivity, setWindowActivity] = useState<Map<string, number>>(new Map());
-
-  // Rank movement: latest frozen snapshot before today for this view.
-  const [prevRanks, setPrevRanks] = useState<Map<string, number>>(new Map());
-  const [prevReadOk, setPrevReadOk] = useState(false);
-  const [prevDate, setPrevDate] = useState<string | null>(null);
 
   // Syncing state
   const [isSyncing, setIsSyncing] = useState(false);
@@ -145,59 +139,36 @@ export default function LeaderboardPage() {
   const [connectError, setConnectError] = useState<string | null>(null);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
 
-  const loadLeaderboardData = async () => {
-    setLoadError(null);
-    try {
-      const data = await getSquadProfiles();
-      setProfiles(data);
-      if (profile?.active_squad_id) {
-        const supabase = createClient();
-        const { data: mems } = await supabase
-          .from("squad_members")
-          .select("user_id")
-          .eq("squad_id", profile.active_squad_id);
-        setSquadIds(new Set((mems ?? []).map((m) => (m as { user_id: string }).user_id)));
-      } else {
-        setSquadIds(new Set());
-        setTab("global");
-      }
-    } catch (err) {
-      console.error("Error loading profiles:", err);
-      setLoadError("Couldn't load leaderboard. Check your connection and retry.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const squadId = profile?.active_squad_id ?? null;
+
+  const profilesQuery = useCachedQuery(["squad-profiles"], () => getSquadProfiles());
+  const profiles = profilesQuery.data ?? NO_PROFILES;
+  const loading = profilesQuery.isLoading;
+  const loadError =
+    profilesQuery.error && profilesQuery.data === undefined
+      ? "Couldn't load leaderboard. Check your connection and retry."
+      : null;
+
+  const squadMemberIdsQuery = useCachedQuery(
+    squadId ? ["squad-member-ids", squadId] : null,
+    () => getSquadMemberIds(squadId as string)
+  );
+  const squadIds = useMemo(
+    () => new Set(squadMemberIdsQuery.data ?? NO_STRINGS),
+    [squadMemberIdsQuery.data]
+  );
+
+  const squadNameQuery = useCachedQuery(
+    squadId ? ["squad-name", squadId] : null,
+    () => getSquadName(squadId as string)
+  );
+  const squadName = squadNameQuery.data ?? null;
 
   // A squadless visitor gets Global as soon as the profile is known, not after
   // the board loads, so the Squad tab never flips under a loaded board.
   useEffect(() => {
     if (!authLoading && !profile?.active_squad_id) setTab("global");
   }, [authLoading, profile?.active_squad_id]);
-
-  // Waits for auth: loading before the profile arrives read "no squad" and
-  // flipped every visit to the Global tab.
-  useEffect(() => {
-    if (authLoading) return;
-    loadLeaderboardData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, profile?.active_squad_id]);
-
-  const [squadName, setSquadName] = useState<string | null>(null);
-  useEffect(() => {
-    const id = profile?.active_squad_id;
-    if (!id) {
-      setSquadName(null);
-      return;
-    }
-    let cancelled = false;
-    getSquadName(id)
-      .then((n) => !cancelled && setSquadName(n))
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [profile?.active_squad_id]);
 
   const handleSyncMyStats = async () => {
     if (!user || !profile?.leetcode_username) return;
@@ -212,12 +183,16 @@ export default function LeaderboardPage() {
         return;
       }
       await refreshProfile();
-      await loadLeaderboardData();
+      await profilesQuery.refresh();
+      await invalidate("my-statuses");
       setSyncSuccess(true);
       setTimeout(() => setSyncSuccess(false), 3000);
     } catch (e) {
       console.error("Failed to sync:", e);
-      const msg = e instanceof Response ? await syncErrorMessage(e, "Could not sync LeetCode stats. Please try again.") : "Could not sync LeetCode stats. Please try again.";
+      const msg =
+        e instanceof Response
+          ? await syncErrorMessage(e, "Could not sync LeetCode stats. Please try again.")
+          : "Could not sync LeetCode stats. Please try again.";
       setConnectError(msg);
     } finally {
       setIsSyncing(false);
@@ -234,7 +209,8 @@ export default function LeaderboardPage() {
       const updated = await syncUserProfileStats(user.id, inputHandle.trim());
       if (updated) {
         await refreshProfile();
-        await loadLeaderboardData();
+        await profilesQuery.refresh();
+        await invalidate("my-statuses");
         setInputHandle("");
       } else {
         setConnectError("Could not find LeetCode account. Check username spelling.");
@@ -258,6 +234,27 @@ export default function LeaderboardPage() {
   const scopeKey = tab === "squad" && profile?.active_squad_id ? `squad:${profile.active_squad_id}` : tab;
   const snapshotMetric = `${metricKey}:${period}`;
 
+  // Week windows load whenever the board's people or scope change. A failed
+  // load keeps zeros rather than lifetime totals posing as weekly counts.
+  const allProfilesKey = useMemo(
+    () => profiles.map((p) => p.id).sort().join(","),
+    [profiles]
+  );
+  const weekSolvesQuery = useCachedQuery(
+    period === "week" && profiles.length > 0 ? ["leaderboard-week-solves", allProfilesKey] : null,
+    async () => {
+      const sinceISO = new Date(Date.now() - WEEK_MS).toISOString();
+      const ids = profiles.map((p) => p.id);
+      const [verified, activity] = await Promise.all([
+        getVerifiedSolvesWindow(ids, sinceISO),
+        getSolvesWindow(ids, sinceISO),
+      ]);
+      return { verified, activity };
+    }
+  );
+  const windowVerified = weekSolvesQuery.data?.verified ?? NO_COUNTS;
+  const windowActivity = weekSolvesQuery.data?.activity ?? NO_COUNTS;
+
   // Resolved board value: week scope ranks measured windows for the two
   // count metrics; hard and rating are lifetime by nature (difficulty and
   // point-in-time rating have no 7-day event source).
@@ -271,29 +268,6 @@ export default function LeaderboardPage() {
     },
     [metricKey, period, windowVerified, windowActivity]
   );
-
-  // Week windows load whenever the board's people or scope change. A failed
-  // load keeps zeros rather than lifetime totals posing as weekly counts.
-  useEffect(() => {
-    if (period !== "week" || profiles.length === 0) return;
-    let cancelled = false;
-    const sinceISO = new Date(Date.now() - WEEK_MS).toISOString();
-    const ids = profiles.map((p) => p.id);
-    Promise.all([getVerifiedSolvesWindow(ids, sinceISO), getSolvesWindow(ids, sinceISO)])
-      .then(([verified, activity]) => {
-        if (cancelled) return;
-        setWindowVerified(verified);
-        setWindowActivity(activity);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setWindowVerified(new Map());
-        setWindowActivity(new Map());
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [period, profiles]);
 
   const visibleMembers = useMemo(() => {
     const scoped = tab === "squad" && squadIds.size > 0 ? profiles.filter((m) => squadIds.has(m.id)) : profiles;
@@ -338,27 +312,18 @@ export default function LeaderboardPage() {
 
   // Previous frozen ranks for the movement column. Runs on the squad board
   // only; the global tab renders its own segment board.
-  useEffect(() => {
-    if (tab !== "squad" || visibleMembers.length === 0) return;
-    let cancelled = false;
-    const ids = memberIdsKey.split(",").filter(Boolean);
-    getPreviousSnapshotRanks(scopeKey, snapshotMetric, ids)
-      .then((prev) => {
-        if (cancelled) return;
-        setPrevRanks(prev.ranks);
-        setPrevReadOk(true);
-        setPrevDate(prev.snapshotDate);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setPrevRanks(new Map());
-        setPrevReadOk(false);
-        setPrevDate(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [tab, scopeKey, snapshotMetric, memberIdsKey, visibleMembers.length]);
+  const prevRanksQuery = useCachedQuery(
+    tab === "squad" && visibleMembers.length > 0
+      ? ["previous-snapshot-ranks", scopeKey, snapshotMetric, memberIdsKey]
+      : null,
+    () => {
+      const ids = memberIdsKey.split(",").filter(Boolean);
+      return getPreviousSnapshotRanks(scopeKey, snapshotMetric, ids);
+    }
+  );
+  const prevRanks = prevRanksQuery.data?.ranks ?? NO_COUNTS;
+  const prevReadOk = prevRanksQuery.data !== undefined;
+  const prevDate = prevRanksQuery.data?.snapshotDate ?? null;
 
   // Freeze today's ranks once per view-day, fire-and-forget. A failed write
   // leaves the movement column honestly at "—".
@@ -454,7 +419,13 @@ export default function LeaderboardPage() {
 
       {loadError && (
         <div className="mt-4 md:mt-6">
-          <ErrorCard message={loadError} onRetry={() => { setLoading(true); loadLeaderboardData(); }} />
+          <ErrorCard
+            message={loadError}
+            onRetry={() => {
+              void profilesQuery.refresh();
+              void squadMemberIdsQuery.refresh();
+            }}
+          />
         </div>
       )}
 
@@ -734,7 +705,8 @@ export default function LeaderboardPage() {
         onClose={() => setIsConnectModalOpen(false)}
         onConnected={async () => {
           await refreshProfile();
-          await loadLeaderboardData();
+          await profilesQuery.refresh();
+          await invalidate("my-statuses");
         }}
       />
     </div>

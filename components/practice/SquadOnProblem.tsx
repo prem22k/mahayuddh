@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/Avatar";
@@ -8,10 +8,14 @@ import { StatusGlyph } from "@/components/ui/ProblemRow";
 import { Skeleton } from "@/components/ui/States";
 import { getActiveSquadMembers } from "@/lib/data/squads";
 import { getSquadProblemStatuses } from "@/lib/data/sheets";
+import { useCachedQuery } from "@/lib/cache/query";
 import { daysBetween, formatDuration, relativeDays } from "@/lib/format";
 import type { ProblemEvent, TriState } from "@/types/database";
 
 const SOLVE_KINDS = new Set(["solved", "revisited", "challenge_completed"]);
+
+// Stable empty values: a fresh Map per render would re-run every memo.
+const NO_STATUSES = new Map<string, { status: TriState; at: string }>();
 
 interface MemberRow {
   id: string;
@@ -48,35 +52,26 @@ export function SquadOnProblem({
   /** Every visible event on this slug (any user); filtered to members here. */
   events: ProblemEvent[];
 }) {
-  const [members, setMembers] = useState<{ id: string; username: string }[] | null>(null);
-  const [statuses, setStatuses] = useState<Map<string, { status: TriState; at: string }>>(new Map());
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    if (!userId) return;
-    let cancelled = false;
-    setError(false);
-    (async () => {
-      try {
-        const others = await getActiveSquadMembers();
-        const rows = others.length
-          ? await getSquadProblemStatuses([slug]).catch(() => [])
-          : [];
-        if (cancelled) return;
-        setMembers(others);
-        setStatuses(
-          new Map(
-            rows.map((r) => [r.user_id, { status: r.status as TriState, at: r.solved_at }])
-          )
-        );
-      } catch {
-        if (!cancelled) setError(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [slug, userId]);
+  // Squad rows load through the cache (lib/cache/query.tsx): the active
+  // squad's members and their statuses on this slug load together and are
+  // shown together, so one query returns both. Members stay null until the
+  // first load lands — exactly the old `members === null` skeleton state.
+  const squadQ = useCachedQuery(
+    userId ? ["active-squad-on-problem", slug] : null,
+    async () => {
+      const others = await getActiveSquadMembers();
+      const rows = others.length ? await getSquadProblemStatuses([slug]).catch(() => []) : [];
+      return {
+        members: others,
+        statuses: new Map(
+          rows.map((r) => [r.user_id, { status: r.status as TriState, at: r.solved_at }])
+        ),
+      };
+    },
+    { freshForMs: 10_000 }
+  );
+  const members = squadQ.data?.members ?? null;
+  const statuses = squadQ.data?.statuses ?? NO_STATUSES;
 
   const rows = useMemo<MemberRow[]>(() => {
     if (!members) return [];
@@ -191,7 +186,7 @@ export function SquadOnProblem({
           <p className="p-3 text-sm leading-6 text-text-secondary md:p-0">
             Log in to see how your squad did on this problem.
           </p>
-        ) : error ? (
+        ) : squadQ.error && squadQ.data === undefined ? (
           <p className="p-3 text-sm leading-6 text-text-secondary md:p-0">
             Couldn&apos;t load your squad. Reload to try again.
           </p>

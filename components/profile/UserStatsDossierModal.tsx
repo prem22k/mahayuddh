@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { X, Check, ChevronRight, ExternalLink, RefreshCw, Share2, Shield, SquareUser, Swords } from "lucide-react";
 import { ModalShell } from "@/components/ui/ModalShell";
@@ -13,6 +13,7 @@ import { syncUserProfileStats } from "@/lib/data/profiles";
 import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 import { Profile } from "@/types/database";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
 interface UserStatsDossierModalProps {
   isOpen: boolean;
@@ -40,26 +41,17 @@ export function UserStatsDossierModal({
   statusMap = {},
 }: UserStatsDossierModalProps) {
   const { user, refreshProfile } = useAuth();
+  const invalidate = useInvalidate();
   const [copied, setCopied] = useState(false);
-  const [squadName, setSquadName] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncFailed, setSyncFailed] = useState(false);
 
   const squadId = isOpen ? profile?.active_squad_id ?? null : null;
-  useEffect(() => {
-    setSquadName(null);
-    if (!squadId) return;
-    let cancelled = false;
-    // Squad names are public-read. A failed read just leaves the name out.
-    getSquadName(squadId)
-      .then((name) => {
-        if (!cancelled) setSquadName(name);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [squadId]);
+  const squadNameQuery = useCachedQuery(
+    squadId ? ["squad-name", squadId] : null,
+    () => getSquadName(squadId as string)
+  );
+  const squadName = squadNameQuery.data ?? null;
 
   if (!isOpen || !profile) return null;
 
@@ -106,6 +98,7 @@ export function UserStatsDossierModal({
     try {
       const ok = await syncUserProfileStats(profile.id, profile.leetcode_username);
       await refreshProfile();
+      await invalidate("squad-profiles", "my-statuses");
       setSyncFailed(!ok);
     } catch {
       setSyncFailed(true);

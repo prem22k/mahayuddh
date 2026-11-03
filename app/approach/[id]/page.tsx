@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeftRight, Check, Copy, NotebookPen, Swords, Trash2 } from "lucide-react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { ApproachSkeleton } from "@/components/skeletons/ApproachSkeleton";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
@@ -12,7 +12,7 @@ import { ErrorScreen } from "@/components/errors/ErrorScreen";
 import { ShareRow } from "@/components/ui/ShareRow";
 import { ApproachHeaderCard, CoreIdeaCard, ApproachDetails } from "@/components/approach/ApproachParts";
 import { ApproachCode } from "@/components/approach/ApproachCode";
-import { pickSolveProof, type SolveProof } from "@/components/approach/solveProof";
+import { pickSolveProof } from "@/components/approach/solveProof";
 import { copyText } from "@/lib/clipboard";
 import {
   getApproachById,
@@ -20,7 +20,7 @@ import {
   deleteApproach,
   setApproachVisibility,
 } from "@/lib/data/approaches";
-import { getUserStatusesBySlugs } from "@/lib/data/sheets";
+import { getUserStatusesBySlugs, toStatusMap } from "@/lib/data/sheets";
 import { getCatalogBySlugs } from "@/lib/data/problems";
 import { getProblemTimeline } from "@/lib/data/problemEvents";
 import { copyApproachToNotebook } from "@/lib/data/notebook";
@@ -28,7 +28,8 @@ import { dataErrorMessage } from "@/lib/data/errors";
 import { formatDuration } from "@/lib/format";
 import { track } from "@/lib/analytics";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { Approach, ApproachVisibility, Problem } from "@/types/database";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
+import { Approach, ApproachVisibility } from "@/types/database";
 
 function prettify(slug: string): string {
   return slug
@@ -50,60 +51,65 @@ const deckBtn =
  */
 export default function ApproachPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const id = params.id;
   const { user, profile } = useAuth();
-  const [approach, setApproach] = useState<Awaited<ReturnType<typeof getApproachById>>>(null);
-  const [others, setOthers] = useState<Approach[] | null>(null);
-  const [problem, setProblem] = useState<Problem | null>(null);
-  const [proof, setProof] = useState<SolveProof | null>(null);
-  const [attempted, setAttempted] = useState<boolean | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const invalidate = useInvalidate();
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      setApproach(await getApproachById(id));
-    } catch (err) {
-      setLoadError(dataErrorMessage(err, "Couldn't load this approach. Retry."));
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  // Every read below goes through the client cache (lib/cache/query.tsx): a
+  // revisit renders from cache at once and refreshes in the background; the
+  // skeleton only shows on the very first load.
+  const approachQuery = useCachedQuery(id ? ["approach-by-id", id] : null, () => getApproachById(id));
+  const approach = approachQuery.data ?? null;
+  const approachSlug = approach?.problem_slug ?? "";
+  const approachAuthorId = approach?.user_id ?? "";
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Sibling approaches for the compare link (same key as the problem page).
+  const othersQuery = useCachedQuery(
+    approachSlug ? ["approaches-for-problem", approachSlug] : null,
+    () => getApproachesForProblem(approachSlug),
+    { freshForMs: 10_000 }
+  );
+  const others = othersQuery.data ? othersQuery.data.filter((r) => r.id !== approach?.id) : null;
 
-  // Sibling approaches for the compare link, and whether the reader has
-  // attempted the problem (drives the "you haven't attempted this yet" note).
-  useEffect(() => {
-    if (!approach) return;
-    getApproachesForProblem(approach.problem_slug)
-      .then((rows) => setOthers(rows.filter((r) => r.id !== approach.id)))
-      .catch(() => setOthers(null));
-    // Catalog row for the problem number, title and difficulty, and the
-    // author's own solve for the proof box. Both are optional: on failure the
-    // title falls back to the slug and the proof box stays hidden.
-    getCatalogBySlugs([approach.problem_slug])
-      .then((rows) => setProblem(rows[0] ?? null))
-      .catch(() => setProblem(null));
-    getProblemTimeline(approach.problem_slug, approach.user_id)
-      .then((events) => setProof(pickSolveProof(events)))
-      .catch(() => setProof(null));
-    if (!user) {
-      setAttempted(null);
-      return;
-    }
-    getUserStatusesBySlugs(user.id)
-      .then((rows) =>
-        setAttempted(rows.some((r) => r.problem_slug.toLowerCase() === approach.problem_slug.toLowerCase()))
-      )
-      .catch(() => setAttempted(null));
-  }, [approach, user]);
+  // Catalog row for the problem number, title and difficulty, and the author's
+  // own solve for the proof box. Both are optional: on failure the title falls
+  // back to the slug and the proof box stays hidden.
+  const catalogQuery = useCachedQuery(
+    approachSlug ? ["catalog-by-slugs", approachSlug] : null,
+    () => getCatalogBySlugs([approachSlug]),
+    { freshForMs: 10 * 60_000 }
+  );
+  const problem = catalogQuery.data?.[0] ?? null;
+
+  const timelineQuery = useCachedQuery(
+    approachSlug && approachAuthorId
+      ? ["problem-timeline", approachSlug, approachAuthorId]
+      : null,
+    () => getProblemTimeline(approachSlug, approachAuthorId)
+  );
+  const proof = timelineQuery.data ? pickSolveProof(timelineQuery.data) : null;
+
+  // Whether the reader has attempted the problem (drives the "you haven't
+  // attempted this yet" note). Shared with the arena and the problem page.
+  const myStatuses = useCachedQuery(
+    user ? ["my-statuses"] : null,
+    async () => toStatusMap(await getUserStatusesBySlugs(user?.id as string))
+  );
+  const attempted =
+    !user || !approachSlug
+      ? null
+      : myStatuses.data === undefined
+        ? null
+        : myStatuses.data[approachSlug.toLowerCase()] !== undefined;
+
+  const loading = approachQuery.isLoading;
+  const loadError =
+    approachQuery.error && approachQuery.data === undefined
+      ? dataErrorMessage(approachQuery.error, "Couldn't load this approach. Retry.")
+      : null;
 
   // Reading pages keep the solve dock out of the way: it is hidden while
   // this page is mounted and restored on unmount.
@@ -121,7 +127,7 @@ export default function ApproachPage() {
   if (loadError) {
     return (
       <div className="mx-auto max-w-reading">
-        <ErrorCard message={loadError} onRetry={load} />
+        <ErrorCard message={loadError} onRetry={() => void approachQuery.refresh()} />
       </div>
     );
   }
@@ -323,8 +329,15 @@ export default function ApproachPage() {
                   aria-pressed={approach.visibility === v}
                   onClick={async () => {
                     if (v === "squad" && !profile?.active_squad_id) return;
-                    await setApproachVisibility(approach.id, v, profile?.active_squad_id ?? null);
-                    load();
+                    try {
+                      await approachQuery.setData((current) =>
+                        current ? { ...current, visibility: v } : current
+                      );
+                      await setApproachVisibility(approach.id, v, profile?.active_squad_id ?? null);
+                      void invalidate("approaches-for-problem", "ranked-feed");
+                    } catch {
+                      void approachQuery.refresh();
+                    }
                   }}
                   className={`flex h-full min-h-[44px] items-center rounded-sm px-3 text-sm font-medium leading-5 transition-colors md:min-h-0 ${
                     approach.visibility === v ? "bg-surface-overlay text-text-primary" : "text-text-secondary"
@@ -340,8 +353,13 @@ export default function ApproachPage() {
             aria-label="Delete approach"
             onClick={async () => {
               if (!window.confirm("Delete this approach?")) return;
-              await deleteApproach(approach.id);
-              load();
+              try {
+                await deleteApproach(approach.id);
+                void invalidate("approaches-for-problem", "ranked-feed");
+                router.push(`/practice/${approach.problem_slug}`);
+              } catch {
+                // keep on page
+              }
             }}
             className="min-h-[44px] text-text-tertiary hover:text-error md:min-h-0"
           >

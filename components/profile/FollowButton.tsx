@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { UserPlus, UserCheck } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -8,6 +8,7 @@ import { isFollowing, toggleFollow } from "@/lib/data/profile";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
 /**
  * Follow button (§21).
@@ -38,20 +39,21 @@ export function FollowButton({
   className?: string;
 }) {
   const { user, loading } = useAuth();
-  const [following, setFollowing] = useState<boolean | null>(null);
+  const invalidate = useInvalidate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isSelf = user?.id === userId;
 
-  useEffect(() => {
-    if (isSelf) return;
-    void isFollowing(userId)
-      .then(setFollowing)
-      .catch(() => setFollowing(false));
-  }, [userId, isSelf]);
+  const followingQuery = useCachedQuery(
+    !isSelf && user ? ["is-following", userId] : null,
+    () => isFollowing(userId)
+  );
 
   if (isSelf) return null;
+
+  const isReady = !user || followingQuery.data !== undefined;
+  const following = followingQuery.data ?? false;
 
   const cls = cn(
     "inline-flex h-10 items-center justify-center gap-2 rounded-md border px-5 text-sm font-medium transition-colors disabled:opacity-50 max-md:h-9 max-md:min-h-[44px] max-md:px-3.5 max-md:text-xs",
@@ -73,11 +75,14 @@ export function FollowButton({
   const toggle = async () => {
     setBusy(true);
     setError(null);
+    const next = !following;
     try {
-      await toggleFollow(userId, !following);
-      setFollowing(!following);
+      void followingQuery.setData(next);
+      await toggleFollow(userId, next);
       track(following ? "user_unfollowed" : "user_followed", { via_username: username });
+      await invalidate("recent-feed");
     } catch (err) {
+      void followingQuery.refresh();
       setError(dataErrorMessage(err, "Couldn't update."));
     } finally {
       setBusy(false);
@@ -89,7 +94,7 @@ export function FollowButton({
       <button
         type="button"
         onClick={() => void toggle()}
-        disabled={busy || following === null}
+        disabled={busy || !isReady}
         aria-pressed={following === true}
         className={cls}
         title={

@@ -1,20 +1,21 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { SarathiMark } from "@/components/ai/Sarathi";
 import { ArrowUpRight, Bookmark, Check, ChevronRight, Copy, RotateCcw, Swords, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { copyText } from "@/lib/clipboard";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { ProblemSkeleton } from "@/components/skeletons/ProblemSkeleton";
 import { NextBattle } from "@/components/recommend/NextBattle";
 import { problemUrl } from "@/components/ui/ProblemLink";
 import { getCatalogBySlugs } from "@/lib/data/problems";
 import { getPrimersForPatterns } from "@/lib/data/primers";
-import { setProblemStatus } from "@/lib/data/sheets";
+import { setProblemStatus, getUserStatusesBySlugs, toStatusMap } from "@/lib/data/sheets";
 import { BattleCard } from "@/components/battle/BattleCard";
 import { getProblemTimeline, logProblemEvent } from "@/lib/data/problemEvents";
 import { getBattlesForSlug } from "@/lib/data/battles";
@@ -41,8 +42,8 @@ import { LatestResultCard } from "@/components/practice/LatestResultCard";
 import { BattleTimeline } from "@/components/practice/BattleTimeline";
 import { SquadOnProblem } from "@/components/practice/SquadOnProblem";
 import { OpenChallenges, LearnFirst } from "@/components/practice/ProblemRail";
-import { Problem, ProblemEvent, Approach, ApproachVisibility, Primer, Battle, Suggestion, ReviewItem, TriState } from "@/types/database";
-import { createClient } from "@/lib/supabase/client";
+import { ProblemEvent, Approach, ApproachVisibility, Primer, Battle, Suggestion, TriState } from "@/types/database";
+import { applyStatusChange } from "@/lib/problemStatusEvent";
 
 function fmtDur(sec: number | null): string {
   return formatDuration(sec) ?? "";
@@ -54,26 +55,33 @@ const fieldCls =
   "mt-1 w-full rounded-md border border-hairline bg-well px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-hairline-strong focus:outline-none";
 const labelCls = "text-xs font-medium leading-4 text-text-secondary";
 
+// Stable empty values: a fresh [] or {} per render would re-run every memo.
+const NO_STATUSES: Record<string, TriState> = {};
+const NO_TOPICS: string[] = [];
+const NO_EVENTS: ProblemEvent[] = [];
+const NO_APPROACHES: Approach[] = [];
+const NO_PRIMERS: Primer[] = [];
+const NO_BATTLES: Battle[] = [];
+const NO_CHALLENGES: Suggestion[] = [];
+
 export default function ProblemPage() {
+  const router = useRouter();
   const params = useParams<{ slug: string }>();
   const slug = (params.slug || "").toLowerCase();
-  const { user, profile, loading: authLoading } = useAuth();
+  const { user, profile } = useAuth();
   const { startSolving } = useSolving();
+  const userId = user?.id ?? null;
+  const invalidate = useInvalidate();
 
-  const [problem, setProblem] = useState<Problem | null>(null);
-  const [status, setStatus] = useState<TriState>("unsolved");
-  const [timeline, setTimeline] = useState<ProblemEvent[]>([]);
-  const [slugEvents, setSlugEvents] = useState<ProblemEvent[]>([]);
-  const [approaches, setApproaches] = useState<Approach[]>([]);
-  const [primers, setPrimers] = useState<Primer[]>([]);
-  const [battles, setBattles] = useState<Battle[]>([]);
-  const [challenges, setChallenges] = useState<Suggestion[]>([]);
-  const [review, setReview] = useState<ReviewItem | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("Your battles");
-
   const [coreIdea, setCoreIdea] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const [visibility, setVisibility] = useState<ApproachVisibility>("private");
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [proofCopied, setProofCopied] = useState(false);
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const [aPattern, setAPattern] = useState("");
   const [aTime, setATime] = useState("");
   const [aSpace, setASpace] = useState("");
@@ -81,86 +89,99 @@ export default function ProblemPage() {
   const [aEdgeCases, setAEdgeCases] = useState("");
   const [aMistakes, setAMistakes] = useState("");
   const [aCode, setACode] = useState("");
-  const [expanded, setExpanded] = useState(false);
-  const [visibility, setVisibility] = useState<ApproachVisibility>("private");
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [proofCopied, setProofCopied] = useState(false);
-  const [bookmarked, setBookmarked] = useState(false);
-  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      // True dependency first: primers derive from the catalog's topics.
-      const [catalog] = await getCatalogBySlugs([slug]);
-      setProblem(catalog ?? null);
-      const topics = catalog?.topics ?? [];
-      // Everything else is independent — fetch concurrently, not serially.
-      const statusPromise = (async (): Promise<TriState> => {
-        if (!user) return "unsolved";
-        const supabase = createClient();
-        const { data: st } = await supabase
-          .from("user_problem_status")
-          .select("status")
-          .eq("user_id", user.id)
-          .eq("problem_slug", slug)
-          .maybeSingle();
-        return (((st as { status: TriState } | null)?.status ?? "unsolved") as TriState);
-      })();
-      const [
-        primers,
-        nextStatus,
-        timeline,
-        recent,
-        approaches,
-        bookmarked,
-        battles,
-        challenges,
-        review,
-      ] = await Promise.all([
-        getPrimersForPatterns(topics).catch(() => []),
-        statusPromise,
-        user ? getProblemTimeline(slug, user.id) : Promise.resolve([] as ProblemEvent[]),
-        getProblemTimeline(slug),
-        getApproachesForProblem(slug).catch(() => []),
-        user ? isBookmarked(slug).catch(() => false) : Promise.resolve(false),
-        user ? getBattlesForSlug(slug, 5).catch(() => []) : Promise.resolve([] as Battle[]),
-        user ? getChallengesForSlug(slug).catch(() => []) : Promise.resolve([] as Suggestion[]),
-        user ? getReviewForSlug(slug).catch(() => null) : Promise.resolve(null),
-      ]);
-      setPrimers(primers);
-      if (user) {
-        setStatus(nextStatus);
-        setTimeline(timeline);
-      } else {
-        setStatus("unsolved");
-        setTimeline([]);
-      }
-      // Every visible event on this slug; the squad rail filters to members.
-      setSlugEvents(recent);
-      setApproaches(approaches);
-      if (user) {
-        setBookmarked(bookmarked);
-        setBattles(battles);
-        setChallenges(challenges);
-        setReview(review);
-      }
-    } catch (err) {
-      setLoadError(dataErrorMessage(err, "Couldn't load this problem. Retry."));
-    } finally {
-      setLoading(false);
-    }
-  }, [slug, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Every read below goes through the client cache (lib/cache/query.tsx): a
+  // revisit renders from cache at once and refreshes in the background; the
+  // skeleton only shows on the very first load.
 
-  // One load once auth resolves; an anonymous first pass would render the
-  // page without your battles and then swap them in.
-  useEffect(() => {
-    if (authLoading) return;
-    load();
-  }, [load, authLoading]);
+  // Catalog row for this slug (the compare page reads the same entries).
+  const problemQ = useCachedQuery(
+    slug ? ["catalog-by-slugs", slug] : null,
+    () => getCatalogBySlugs([slug]),
+    { freshForMs: 10 * 60_000 }
+  );
+  // The key holds getCatalogBySlugs' raw rows everywhere it is used.
+  const problem = problemQ.data?.[0] ?? null;
+
+  // The solver's statuses across the sheet (shared with the arena's strip).
+  const myStatuses = useCachedQuery(
+    userId ? ["my-statuses"] : null,
+    async () => toStatusMap(await getUserStatusesBySlugs(userId as string))
+  );
+  const status = (myStatuses.data ?? NO_STATUSES)[slug] ?? "unsolved";
+
+  // Your own revisit story on this problem (the cache scopes it to the user).
+  const problemTimelineQ = useCachedQuery(
+    userId ? ["problem-timeline", slug] : null,
+    () => getProblemTimeline(slug, userId as string)
+  );
+
+  // Every visible event on this slug; the squad rail filters to members.
+  const slugEventsQ = useCachedQuery(slug ? ["slug-events", slug] : null, () => getProblemTimeline(slug), {
+    freshForMs: 10_000,
+  });
+
+  // Approaches shared on this problem (compare page reads the same entries).
+  const approachesQ = useCachedQuery(["approaches-for-problem", slug], () => getApproachesForProblem(slug), {
+    freshForMs: 10_000,
+  });
+
+  const topics = problem?.topics ?? NO_TOPICS;
+  // Primer content is catalog-like: rarely rewritten, so refresh rarely.
+  const primersQ = useCachedQuery(
+    topics.length > 0 ? ["pattern-primers", topics.join("|")] : null,
+    () => getPrimersForPatterns(topics),
+    { freshForMs: 10 * 60_000 }
+  );
+
+  const battlesQ = useCachedQuery(
+    userId ? ["battles-for-slug", slug, 5] : null,
+    () => getBattlesForSlug(slug, 5)
+  );
+
+  const challengesQ = useCachedQuery(
+    userId ? ["challenges-for-slug", slug] : null,
+    () => getChallengesForSlug(slug),
+    { freshForMs: 10_000 }
+  );
+
+  const bookmarkedQ = useCachedQuery(
+    userId ? ["is-bookmarked", slug] : null,
+    () => isBookmarked(slug)
+  );
+
+  const reviewQ = useCachedQuery(
+    userId ? ["review-for-slug", slug] : null,
+    () => getReviewForSlug(slug)
+  );
+
+  const timeline = problemTimelineQ.data ?? NO_EVENTS;
+  const slugEvents = slugEventsQ.data ?? NO_EVENTS;
+  const approaches = approachesQ.data ?? NO_APPROACHES;
+  const primers = primersQ.data ?? NO_PRIMERS;
+  const battles = battlesQ.data ?? NO_BATTLES;
+  const challenges = challengesQ.data ?? NO_CHALLENGES;
+  const bookmarked = bookmarkedQ.data ?? false;
+  const review = reviewQ.data ?? null;
+
+  // The four reads the old loader could fail hard on still gate the page:
+  // skeleton until they first arrive, error card only while nothing is cached.
+  const loading =
+    problemQ.isLoading || myStatuses.isLoading || problemTimelineQ.isLoading || slugEventsQ.isLoading;
+  const loadError =
+    (problemQ.error && problemQ.data === undefined) ||
+    (myStatuses.error && myStatuses.data === undefined) ||
+    (problemTimelineQ.error && problemTimelineQ.data === undefined) ||
+    (slugEventsQ.error && slugEventsQ.data === undefined)
+      ? "Couldn't load this problem. Retry."
+      : null;
+  const handleRetryLoad = () => {
+    void problemQ.refresh();
+    void myStatuses.refresh();
+    void problemTimelineQ.refresh();
+    void slugEventsQ.refresh();
+    void primersQ.refresh();
+  };
 
   // Battle cards and the compare page link here with #explain: land on the
   // write-up tab instead of a dead anchor.
@@ -175,10 +196,11 @@ export default function ProblemPage() {
   const handleStatus = async (next: TriState) => {
     if (!user) return;
     const prev = status;
-    setStatus(next);
+    // Optimistic in place: the cached status map feeds this page and the arena.
+    void myStatuses.setData((current) => applyStatusChange(current ?? {}, slug, next));
     const ok = await setProblemStatus(user.id, slug, next);
     if (!ok) {
-      setStatus(prev);
+      void myStatuses.setData((current) => applyStatusChange(current ?? {}, slug, prev));
       return;
     }
     if (next === "solved" || next === "attempted") {
@@ -186,7 +208,12 @@ export default function ProblemPage() {
       logProblemEvent({ problemSlug: slug, kind }).catch(() => {});
       if (kind === "revisited") track("revisit_done", { problem_slug: slug, via: "problem" });
       window.dispatchEvent(new CustomEvent("problem-status-changed", { detail: { slug, status: next } }));
-      load();
+      // The logged event lands in the timelines, and a solve clears review rows.
+      void problemTimelineQ.refresh();
+      void slugEventsQ.refresh();
+      void reviewQ.refresh();
+      // The home rail's review count reads the queue too.
+      void invalidate("open-reviews");
     }
   };
 
@@ -225,8 +252,9 @@ export default function ProblemPage() {
       setACode("");
       setExpanded(false);
       setVisibility("private");
-      setApproaches(await getApproachesForProblem(slug).catch(() => []));
-      load();
+      // The new approach joins the shared list (the compare page reads it too)
+      // and logs an "explained" event into the timelines.
+      void invalidate("approaches-for-problem", "slug-events", "problem-timeline");
     } catch (err) {
       setFormError(dataErrorMessage(err, "Couldn't save approach."));
     } finally {
@@ -238,13 +266,12 @@ export default function ProblemPage() {
   if (loadError) {
     return (
       <div className="space-y-3 p-12 text-center" role="alert">
-        <ErrorCard message={loadError} onRetry={load} />
+        <ErrorCard message={loadError} onRetry={handleRetryLoad} />
       </div>
     );
   }
 
   const title = problem?.title ?? slug.split("-").map((w) => w[0]?.toUpperCase() + w.slice(1)).join(" ");
-  const topics = problem?.topics ?? [];
   const solvedBattles = battles.filter((b) => b.outcome === "solved" && b.duration_sec != null);
   const bestSec = solvedBattles.length ? Math.min(...solvedBattles.map((b) => b.duration_sec as number)) : null;
   const prevSec =
@@ -404,7 +431,12 @@ export default function ProblemPage() {
           </a>
           <button
             type="button"
-            onClick={async () => setBookmarked(await toggleBookmark(slug))}
+            onClick={async () => {
+              const next = await toggleBookmark(slug);
+              void bookmarkedQ.setData(() => next);
+              // Bookmarks queue on the home rail; refresh its review list.
+              void invalidate("open-reviews");
+            }}
             title="Bookmark for revision"
             aria-label={bookmarked ? "Bookmarked for revision" : "Bookmark for revision"}
             aria-pressed={bookmarked}
@@ -431,15 +463,15 @@ export default function ProblemPage() {
             copied={proofCopied}
             onStart={startBattle}
             onExplain={openExplain}
-            onChallenge={() => (window.location.href = "/challenges")}
-            onCompare={() => (window.location.href = `/practice/${slug}/compare`)}
+            onChallenge={() => router.push("/challenges")}
+            onCompare={() => router.push(`/practice/${slug}/compare`)}
             onShare={async () => {
               if (await copyText(`${window.location.origin}/practice/${slug}`)) {
                 setProofCopied(true);
                 setTimeout(() => setProofCopied(false), 2000);
               }
             }}
-            onHint={() => (window.location.href = "/stuck")}
+            onHint={() => router.push("/stuck")}
           />
 
           {/* Contextual push prompt: once, after a solve, wired to the bell flow. */}
@@ -510,7 +542,8 @@ export default function ProblemPage() {
                             <button
                               onClick={async () => {
                                 await deleteApproach(a.id);
-                                setApproaches(await getApproachesForProblem(slug).catch(() => []));
+                                // Deleted approaches vanish from every read of this list.
+                                void invalidate("approaches-for-problem");
                               }}
                               className="flex h-11 w-11 items-center justify-center rounded-md text-text-tertiary hover:text-error md:h-9 md:w-9"
                               aria-label="Delete approach"
@@ -573,7 +606,7 @@ export default function ProblemPage() {
                               const v = e.target.value as ApproachVisibility;
                               if (v === "squad" && !profile?.active_squad_id) return;
                               await setApproachVisibility(a.id, v, profile?.active_squad_id ?? null);
-                              setApproaches(await getApproachesForProblem(slug).catch(() => []));
+                              void approachesQ.refresh();
                             }}
                             className="h-11 rounded-md border border-hairline bg-well px-2.5 text-xs text-text-primary md:h-8"
                             title="Sharing is intentional and reversible"

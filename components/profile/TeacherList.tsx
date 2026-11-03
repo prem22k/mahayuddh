@@ -1,12 +1,15 @@
 "use client";
 
 import { profileHref } from "@/lib/profiles/username";
-import { useEffect, useState } from "react";
+import React from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { getTeachersForPattern, type Teacher } from "@/lib/data/profile";
 import { Avatar } from "@/components/ui/Avatar";
 import { dataErrorMessage } from "@/lib/data/errors";
+import { useCachedQuery } from "@/lib/cache/query";
+
+const NO_TEACHERS: Teacher[] = [];
 
 /**
  * "People who teach it" (§22).
@@ -28,34 +31,17 @@ function plural(n: number, one: string, many = `${one}s`): string {
 }
 
 export function TeacherList({ pattern }: { pattern: string }) {
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
+  const teachersQuery = useCachedQuery(
+    pattern ? ["teachers-for-pattern", pattern, 8] : null,
+    () => getTeachersForPattern(pattern, 8)
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    getTeachersForPattern(pattern, 8)
-      .then((rows) => {
-        if (!cancelled) setTeachers(rows);
-      })
-      // A failed read is not "nobody teaches this": say so and offer a retry,
-      // rather than showing the empty state as if it were the answer.
-      .catch((err) => {
-        if (!cancelled) {
-          setTeachers([]);
-          setError(dataErrorMessage(err, "Couldn't load teachers. Retry."));
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [pattern, attempt]);
+  const teachers = teachersQuery.data ?? NO_TEACHERS;
+  const loading = teachersQuery.isLoading;
+  const error =
+    teachersQuery.error && teachersQuery.data === undefined
+      ? dataErrorMessage(teachersQuery.error, "Couldn't load teachers. Retry.")
+      : null;
 
   if (loading) {
     return <p className="text-xs text-text-tertiary">Looking for teachers…</p>;
@@ -67,7 +53,7 @@ export function TeacherList({ pattern }: { pattern: string }) {
         <span>{error}</span>
         <button
           type="button"
-          onClick={() => setAttempt((n) => n + 1)}
+          onClick={() => void teachersQuery.refresh()}
           className="inline-flex min-h-[44px] shrink-0 items-center rounded-md border border-hairline bg-surface-overlay px-3 text-xs font-medium text-text-primary transition-colors hover:bg-surface-raised md:h-8 md:min-h-0"
         >
           Retry

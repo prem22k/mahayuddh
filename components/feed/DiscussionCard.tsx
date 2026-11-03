@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { Reply } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
@@ -10,26 +10,29 @@ import {
   createDiscussionReply,
   getDiscussionReplies,
   type Discussion,
+  type DiscussionReply,
 } from "@/lib/data/feed";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { feedActionCls, timeAgo } from "@/components/feed/FeedEventCard";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
+
+const NO_REPLIES: DiscussionReply[] = [];
 
 export function DiscussionCard({ d }: { d: Discussion }) {
-  const [replies, setReplies] = useState<Awaited<ReturnType<typeof getDiscussionReplies>>>([]);
+  const invalidate = useInvalidate();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setReplies(await getDiscussionReplies(d.id).catch(() => []));
-  }, [d.id]);
-
-  useEffect(() => {
-    if (open) void load();
-  }, [open, load]);
+  const repliesQuery = useCachedQuery(
+    open ? ["discussion-replies", d.id] : null,
+    () => getDiscussionReplies(d.id),
+    { freshForMs: 10_000 }
+  );
+  const replies = repliesQuery.data ?? NO_REPLIES;
 
   const reply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +43,8 @@ export function DiscussionCard({ d }: { d: Discussion }) {
       await createDiscussionReply(d.id, draft.trim());
       track("feed_action", { via: "reply" });
       setDraft("");
-      await load();
+      await repliesQuery.refresh();
+      void invalidate("discussions");
     } catch (err) {
       setError(dataErrorMessage(err, "Couldn't reply."));
     } finally {
@@ -100,14 +104,20 @@ export function DiscussionCard({ d }: { d: Discussion }) {
 
       {open && (
         <div className="space-y-2 border-l border-hairline pl-3 md:ml-12">
-          {replies.map((r) => (
-            <div key={r.id}>
-              <p className="text-xs text-text-tertiary">
-                @{r.author?.username ?? "someone"} · {timeAgo(r.created_at)}
-              </p>
-              <p className="whitespace-pre-wrap text-sm leading-6 text-text-primary">{r.body_md}</p>
-            </div>
-          ))}
+          {repliesQuery.isLoading && replies.length === 0 ? (
+            <p className="text-xs text-text-tertiary">Loading replies…</p>
+          ) : repliesQuery.error && replies.length === 0 ? (
+            <p className="text-xs text-error">Couldn&apos;t load replies.</p>
+          ) : (
+            replies.map((r) => (
+              <div key={r.id}>
+                <p className="text-xs text-text-tertiary">
+                  @{r.author?.username ?? "someone"} · {timeAgo(r.created_at)}
+                </p>
+                <p className="whitespace-pre-wrap text-sm leading-6 text-text-primary">{r.body_md}</p>
+              </div>
+            ))
+          )}
           <form onSubmit={reply} className="flex items-center gap-2 pt-1">
             <input
               value={draft}

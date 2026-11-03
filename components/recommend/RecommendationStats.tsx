@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { getRecommendationStats } from "@/lib/data/recommend";
-import { label, type AcceptRate, type SignalBreakdown } from "@/lib/recommendationLog";
+import { label, type SignalBreakdown } from "@/lib/recommendationLog";
 import { dataErrorMessage } from "@/lib/data/errors";
+import { useCachedQuery } from "@/lib/cache/query";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/States";
 
@@ -19,25 +20,20 @@ import { Skeleton } from "@/components/ui/States";
  * "Prerequisites met — 11 of 12" is more useful to whoever is tuning the
  * weights than a single flattering percentage would be.
  */
+// One fresh [] per render would break every memo downstream.
+const NO_SIGNALS: SignalBreakdown[] = [];
+
 export function RecommendationStats() {
-  const [overall, setOverall] = useState<AcceptRate | null>(null);
-  const [signals, setSignals] = useState<SignalBreakdown[]>([]);
-  const [summary, setSummary] = useState<string>("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // The log the engine's presentations accumulate; a fresh decision changes
+  // it, so refresh often rather than holding it long.
+  const statsQ = useCachedQuery(["recommendation-stats"], () => getRecommendationStats(), {
+    freshForMs: 10_000,
+  });
+  const overall = statsQ.data?.overall ?? null;
+  const signals = statsQ.data?.perSignal ?? NO_SIGNALS;
+  const summary = statsQ.data?.summary ?? "";
 
-  useEffect(() => {
-    getRecommendationStats()
-      .then((s) => {
-        setOverall(s.overall);
-        setSignals(s.perSignal);
-        setSummary(s.summary);
-      })
-      .catch((err) => setError(dataErrorMessage(err, "Couldn't read your history here.")))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
+  if (statsQ.isLoading) {
     return (
       <div className="flex flex-col gap-1.5" aria-label="Loading recommendation log">
         <Skeleton className="h-3 w-3/4 rounded-xs" />
@@ -46,14 +42,17 @@ export function RecommendationStats() {
     );
   }
 
-  if (error) {
+  // An error with cached data stays quiet and keeps the numbers on screen.
+  if (statsQ.error && !statsQ.data) {
     return (
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs leading-5 text-text-secondary">{error}</p>
+        <p className="text-xs leading-5 text-text-secondary">
+          {dataErrorMessage(statsQ.error, "Couldn't read your history here.")}
+        </p>
         <Button
           variant="secondary"
           className="shrink-0 border border-hairline"
-          onClick={() => window.location.reload()}
+          onClick={() => void statsQ.refresh()}
         >
           Retry
         </Button>

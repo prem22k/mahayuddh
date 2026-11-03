@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState, useMemo } from "react";
+import React, { useMemo } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, Flame } from "lucide-react";
@@ -16,10 +16,15 @@ import { recapShareText } from "@/lib/recap";
 import type { ShareArtifact } from "@/lib/share";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { relativeDays } from "@/lib/format";
-import type { MilestoneKind, SquadMilestone } from "@/types/database";
+import type { MilestoneKind, SquadMilestone, SquadRecap, SquadSeason } from "@/types/database";
+import { useCachedQuery } from "@/lib/cache/query";
 
 /** getWall's default cap, so the count can say "50+" honestly. */
 const WALL_LIMIT = 50;
+
+const NO_MILESTONES: SquadMilestone[] = [];
+const NO_RECAPS: SquadRecap[] = [];
+const NO_SEASONS: SquadSeason[] = [];
 
 /**
  * Squad wall (Step 20, Bible §32).
@@ -32,59 +37,51 @@ export default function SquadWallPage() {
   const params = useParams<{ id: string }>();
   const squadId = params.id ?? "";
 
-  const [items, setItems] = useState<SquadMilestone[]>([]);
-  const [squadName, setSquadName] = useState("Squad");
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const wallQuery = useCachedQuery(
+    squadId ? ["wall", squadId, WALL_LIMIT] : null,
+    () => getWall(squadId, WALL_LIMIT)
+  );
+  const recapsQuery = useCachedQuery(
+    squadId ? ["recaps", squadId, 1] : null,
+    () => getRecaps(squadId, 1)
+  );
+  const seasonsQuery = useCachedQuery(
+    squadId ? ["seasons", squadId] : null,
+    () => getSeasons(squadId)
+  );
+
+  const items = wallQuery.data?.milestones ?? NO_MILESTONES;
+  const squadName = wallQuery.data?.name ?? "Squad";
+  const recaps = recapsQuery.data ?? NO_RECAPS;
+  const seasons = seasonsQuery.data ?? NO_SEASONS;
+
   // Wall-share fix (Wave D): /squad/[id]/wall sits behind auth, so sharing its
   // URL hands a logged-out visitor a login wall. The share targets the latest
   // PUBLIC artifact instead — newest recap first, then newest season — both of
   // which render for strangers. When neither exists yet, there is no ShareRow
   // at all rather than a link that dead-ends at auth.
-  const [shareTarget, setShareTarget] = useState<{
+  const shareTarget = useMemo<{
     path: string;
     artifact: ShareArtifact;
     text: string;
-  } | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const { milestones, name } = await getWall(squadId, WALL_LIMIT);
-      setItems(milestones);
-      setSquadName(name);
-      const [recaps, seasons] = await Promise.all([
-        getRecaps(squadId, 1).catch(() => []),
-        getSeasons(squadId).catch(() => []),
-      ]);
-      const latestRecap = recaps[0] ?? null;
-      const latestSeason = seasons[0] ?? null;
-      if (latestRecap) {
-        setShareTarget({
-          path: `/squad/${squadId}/recaps/${latestRecap.id}`,
-          artifact: { kind: "recap", id: latestRecap.id, squadId },
-          text: recapShareText({ squadName: name, body: latestRecap.body_json, url: "" }).trim(),
-        });
-      } else if (latestSeason) {
-        setShareTarget({
-          path: `/squad/${squadId}/seasons/${latestSeason.id}`,
-          artifact: { kind: "season", id: latestSeason.id, squadId },
-          text: `${name} — ${latestSeason.name}${latestSeason.objective ? `: ${latestSeason.objective}` : ""}`,
-        });
-      } else {
-        setShareTarget(null);
-      }
-    } catch (err) {
-      setLoadError(dataErrorMessage(err, "Couldn't load the wall. Retry."));
-    } finally {
-      setLoading(false);
+  } | null>(() => {
+    const latestRecap = recaps[0] ?? null;
+    const latestSeason = seasons[0] ?? null;
+    if (latestRecap) {
+      return {
+        path: `/squad/${squadId}/recaps/${latestRecap.id}`,
+        artifact: { kind: "recap", id: latestRecap.id, squadId },
+        text: recapShareText({ squadName, body: latestRecap.body_json, url: "" }).trim(),
+      };
+    } else if (latestSeason) {
+      return {
+        path: `/squad/${squadId}/seasons/${latestSeason.id}`,
+        artifact: { kind: "season", id: latestSeason.id, squadId },
+        text: `${squadName} — ${latestSeason.name}${latestSeason.objective ? `: ${latestSeason.objective}` : ""}`,
+      };
     }
-  }, [squadId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+    return null;
+  }, [recaps, seasons, squadId, squadName]);
 
   const groups = useMemo(() => {
     const byMonth = new Map<string, SquadMilestone[]>();
@@ -108,10 +105,24 @@ export default function SquadWallPage() {
   const [latest, ...rest] = items;
   void rest;
 
-  if (loading) return <SquadWallSkeleton />;
+  if (wallQuery.isLoading) return <SquadWallSkeleton />;
+
+  const loadError =
+    wallQuery.error && !wallQuery.data
+      ? dataErrorMessage(wallQuery.error, "Couldn't load the wall. Retry.")
+      : null;
 
   if (loadError) {
-    return <ErrorCard message={loadError} onRetry={() => void load()} />;
+    return (
+      <ErrorCard
+        message={loadError}
+        onRetry={() => {
+          void wallQuery.refresh();
+          void recapsQuery.refresh();
+          void seasonsQuery.refresh();
+        }}
+      />
+    );
   }
 
   // getWall caps the query; at the cap there may be more than we can count.

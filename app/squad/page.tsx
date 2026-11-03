@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Plus,
   Copy,
@@ -64,6 +65,14 @@ import {
 import { getRecaps } from "@/lib/data/recap";
 import { RITUALS } from "@/lib/rituals";
 import { Squad, SquadMember, SquadRecap, SquadSeason } from "@/types/database";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
+
+const NO_SQUADS: Squad[] = [];
+const NO_MEMBERS: SquadMember[] = [];
+const NO_GOALS: GoalProgress[] = [];
+const NO_SOLVE_COUNTS: Record<string, number> = {};
+const NO_GRID: Record<string, boolean[]> = {};
+const NO_SEASONS: SquadSeason[] = [];
 
 /** Three-letter months, so September reads "Sep" (en-GB ICU says "Sept"). */
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -96,22 +105,89 @@ function formatWeekRange(startIso: string, endIso: string): string {
 }
 
 export default function SquadPage() {
-  const { user, profile, refreshProfile, loading: authLoading } = useAuth();
-  const [squads, setSquads] = useState<Squad[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(profile?.active_squad_id ?? null);
-  const [members, setMembers] = useState<SquadMember[]>([]);
-  const [goalProgress, setGoalProgress] = useState<GoalProgress[]>([]);
-  const [season, setSeason] = useState<SquadSeason | null>(null);
-  const [seasonMetrics, setSeasonMetrics] = useState<SeasonMetrics | null>(null);
-  const [solveCounts, setSolveCounts] = useState<Record<string, number>>({});
-  const [activeSquad, setActiveSquad] = useState<Squad | null>(null);
-  const [hotChain, setHotChain] = useState<ReturnType<typeof longestActiveChain>>(null);
-  const [streak, setStreak] = useState<SquadStreak | null>(null);
-  const [weekGrid, setWeekGrid] = useState<Record<string, boolean[]>>({});
-  const [latestRecap, setLatestRecap] = useState<SquadRecap | null>(null);
-  const [activityError, setActivityError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const router = useRouter();
+  const { user, profile, refreshProfile } = useAuth();
+  const userId = user?.id ?? null;
+  const invalidate = useInvalidate();
+
+  const [selectedSquadId, setSelectedSquadId] = useState<string | null>(null);
+
+  const mySquadsQuery = useCachedQuery(
+    userId ? ["my-squads"] : null,
+    () => getMySquads(userId as string, profile?.active_squad_id ?? null)
+  );
+  const squads = mySquadsQuery.data?.squads ?? NO_SQUADS;
+
+  const activeId =
+    selectedSquadId && squads.some((s) => s.id === selectedSquadId)
+      ? selectedSquadId
+      : profile?.active_squad_id && squads.some((s) => s.id === profile.active_squad_id)
+        ? profile.active_squad_id
+        : (squads[0]?.id ?? null);
+
+  const squadDetail = useCachedQuery(
+    activeId ? ["squad-detail", activeId] : null,
+    () => getSquadDetail(activeId as string)
+  );
+  const activeSquad = squadDetail.data?.squad ?? null;
+  const members = squadDetail.data?.members ?? NO_MEMBERS;
+  const memberIds = useMemo(() => members.map((m) => m.user_id), [members]);
+  const memberKey = memberIds.join(",");
+
+  const squadActivityQuery = useCachedQuery(
+    activeId && memberIds.length > 0 ? ["squad-activity", activeId, memberKey] : null,
+    async () => {
+      const [streak, weekGrid] = await Promise.all([
+        getSquadStreak(memberIds),
+        getMemberWeekGrid(memberIds, 7),
+      ]);
+      return { streak, weekGrid };
+    },
+    { freshForMs: 10_000 }
+  );
+  const streak = squadActivityQuery.data?.streak ?? null;
+  const weekGrid = squadActivityQuery.data?.weekGrid ?? NO_GRID;
+  const activityError =
+    squadActivityQuery.error && !squadActivityQuery.data
+      ? "Couldn't load squad activity. Try again."
+      : null;
+
+  const seasonsQuery = useCachedQuery(
+    activeId ? ["seasons", activeId] : null,
+    () => getSeasons(activeId as string)
+  );
+  const seasons = seasonsQuery.data ?? NO_SEASONS;
+  const season = useMemo(() => seasons.find((x) => x.status === "active") ?? null, [seasons]);
+
+  const recapsQuery = useCachedQuery(
+    activeId ? ["recaps", activeId, 1] : null,
+    () => getRecaps(activeId as string, 1)
+  );
+  const latestRecap = recapsQuery.data?.[0] ?? null;
+
+  const squadStatsQuery = useCachedQuery(
+    activeId && memberIds.length > 0
+      ? ["squad-stats", activeId, memberKey, season?.id ?? "none"]
+      : null,
+    async () => {
+      const [solveCounts, activeGoals, seasonMetrics, chainRows] = await Promise.all([
+        getSquadSolveCounts(memberIds),
+        getActiveGoals(activeId as string).catch(() => []),
+        season ? computeSeasonMetrics(season, memberIds).catch(() => null) : Promise.resolve(null),
+        getSquadChallengeRows(activeId as string).catch(() => []),
+      ]);
+      const progress = await Promise.all(
+        activeGoals.map((g) => computeGoalProgress(g, members).catch(() => null))
+      );
+      const goalProgress = progress.filter((p): p is GoalProgress => p !== null);
+      const hotChain = longestActiveChain(chainRows);
+      return { solveCounts, goalProgress, seasonMetrics, hotChain };
+    }
+  );
+  const solveCounts = squadStatsQuery.data?.solveCounts ?? NO_SOLVE_COUNTS;
+  const goalProgress = squadStatsQuery.data?.goalProgress ?? NO_GOALS;
+  const seasonMetrics = squadStatsQuery.data?.seasonMetrics ?? null;
+  const hotChain = squadStatsQuery.data?.hotChain ?? null;
 
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
@@ -127,90 +203,8 @@ export default function SquadPage() {
   const [goalDeadline, setGoalDeadline] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-
-  const load = useCallback(async () => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const mine = await getMySquads(user.id, profile?.active_squad_id ?? null);
-      setSquads(mine.squads);
-      const resolvedActive =
-        mine.activeSquadId && mine.squads.some((s) => s.id === mine.activeSquadId)
-          ? mine.activeSquadId
-          : (mine.squads[0]?.id ?? null);
-      setActiveId(resolvedActive);
-      if (resolvedActive) {
-        const detail = await getSquadDetail(resolvedActive);
-        setActiveSquad(detail.squad);
-        setMembers(detail.members);
-        setSolveCounts(await getSquadSolveCounts(detail.members.map((m) => m.user_id)));
-
-        try {
-          const memberIds = detail.members.map((m) => m.user_id);
-          const [st, grid] = await Promise.all([
-            getSquadStreak(memberIds),
-            getMemberWeekGrid(memberIds, 7),
-          ]);
-          setStreak(st);
-          setWeekGrid(grid);
-          setActivityError(null);
-        } catch {
-          setStreak(null);
-          setWeekGrid({});
-          setActivityError("Couldn't load squad activity. Try again.");
-        }
-
-        const activeGoals = await getActiveGoals(resolvedActive);
-        const progress = await Promise.all(
-          activeGoals.map((g) => computeGoalProgress(g, detail.members).catch(() => null))
-        );
-        setGoalProgress(progress.filter((p): p is GoalProgress => p !== null));
-
-        const seasons = await getSeasons(resolvedActive).catch(() => []);
-        const live = seasons.find((x) => x.status === "active") ?? null;
-        setSeason(live);
-        setSeasonMetrics(
-          live
-            ? await computeSeasonMetrics(live, detail.members.map((m) => m.user_id)).catch(() => null)
-            : null
-        );
-        const chainRows = await getSquadChallengeRows(resolvedActive).catch(() => []);
-        setHotChain(longestActiveChain(chainRows));
-        // Only the "Last: 5–11 Oct" caption on the recaps link; never blocks the page.
-        const recaps = await getRecaps(resolvedActive, 1).catch(() => []);
-        setLatestRecap(recaps[0] ?? null);
-      } else {
-        setActiveSquad(null);
-        setMembers([]);
-        setGoalProgress([]);
-        setSeason(null);
-        setSeasonMetrics(null);
-        setSolveCounts({});
-        setHotChain(null);
-        setStreak(null);
-        setWeekGrid({});
-        setActivityError(null);
-        setLatestRecap(null);
-      }
-    } catch (err) {
-      console.error("Error loading squad:", err);
-      setLoadError(dataErrorMessage(err, "Couldn't load your squad. Check your connection and retry."));
-    } finally {
-      setLoading(false);
-    }
-  }, [user, profile?.active_squad_id]);
-
-  useEffect(() => {
-    // Wait for auth: a first pass with no user would flash the empty
-    // "Your squad is waiting" state before the real squad loads.
-    if (authLoading) return;
-    load();
-  }, [load, authLoading]);
 
   const inviteLink = (s: Squad | null) =>
     s && typeof window !== "undefined" ? `${window.location.origin}/squad/join/${s.invite_code}` : "";
@@ -234,9 +228,9 @@ export default function SquadPage() {
       setName("");
       setDescription("");
       setShowCreate(false);
+      setSelectedSquadId(squad.id);
       await refreshProfile();
-      await load();
-      setActiveId(squad.id);
+      await invalidate("my-squads", "squad-detail", "home-squad", "active-squad-members");
     } catch (err) {
       setFormError(dataErrorMessage(err, "Couldn't create squad. Try again."));
     } finally {
@@ -255,8 +249,9 @@ export default function SquadPage() {
       track("squad_joined", { via: "code", squad_id: squad.id });
       setCode("");
       setShowJoin(false);
-      // The join made it the active squad; the new profile re-runs load().
+      setSelectedSquadId(squad.id);
       await refreshProfile();
+      await invalidate("my-squads", "squad-detail", "home-squad", "active-squad-members");
     } catch (err) {
       setFormError(dataErrorMessage(err, "Couldn't join squad. Check the code."));
     } finally {
@@ -267,11 +262,12 @@ export default function SquadPage() {
   const handleSwitch = async (id: string) => {
     try {
       await switchActiveSquad(id);
-      // load() closes over the old profile; the refreshed one re-runs it.
+      setSelectedSquadId(id);
       await refreshProfile();
+      await invalidate("my-squads", "squad-detail", "home-squad", "active-squad-members");
       setShowSwitcher(false);
     } catch (err) {
-      setLoadError(dataErrorMessage(err, "Couldn't switch squad. Try again."));
+      setActionError(dataErrorMessage(err, "Couldn't switch squad. Try again."));
     }
   };
 
@@ -280,10 +276,11 @@ export default function SquadPage() {
     if (!window.confirm("Leave this squad? Your solves and notes stay yours.")) return;
     try {
       await leaveSquad(activeId, user.id);
+      setSelectedSquadId(null);
       await refreshProfile();
-      await load();
+      await invalidate("my-squads", "squad-detail", "home-squad", "active-squad-members");
     } catch (err) {
-      setLoadError(dataErrorMessage(err, "Couldn't leave squad. Try again."));
+      setActionError(dataErrorMessage(err, "Couldn't leave squad. Try again."));
     }
   };
 
@@ -310,7 +307,9 @@ export default function SquadPage() {
       setGoalPattern("");
       setGoalDeadline("");
       setShowGoal(false);
-      await load();
+      await squadDetail.refresh();
+      await squadStatsQuery.refresh();
+      await invalidate("squad-stats", "squad-detail", "home-squad", "wall");
     } catch (err) {
       setFormError(dataErrorMessage(err, "Couldn't create goal. Try again."));
     } finally {
@@ -328,7 +327,24 @@ export default function SquadPage() {
     }));
   }, []);
 
-  if (loading || authLoading) return <SquadSkeleton />;
+  const loading = mySquadsQuery.isLoading || (Boolean(activeId) && squadDetail.isLoading);
+  if (loading) return <SquadSkeleton />;
+
+  const loadError =
+    actionError ||
+    ((mySquadsQuery.error && !mySquadsQuery.data) || (squadDetail.error && !squadDetail.data)
+      ? dataErrorMessage(mySquadsQuery.error || squadDetail.error, "Couldn't load your squad. Check your connection and retry.")
+      : null);
+
+  const handleRetryLoad = () => {
+    setActionError(null);
+    void mySquadsQuery.refresh();
+    void squadDetail.refresh();
+    void squadActivityQuery.refresh();
+    void seasonsQuery.refresh();
+    void recapsQuery.refresh();
+    void squadStatsQuery.refresh();
+  };
 
   const firstGoal = goalProgress[0] ?? null;
   const todayLabel = weekDays[weekDays.length - 1]?.label ?? "";
@@ -447,8 +463,8 @@ export default function SquadPage() {
         </div>
       </div>
 
-      {loadError && <ErrorCard message={loadError} onRetry={load} />}
-      {activityError && <ErrorCard message={activityError} onRetry={load} />}
+      {loadError && <ErrorCard message={loadError} onRetry={handleRetryLoad} />}
+      {activityError && <ErrorCard message={activityError} onRetry={() => void squadActivityQuery.refresh()} />}
 
       {squads.length === 0 ? (
         <div className="rounded-lg border border-hairline bg-surface p-8 text-center md:p-12">
@@ -480,7 +496,7 @@ export default function SquadPage() {
               weekGrid={weekGrid}
               streak={streak}
               activityError={activityError}
-              onSolve={() => (window.location.href = "/home")}
+              onSolve={() => router.push("/home")}
             />
 
             {/* Goal card */}
@@ -537,9 +553,11 @@ export default function SquadPage() {
                                 if (!window.confirm(`Mark "${firstGoal.goal.title}" complete for the whole squad?`)) return;
                                 try {
                                   await completeSquadGoal(firstGoal.goal.id, firstGoal.goal.squad_id);
-                                  await load();
+                                  await squadDetail.refresh();
+                                  await squadStatsQuery.refresh();
+                                  await invalidate("squad-stats", "squad-detail", "home-squad", "wall");
                                 } catch {
-                                  setLoadError("Couldn't mark the goal complete. Try again.");
+                                  setActionError("Couldn't mark the goal complete. Try again.");
                                 }
                               }}
                               className="flex min-h-[44px] w-full items-center rounded-md px-3 text-left text-sm font-medium text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary md:min-h-9"

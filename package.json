@@ -32,7 +32,8 @@
     "test:integration:recommend": "node tests/integration/recommend.mjs",
     "test:ai:provider": "node --experimental-strip-types tests/ai/provider.mjs",
     "test:ai:e2e": "node tests/ai/endToEnd.mjs",
-    "test:integration:battles": "node tests/integration/battles.mjs"
+    "test:integration:battles": "node tests/integration/battles.mjs",
+    "test:cache": "node --no-warnings --test tests/cache/keys.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -43,6 +44,7 @@
     "next": "^16.4.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "swr": "^2.5.1",
     "tailwind-merge": "^3.0.2",
     "web-push": "^3.6.7"
   },

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { Plus, Play, Forward, BellRing } from "lucide-react";
 import { copyText } from "@/lib/clipboard";
@@ -28,6 +28,7 @@ import { ChallengeRow, type RowAction } from "@/components/challenges/ChallengeR
 import type { OverflowItem } from "@/components/practice/OverflowMenu";
 import { Suggestion, Profile, Difficulty } from "@/types/database";
 import { track } from "@/lib/analytics";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
 type TabKey = "all" | "for_you" | "sent" | "done";
 const TABS = ["All", "For you", "Sent", "Done"] as const;
@@ -39,6 +40,11 @@ const TAB_TO_KEY: Record<TabLabel, TabKey> = {
   Done: "done",
 };
 
+// Stable empty values: a fresh [] per render would re-run every memo.
+const NO_SUGGESTIONS: Suggestion[] = [];
+const NO_PROFILES: Profile[] = [];
+const NO_CATALOG_ROWS: Awaited<ReturnType<typeof getCatalogBySlugs>> = [];
+
 /** What the composer opens with: a fresh challenge, a URL prefill, or a pass-on. */
 interface ComposerSeed {
   initialTo?: string;
@@ -48,47 +54,37 @@ interface ComposerSeed {
 }
 
 export default function SuggestionsPage() {
-  const { user, profile, loading: authLoading } = useAuth();
+  const { user, profile } = useAuth();
   const { startSolving } = useSolving();
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [catalog, setCatalog] = useState<Map<string, ProblemMeta>>(new Map());
-  const [loading, setLoading] = useState(true);
-  // Profiles must be in before the composer mounts, or its recipient default is empty.
-  const [profilesReady, setProfilesReady] = useState(false);
+  const invalidate = useInvalidate();
   const [activeTab, setActiveTab] = useState<TabKey>("all");
   const [composer, setComposer] = useState<ComposerSeed | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [remindId, setRemindId] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   // ?to= / ?problem= / ?pass= prefill, applied once the data it may need is loaded.
   const [urlPrefill, setUrlPrefill] = useState<(ComposerSeed & { passId?: string }) | null>(null);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const [suggestionsData, profilesData] = await Promise.all([
-        getSuggestions(),
-        getSquadProfiles(),
-      ]);
-      setSuggestions(suggestionsData);
-      setProfiles(profilesData);
-      setProfilesReady(true);
-    } catch (err) {
-      console.error("Error loading suggestions:", err);
-      setLoadError("Couldn't load challenges. Check your connection and retry.");
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id]);
+  // Every read below goes through the client cache (lib/cache/query.tsx): a
+  // revisit renders from cache at once and refreshes in the background; the
+  // skeleton only shows on the very first load.
+  const suggestionsQuery = useCachedQuery(["suggestions"], getSuggestions, { freshForMs: 10_000 });
+  const suggestions = suggestionsQuery.data ?? NO_SUGGESTIONS;
 
-  // One load once auth resolves: a pass with no user would render the inbox
-  // without "for you" rows, then reload and swap them in.
-  useEffect(() => {
-    if (authLoading) return;
-    loadData();
-  }, [loadData, authLoading]);
+  const profilesQuery = useCachedQuery(["squad-profiles"], () => getSquadProfiles());
+  const profiles = profilesQuery.data ?? NO_PROFILES;
+  // Profiles must be in before the composer mounts, or its recipient default is empty.
+  const profilesReady = profilesQuery.data !== undefined;
+
+  const loading = suggestionsQuery.isLoading;
+  const loadError =
+    (suggestionsQuery.error && suggestionsQuery.data === undefined) ||
+    (profilesQuery.error && profilesQuery.data === undefined)
+      ? "Couldn't load challenges. Check your connection and retry."
+      : null;
+  const handleRetry = () => {
+    void suggestionsQuery.refresh();
+    void profilesQuery.refresh();
+  };
 
   // Honor ?to=<user_id> (leaderboard), ?problem=&title=&difficulty=&time=
   // (post-solve "Challenge someone" on Today's Battle) and ?pass=<id> (the
@@ -122,33 +118,35 @@ export default function SuggestionsPage() {
   // Apply the prefill once the load that may supply its parent has finished,
   // then clear it so a later reload does not reopen a closed composer.
   useEffect(() => {
-    if (!urlPrefill || loading || !profilesReady || !user?.id) return;
+    if (!urlPrefill || loading || !profilesReady || suggestionsQuery.data === undefined || !user?.id) return;
     const prefill = urlPrefill;
     const parent = prefill.passId ? suggestions.find((s) => s.id === prefill.passId) : undefined;
     setComposer(parent ? { passParent: parent } : prefill);
     setUrlPrefill(null);
-  }, [urlPrefill, loading, profilesReady, user?.id, suggestions]);
+  }, [urlPrefill, loading, profilesReady, suggestionsQuery.data, user?.id, suggestions]);
 
   // No. and pattern for every listed problem, one batched catalog read.
   // Decoration only: a failed lookup leaves them off.
-  const slugKey = Array.from(new Set(suggestions.map((s) => s.problem_slug))).sort().join(",");
-  useEffect(() => {
-    if (!slugKey) return;
-    let live = true;
-    getCatalogBySlugs(slugKey.split(","))
-      .then((rows) => {
-        if (!live) return;
-        setCatalog(
-          new Map(
-            rows.map((r) => [r.title_slug, { number: String(r.question_id), pattern: r.topics?.[0] ?? null }])
-          )
-        );
-      })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [slugKey]);
+  const slugKey = useMemo(
+    () => Array.from(new Set(suggestions.map((s) => s.problem_slug))).sort().join(","),
+    [suggestions]
+  );
+  const catalogQuery = useCachedQuery(
+    slugKey ? ["catalog-by-slugs", slugKey] : null,
+    () => getCatalogBySlugs(slugKey.split(",")),
+    { freshForMs: 10 * 60_000 }
+  );
+  const catalogRows = catalogQuery.data ?? NO_CATALOG_ROWS;
+  const catalog = useMemo(
+    () =>
+      new Map<string, ProblemMeta>(
+        catalogRows.map(
+          (r) =>
+            [r.title_slug, { number: String(r.question_id), pattern: r.topics?.[0] ?? null }] as const
+        )
+      ),
+    [catalogRows]
+  );
 
   const openComposer = (seed: ComposerSeed = {}) => setComposer(seed);
 
@@ -156,7 +154,11 @@ export default function SuggestionsPage() {
     // Persist the accept so the sender sees it in progress and the battle can be
     // attached to the challenge (plan Step 10).
     try {
-      await acceptSuggestion(item.id, user?.id ?? "");
+      const res = await acceptSuggestion(item.id, user?.id ?? "");
+      if (res.ok) {
+        void suggestionsQuery.refresh();
+        void invalidate("challenges-for-slug");
+      }
     } catch {
       // Not fatal: the battle still starts, accept state retries on next attempt.
     }
@@ -181,7 +183,7 @@ export default function SuggestionsPage() {
         setActionNotice("Reminder sent.");
       }
       // Server stamped reminded_at, so reload to reflect the throttle state.
-      await loadData();
+      await suggestionsQuery.refresh();
     } catch {
       setActionNotice("Couldn't send that reminder. Try again.");
     } finally {
@@ -192,7 +194,10 @@ export default function SuggestionsPage() {
   const handleDecline = async (item: Suggestion) => {
     try {
       const ok = await dismissSuggestion(item.id);
-      if (ok) setSuggestions((prev) => prev.filter((s) => s.id !== item.id));
+      if (ok) {
+        await suggestionsQuery.setData((current) => (current ?? []).filter((s) => s.id !== item.id));
+        void invalidate("incoming-suggestion-count", "first-incoming-challenge", "challenges-for-slug");
+      }
     } catch {
       setActionNotice("Couldn't dismiss that challenge. Try again.");
     }
@@ -223,8 +228,19 @@ export default function SuggestionsPage() {
         difficulty: item.difficulty,
         objectId: item.id,
       }).catch(() => {});
-      setSuggestions((prev) =>
-        prev.map((s) => (s.id === item.id ? { ...s, status: "completed", completed_at: new Date().toISOString() } : s))
+      await suggestionsQuery.setData((current) =>
+        (current ?? []).map((s) =>
+          s.id === item.id ? { ...s, status: "completed", completed_at: new Date().toISOString() } : s
+        )
+      );
+      void invalidate(
+        "incoming-suggestion-count",
+        "first-incoming-challenge",
+        "challenges-for-slug",
+        "ranked-feed",
+        "home-squad",
+        "slug-events",
+        "problem-timeline"
       );
       try {
         const confetti = (await import("canvas-confetti")).default;
@@ -325,7 +341,7 @@ export default function SuggestionsPage() {
         </Button>
       </div>
 
-      {loadError && <ErrorCard message={loadError} onRetry={() => void loadData()} />}
+      {loadError && <ErrorCard message={loadError} onRetry={handleRetry} />}
 
       {openForYou ? (
         <ChallengePass
@@ -454,7 +470,10 @@ export default function SuggestionsPage() {
           initialBeatSec={composer.initialBeatSec}
           passParent={composer.passParent}
           onClose={() => setComposer(null)}
-          onSent={(s) => setSuggestions((prev) => [s, ...prev])}
+          onSent={(s) => {
+            void suggestionsQuery.setData((current) => [s, ...(current ?? [])]);
+            void invalidate("challenges-for-slug", "ranked-feed", "home-squad");
+          }}
         />
       )}
     </div>

@@ -1,18 +1,19 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import Link from "next/link";
 import { ArrowRight, Check, ChevronRight, Clock } from "lucide-react";
 import { listPrimers, primerReadMinutes } from "@/lib/data/primers";
-import { getUserStatusesBySlugs } from "@/lib/data/sheets";
+import { getUserStatusesBySlugs, toStatusMap } from "@/lib/data/sheets";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { Button } from "@/components/ui/Button";
 import { PatternChip } from "@/components/ui/Badge";
 import { EmptyState, ErrorCard } from "@/components/ui/States";
 import { PrimerListSkeleton } from "@/components/skeletons/PrimersSkeleton";
-import { Primer } from "@/types/database";
+import { Primer, TriState } from "@/types/database";
 import { cn } from "@/lib/utils";
+import { useCachedQuery } from "@/lib/cache/query";
 
 function primerHref(slug: string) {
   return `/primers/${slug}`;
@@ -63,53 +64,38 @@ function StarterProgress({ solved, total }: { solved: number | null; total: numb
   );
 }
 
+const NO_PRIMERS: Primer[] = [];
+const NO_STATUSES: Record<string, TriState> = {};
+
 export function PrimerList() {
-  const [primers, setPrimers] = useState<Primer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  // Starter progress from the reader's own statuses — null when logged out or
-  // unreadable, in which case no progress renders (never a confident zero).
-  const [solvedSlugs, setSolvedSlugs] = useState<Set<string> | null>(null);
   const { user } = useAuth();
+  const userId = user?.id ?? null;
 
-  useEffect(() => {
-    listPrimers()
-      .then(setPrimers)
-      .catch((err) => setLoadError(dataErrorMessage(err, "Couldn't load primers.")))
-      .finally(() => setLoading(false));
-  }, []);
+  const primersQ = useCachedQuery(["list-primers"], listPrimers, {
+    freshForMs: 10 * 60_000,
+  });
 
-  useEffect(() => {
-    if (!user) {
-      setSolvedSlugs(null);
-      return;
-    }
-    let cancelled = false;
-    getUserStatusesBySlugs(user.id)
-      .then((rows) => {
-        if (cancelled) return;
-        setSolvedSlugs(
-          new Set(
-            rows.filter((r) => r.status === "solved").map((r) => r.problem_slug.toLowerCase())
-          )
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setSolvedSlugs(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
+  const myStatuses = useCachedQuery(
+    userId ? ["my-statuses"] : null,
+    async () => toStatusMap(await getUserStatusesBySlugs(userId as string))
+  );
+
+  const primers = primersQ.data ?? NO_PRIMERS;
+  const statusMap = myStatuses.data ?? NO_STATUSES;
 
   const solvedCount = (p: Primer): number | null => {
-    if (!solvedSlugs) return null;
-    return p.starter_slugs.filter((s) => solvedSlugs.has(s.toLowerCase())).length;
+    if (!userId || !myStatuses.data) return null;
+    return p.starter_slugs.filter((s) => statusMap[s.toLowerCase()] === "solved").length;
   };
 
-  if (loading) return <PrimerListSkeleton />;
-  if (loadError) {
-    return <ErrorCard message={loadError} onRetry={() => window.location.reload()} />;
+  if (primersQ.isLoading) return <PrimerListSkeleton />;
+  if (primersQ.error && !primersQ.data) {
+    return (
+      <ErrorCard
+        message={dataErrorMessage(primersQ.error, "Couldn't load primers.")}
+        onRetry={() => void primersQ.refresh()}
+      />
+    );
   }
   if (primers.length === 0) {
     return (

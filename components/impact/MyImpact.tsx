@@ -1,12 +1,16 @@
 "use client";
 
 import { profileHref } from "@/lib/profiles/username";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import Link from "next/link";
 import { getMyContentImpact, getForkChain, type ImpactRow, type ForkLink } from "@/lib/data/impact";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
 import { ErrorCard, Skeleton } from "@/components/ui/States";
+import { useCachedQuery } from "@/lib/cache/query";
+
+const NO_ROWS: ImpactRow[] = [];
+const NO_CHAIN: ForkLink[] = [];
 
 /**
  * Loop C author panel (Step 26, Bible §47, §56 Loop C).
@@ -28,37 +32,30 @@ import { ErrorCard, Skeleton } from "@/components/ui/States";
  * neutral text rather than emerald.
  */
 export function MyImpact() {
-  const [rows, setRows] = useState<ImpactRow[]>([]);
-  const [chain, setChain] = useState<ForkLink[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const impactQuery = useCachedQuery(["my-content-impact"], getMyContentImpact);
+  const chainQuery = useCachedQuery(["fork-chain"], () => getForkChain().catch(() => NO_CHAIN));
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      // The panel itself must load; a silent [] would read as "nothing of
-      // yours was copied". The chain is secondary and may degrade to empty.
-      const [impact, links] = await Promise.all([
-        getMyContentImpact(),
-        getForkChain().catch(() => [] as ForkLink[]),
-      ]);
-      setRows(impact);
-      setChain(links);
-      // Loop C only works if authors look at it; whether they do is the signal.
-      if (impact.length > 0) {
-        track("impact_panel_opened", { objects: impact.length, links: links.length });
-      }
-    } catch (err) {
-      setLoadError(dataErrorMessage(err, "Couldn't load your impact. Retry."));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const rows = impactQuery.data ?? NO_ROWS;
+  const chain = chainQuery.data ?? NO_CHAIN;
+  const loading = impactQuery.isLoading;
+  const loadError =
+    impactQuery.error && impactQuery.data === undefined
+      ? dataErrorMessage(impactQuery.error, "Couldn't load your impact. Retry.")
+      : null;
+
+  const handleRetry = () => {
+    void impactQuery.refresh();
+    void chainQuery.refresh();
+  };
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (impactQuery.data && impactQuery.data.length > 0) {
+      track("impact_panel_opened", {
+        objects: impactQuery.data.length,
+        links: chainQuery.data?.length ?? 0,
+      });
+    }
+  }, [impactQuery.data, chainQuery.data]);
 
   if (loading) {
     return (
@@ -70,7 +67,7 @@ export function MyImpact() {
   }
 
   if (loadError) {
-    return <ErrorCard message={loadError} onRetry={() => void load()} />;
+    return <ErrorCard message={loadError} onRetry={handleRetry} />;
   }
 
   if (rows.length === 0) {

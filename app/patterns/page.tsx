@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -14,58 +14,57 @@ import {
 } from "@/lib/data/problems";
 import { getUserStatusesBySlugs } from "@/lib/data/sheets";
 import { SplitBar } from "@/components/matrix/SplitBar";
+import { useCachedQuery } from "@/lib/cache/query";
+import { TriState } from "@/types/database";
+
+const NO_TOPICS: CatalogTopicSummary[] = [];
 
 // Patterns index: every topic in the catalog with the caller's solved counts
 // and a link to each hub. Solved counts come from the caller's own
 // user_problem_status rows — logged-out readers see totals only, never zeros
 // dressed as progress.
 export default function PatternsPage() {
-  const { user, loading: authLoading } = useAuth();
-  const [topics, setTopics] = useState<CatalogTopicSummary[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
 
-  useEffect(() => {
-    // Wait for auth so the index renders once, with progress, instead of
-    // totals first and then a second pass with the caller's solves.
-    if (authLoading) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        let statusMap = undefined;
-        if (user) {
-          try {
-            const rows = await getUserStatusesBySlugs(user.id);
-            // Lowercase keys: catalog slugs are lowercase, stored statuses
-            // may not be, and a case mismatch must not silently drop solves.
-            const map: Record<string, "solved" | "attempted" | "unsolved"> = {};
-            for (const r of rows) map[r.problem_slug.toLowerCase()] = r.status;
-            statusMap = map;
-          } catch {
-            // Statuses unreadable: fall through to totals-only rather than
-            // failing the whole index.
-            statusMap = undefined;
-          }
+  const topicsQuery = useCachedQuery(
+    ["catalog-topics-summary"],
+    async () => {
+      let statusMap: Record<string, TriState> | undefined = undefined;
+      if (userId) {
+        try {
+          const rows = await getUserStatusesBySlugs(userId);
+          // Lowercase keys: catalog slugs are lowercase, stored statuses
+          // may not be, and a case mismatch must not silently drop solves.
+          const map: Record<string, TriState> = {};
+          for (const r of rows) map[r.problem_slug.toLowerCase()] = r.status;
+          statusMap = map;
+        } catch {
+          // Statuses unreadable: fall through to totals-only rather than
+          // failing the whole index.
+          statusMap = undefined;
         }
-        const summary = await getCatalogTopicsSummary(statusMap);
-        if (!cancelled) setTopics(summary);
-      } catch (err) {
-        if (!cancelled) setLoadError(dataErrorMessage(err, "Couldn't load patterns."));
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+      return getCatalogTopicsSummary(statusMap);
+    },
+    { freshForMs: 10 * 60_000 }
+  );
+
+  const topics = topicsQuery.data ?? NO_TOPICS;
+  const loadError =
+    topicsQuery.error && !topicsQuery.data
+      ? dataErrorMessage(topicsQuery.error, "Couldn't load patterns.")
+      : null;
 
   if (loadError) {
     return (
       <div className="max-w-2xl">
-        <ErrorCard message={loadError} onRetry={() => window.location.reload()} />
+        <ErrorCard message={loadError} onRetry={() => void topicsQuery.refresh()} />
       </div>
     );
   }
 
-  if (topics === null) return <PatternsIndexSkeleton />;
+  if (topicsQuery.isLoading) return <PatternsIndexSkeleton />;
 
   if (topics.length === 0) {
     return (

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeftRight,
   ExternalLink,
@@ -27,9 +28,8 @@ import {
   type IncomingChallenge,
   type OwnFailedAttempt,
 } from "@/lib/data/squadActivity";
-import { getAllLists, getAllProblems, getUserStatusesBySlugs, toStatusMap } from "@/lib/data/sheets";
-import { getPendingSuggestionCount, getIncomingSuggestionCount } from "@/lib/data/suggestions";
-import { getCatalogTopicsSummary, getCatalogCount } from "@/lib/data/problems";
+import { getAllProblems, getUserStatusesBySlugs, toStatusMap } from "@/lib/data/sheets";
+import { getIncomingSuggestionCount } from "@/lib/data/suggestions";
 import { getActiveGoalPattern, getSquadMemberIds, getSlugSquadActivity } from "@/lib/data/squads";
 import { getRecentFeed } from "@/lib/data/feed";
 import { getOpenReviews } from "@/lib/data/review";
@@ -68,7 +68,8 @@ import {
   SyncRow,
 } from "@/components/arena/WaitingOnYou";
 import { parseProblemStatusEvent, applyStatusChange } from "@/lib/problemStatusEvent";
-import { CustomList, ListProblem, TriState, FeedEvent } from "@/types/database";
+import { ListProblem, TriState, FeedEvent } from "@/types/database";
+import { useCachedQuery } from "@/lib/cache/query";
 
 function fmtClock(totalSec: number): string {
   const m = Math.floor(totalSec / 60);
@@ -103,146 +104,97 @@ function solvedTodayIn(grid: Record<string, boolean[]>, id: string): boolean {
   return row && row.length > 0 ? row[row.length - 1] === true : false;
 }
 
+// Stable empty values: a fresh [] or {} per render would re-run every memo.
+const NO_PROBLEMS: ListProblem[] = [];
+const NO_STATUSES: Record<string, TriState> = {};
+const NO_STRINGS: string[] = [];
+const NO_FEED: FeedEvent[] = [];
+const NO_HISTORY = new Map<string, ProblemHistory>();
+const NO_MEMBERS: SquadActivityMember[] = [];
+const NO_TIMES: Record<string, TodaySlugTime> = {};
+const NO_IDS = new Set<string>();
+const NO_GRID: Record<string, boolean[]> = {};
+
 export default function ArenaPage() {
+  const router = useRouter();
   const { profile, user, refreshProfile, loading: authLoading } = useAuth();
   const { activeProblem, startSolving } = useSolving();
   const { seconds } = useSolvingTimer();
   void refreshProfile;
-  const [squadMembers, setSquadMembers] = useState<SquadActivityMember[]>([]);
-  const [todayTimes, setTodayTimes] = useState<Record<string, TodaySlugTime>>({});
-  const [solvedTodayIds, setSolvedTodayIds] = useState<Set<string>>(new Set());
-  const [squadStreak, setSquadStreak] = useState<SquadStreak | null>(null);
-  const [weekGrid, setWeekGrid] = useState<Record<string, boolean[]>>({});
-  const [failedAttempt, setFailedAttempt] = useState<OwnFailedAttempt | null>(null);
-  const [incomingChallenge, setIncomingChallenge] = useState<IncomingChallenge | null>(null);
-  const [incomingLoaded, setIncomingLoaded] = useState(false);
-  const [squadName, setSquadName] = useState<string | null>(null);
-  const [activityError, setActivityError] = useState<string | null>(null);
-  const [activityRefreshKey, setActivityRefreshKey] = useState(0);
-  const [lists, setLists] = useState<CustomList[]>([]);
-  const [problems, setProblems] = useState<ListProblem[]>([]);
-  const [suggestionsCount, setSuggestionsCount] = useState(0);
-  const [incomingCount, setIncomingCount] = useState(0);
-  void lists;
-  void suggestionsCount;
-  const [catalogCount, setCatalogCount] = useState(0);
-  void catalogCount;
-  const [loading, setLoading] = useState(true);
+  const userId = user?.id ?? null;
+  const squadId = profile?.active_squad_id ?? null;
 
-  const [topics, setTopics] = useState<{ topic: string; count: number; solved: number; attempted: number }[]>([]);
-  void topics;
-  const [statusMap, setStatusMap] = useState<Record<string, TriState>>({});
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [goalPattern, setGoalPattern] = useState<string | null>(null);
-  const [squadMemberIds, setSquadMemberIds] = useState<string[]>([]);
-  const [refreshKey, setRefreshKey] = useState(0);
+  // Every read below goes through the client cache (lib/cache/query.tsx): a
+  // revisit renders from cache at once and refreshes in the background; the
+  // skeleton only shows on the very first load.
 
-  // Arena-specific projections (all derived, never invented).
-  const [history, setHistory] = useState<Map<string, ProblemHistory> | null>(null);
-  const [activity, setActivity] = useState<{ attempted: number; total: number } | null>(null);
-  const [feed, setFeed] = useState<FeedEvent[]>([]);
-  const [reviewReasons, setReviewReasons] = useState<string[]>([]);
-  const [goal, setGoal] = useState<GoalProgress | null>(null);
-  const [lastSolveSec, setLastSolveSec] = useState<number | null>(null);
-
-  useEffect(() => {
-    // Wait for auth: a first pass with no user would pick from anonymous data
-    // and then visibly swap the pick once the session resolves.
-    if (authLoading) return;
-    async function loadArenaData() {
-      try {
-        const [listsData, problemsData, pendingCount, userStatuses, totalCatalog] =
-          await Promise.all([
-            getAllLists(),
-            getAllProblems(),
-            getPendingSuggestionCount(),
-            user ? getUserStatusesBySlugs(user.id) : Promise.resolve([]),
-            getCatalogCount(),
-          ]);
-        setLists(listsData);
-        setProblems(problemsData);
-        setSuggestionsCount(pendingCount);
-        setCatalogCount(totalCatalog);
-        const userMap = toStatusMap(userStatuses);
-        setStatusMap(userMap);
-        setLoadError(null);
-        setTopics(await getCatalogTopicsSummary(userMap));
-        if (user) {
-          getIncomingSuggestionCount(user.id).then(setIncomingCount).catch(() => setIncomingCount(0));
-          getOpenReviews()
-            .then((r) => setReviewReasons(r.map((x) => x.reason)))
-            .catch(() => setReviewReasons([]));
-        }
-        if (profile?.active_squad_id) {
-          getActiveGoalPattern(profile.active_squad_id)
-            .then(setGoalPattern)
-            .catch(() => setGoalPattern(null));
-          getSquadMemberIds(profile.active_squad_id)
-            .then(setSquadMemberIds)
-            .catch(() => setSquadMemberIds([]));
-          getRecentFeed({ squadId: profile.active_squad_id, limit: 3 })
-            .then(setFeed)
-            .catch(() => setFeed([]));
-          getActiveGoals(profile.active_squad_id)
-            .then(async (goals) => {
-              if (goals.length === 0) {
-                setGoal(null);
-                return;
-              }
-              try {
-                const { getSquadDetail } = await import("@/lib/data/squads");
-                const detail = await getSquadDetail(profile.active_squad_id as string);
-                const p = await computeGoalProgress(goals[0], detail.members).catch(() => null);
-                setGoal(p);
-              } catch {
-                setGoal(null);
-              }
-            })
-            .catch(() => setGoal(null));
-        } else {
-          setGoalPattern(null);
-          setSquadMemberIds([]);
-          setFeed([]);
-          setGoal(null);
-        }
-      } catch (err) {
-        console.error("Error loading Arena data:", err);
-        setLoadError("Couldn't load today's battle. Try again.");
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadArenaData();
-  }, [user, refreshKey, profile?.active_squad_id, authLoading]);
-
+  // The catalog is shared with every page that lists problems.
+  const allProblems = useCachedQuery(["all-problems"], getAllProblems, { freshForMs: 10 * 60_000 });
+  const myStatuses = useCachedQuery(userId ? ["my-statuses"] : null, async () =>
+    toStatusMap(await getUserStatusesBySlugs(userId as string))
+  );
+  const problems = allProblems.data ?? NO_PROBLEMS;
+  const statusMap = myStatuses.data ?? NO_STATUSES;
+  const loading = allProblems.isLoading || myStatuses.isLoading;
+  const loadError =
+    allProblems.error || myStatuses.error ? "Couldn't load today's battle. Try again." : null;
   const handleRetryLoad = () => {
-    setLoadError(null);
-    setLoading(true);
-    setRefreshKey((k) => k + 1);
+    void allProblems.refresh();
+    void myStatuses.refresh();
   };
 
+  const incomingCount =
+    useCachedQuery(userId ? ["incoming-suggestion-count"] : null, () =>
+      getIncomingSuggestionCount(userId as string)
+    ).data ?? 0;
+  const reviewReasons =
+    useCachedQuery(userId ? ["open-reviews"] : null, async () =>
+      (await getOpenReviews()).map((x) => x.reason)
+    ).data ?? NO_STRINGS;
+
+  const squadInfo = useCachedQuery(squadId ? ["home-squad", squadId] : null, async () => {
+    const sid = squadId as string;
+    const [goalPattern, memberIds, feed, goals] = await Promise.all([
+      getActiveGoalPattern(sid).catch(() => null),
+      getSquadMemberIds(sid).catch(() => NO_STRINGS),
+      getRecentFeed({ squadId: sid, limit: 3 }).catch(() => NO_FEED),
+      getActiveGoals(sid).catch(() => [] as Awaited<ReturnType<typeof getActiveGoals>>),
+    ]);
+    let goal: GoalProgress | null = null;
+    if (goals.length > 0) {
+      try {
+        const { getSquadDetail } = await import("@/lib/data/squads");
+        const detail = await getSquadDetail(sid);
+        goal = await computeGoalProgress(goals[0], detail.members).catch(() => null);
+      } catch {
+        goal = null;
+      }
+    }
+    return { goalPattern, memberIds, feed, goal };
+  });
+  const goalPattern = squadInfo.data?.goalPattern ?? null;
+  const squadMemberIds = squadInfo.data?.memberIds ?? NO_STRINGS;
+  const feed = squadInfo.data?.feed ?? NO_FEED;
+  const goal = squadInfo.data?.goal ?? null;
+
+  // A solve anywhere in the app updates the cached statuses in place.
+  const setMyStatuses = myStatuses.setData;
   useEffect(() => {
     const handleStatusChange = (e: Event) => {
       const parsed = parseProblemStatusEvent(e);
       if (!parsed) return;
-      const next = applyStatusChange(statusMap, parsed.slug, parsed.status);
-      setStatusMap(next);
-      getCatalogTopicsSummary(next).then(setTopics).catch(() => {});
+      void setMyStatuses((current) => applyStatusChange(current ?? {}, parsed.slug, parsed.status));
     };
     window.addEventListener("problem-status-changed", handleStatusChange);
     return () => window.removeEventListener("problem-status-changed", handleStatusChange);
-  }, [statusMap]);
+  }, [setMyStatuses]);
 
   // Daily pick history (failure-rate signals need events, not just status).
-  useEffect(() => {
-    if (!user) {
-      setHistory(new Map());
-      return;
-    }
-    getProblemHistory(problems.map((p) => p.title_slug))
-      .then(setHistory)
-      .catch(() => setHistory(new Map()));
-  }, [user, problems]);
+  const historyQuery = useCachedQuery(
+    userId && problems.length > 0 ? ["problem-history", problems.length] : null,
+    () => getProblemHistory(problems.map((p) => p.title_slug))
+  );
+  const history = !userId ? NO_HISTORY : (historyQuery.data ?? null);
 
   const computed = useMemo(
     () =>
@@ -259,63 +211,42 @@ export default function ArenaPage() {
     [problems, statusMap, user, goalPattern, history]
   );
 
-  useEffect(() => {
-    const slug = computed?.problem.title_slug;
-    if (!slug || squadMemberIds.length === 0) {
-      setActivity(null);
-      return;
-    }
-    getSlugSquadActivity(slug, squadMemberIds)
-      .then(setActivity)
-      .catch(() => setActivity(null));
-  }, [computed?.problem.title_slug, squadMemberIds]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const squadId = profile?.active_squad_id ?? null;
   const memberKey = squadMemberIds.join(",");
+  const activity =
+    useCachedQuery(
+      computed && squadMemberIds.length > 0
+        ? ["slug-squad-activity", computed.problem.title_slug, memberKey]
+        : null,
+      () => getSlugSquadActivity(computed?.problem.title_slug as string, squadMemberIds)
+    ).data ?? null;
 
   // Squad activity from problem_events: fastest times, solves, streak, grid.
-  useEffect(() => {
-    // No pick (the problem list failed or is empty): the rail still needs the
-    // squad, streak and grid, so only the pick-specific reads are skipped.
-    const slug = computed?.problem.title_slug?.toLowerCase() ?? null;
-    if (!squadId || squadMemberIds.length === 0) {
-      setSquadMembers([]);
-      setSquadName(null);
-      setTodayTimes({});
-      setSolvedTodayIds(new Set());
-      setSquadStreak(null);
-      setWeekGrid({});
-      setActivityError(null);
-      return;
+  // No pick (the problem list failed or is empty): the rail still needs the
+  // squad, streak and grid, so only the pick-specific reads are skipped.
+  const activitySlug = computed?.problem.title_slug?.toLowerCase() ?? null;
+  const squadActivity = useCachedQuery(
+    squadId && squadMemberIds.length > 0 ? ["home-squad-activity", squadId, activitySlug, memberKey] : null,
+    async () => {
+      const sid = squadId as string;
+      const [members, name, times, solved, streak, grid] = await Promise.all([
+        getSquadMembers(sid),
+        getSquadName(sid).catch(() => null),
+        activitySlug ? getTodaySlugTimes(activitySlug, squadMemberIds) : Promise.resolve({} as Record<string, TodaySlugTime>),
+        activitySlug ? getSolvedToday(activitySlug, squadMemberIds) : Promise.resolve(new Set<string>()),
+        getSquadStreak(squadMemberIds),
+        getMemberWeekGrid(squadMemberIds, 7),
+      ]);
+      return { members, name, times, solved, streak, grid };
     }
-    let cancelled = false;
-    Promise.all([
-      getSquadMembers(squadId),
-      getSquadName(squadId).catch(() => null),
-      slug ? getTodaySlugTimes(slug, squadMemberIds) : Promise.resolve({} as Record<string, TodaySlugTime>),
-      slug ? getSolvedToday(slug, squadMemberIds) : Promise.resolve(new Set<string>()),
-      getSquadStreak(squadMemberIds),
-      getMemberWeekGrid(squadMemberIds, 7),
-    ])
-      .then(([members, name, times, solved, streak, grid]) => {
-        if (cancelled) return;
-        setSquadMembers(members);
-        setSquadName(name);
-        setTodayTimes(times);
-        setSolvedTodayIds(solved);
-        setSquadStreak(streak);
-        setWeekGrid(grid);
-        setActivityError(null);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setActivityError("Couldn't load squad activity. Try again.");
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [squadId, computed?.problem.title_slug, memberKey, activityRefreshKey]);
+  );
+  const squadMembers = squadActivity.data?.members ?? NO_MEMBERS;
+  const squadName = squadActivity.data?.name ?? null;
+  const todayTimes = squadActivity.data?.times ?? NO_TIMES;
+  const solvedTodayIds = squadActivity.data?.solved ?? NO_IDS;
+  const squadStreak = squadActivity.data?.streak ?? null;
+  const weekGrid = squadActivity.data?.grid ?? NO_GRID;
+  const activityError = squadActivity.error ? "Couldn't load squad activity. Try again." : null;
+  const retryActivity = squadActivity.refresh;
 
   // Up next (Wave D first-run): the easiest unsolved starter, never today's
   // pick and never a Hard wall for a new user. Falls back to the easiest
@@ -355,45 +286,16 @@ export default function ArenaPage() {
   const upNextNo = upNext ? `No. ${upNext.order_index}` : "No. 1";
 
   // Caller's most recent failed attempt on the up-next problem (revenge line).
-  useEffect(() => {
-    if (!user) {
-      setFailedAttempt(null);
-      return;
-    }
-    let cancelled = false;
-    getOwnFailedAttempt(upNextSlug)
-      .then((r) => {
-        if (!cancelled) setFailedAttempt(r);
-      })
-      .catch(() => {
-        if (!cancelled) setFailedAttempt(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id, upNextSlug]);
+  const failedAttempt =
+    useCachedQuery(userId ? ["own-failed-attempt", upNextSlug] : null, () => getOwnFailedAttempt(upNextSlug))
+      .data ?? null;
 
   // Oldest open challenge addressed to the caller.
-  useEffect(() => {
-    if (!user) {
-      setIncomingChallenge(null);
-      setIncomingLoaded(false);
-      return;
-    }
-    let cancelled = false;
-    getFirstIncomingChallenge(user.id)
-      .then((c) => {
-        if (cancelled) return;
-        setIncomingChallenge(c);
-        setIncomingLoaded(true);
-      })
-      .catch(() => {
-        if (!cancelled) setIncomingLoaded(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id]);
+  const incoming = useCachedQuery(userId ? ["first-incoming-challenge"] : null, () =>
+    getFirstIncomingChallenge(userId as string)
+  );
+  const incomingChallenge = incoming.data ?? null;
+  const incomingLoaded = userId != null && (incoming.data !== undefined || incoming.error != null);
 
   useEffect(() => {
     if (computed && user?.id) {
@@ -413,20 +315,14 @@ export default function ArenaPage() {
 
   const solvedToday = pickSlug ? statusMap[pickSlug] === "solved" : false;
 
-  useEffect(() => {
-    if (!solvedToday || !pickSlug) {
-      setLastSolveSec(null);
-      return;
-    }
-    getBattlesForSlug(pickSlug, 20)
-      .then((rows) => {
-        const secs = rows
-          .filter((b) => b.outcome === "solved" && b.duration_sec != null)
-          .map((b) => b.duration_sec as number);
-        setLastSolveSec(secs.length ? Math.min(...secs) : null);
-      })
-      .catch(() => setLastSolveSec(null));
-  }, [solvedToday, pickSlug]);
+  const lastSolveSec =
+    useCachedQuery(solvedToday && pickSlug ? ["last-solve-sec", pickSlug] : null, async () => {
+      const rows = await getBattlesForSlug(pickSlug, 20);
+      const secs = rows
+        .filter((b) => b.outcome === "solved" && b.duration_sec != null)
+        .map((b) => b.duration_sec as number);
+      return secs.length ? Math.min(...secs) : null;
+    }).data ?? null;
 
   const isRunningThis = !!pickSlug && activeProblem?.slug?.toLowerCase() === pickSlug;
 
@@ -605,7 +501,7 @@ export default function ArenaPage() {
                         variant="secondary"
                         className="h-11 border border-hairline"
                         onClick={() => {
-                          window.location.href = "/practice";
+                          router.push("/practice");
                         }}
                       >
                         Open Practice
@@ -651,7 +547,7 @@ export default function ArenaPage() {
                       variant="secondary"
                       className="h-11 border border-hairline"
                       onClick={() => {
-                        window.location.href = `/practice/${pickSlug}#explain`;
+                        router.push(`/practice/${pickSlug}#explain`);
                       }}
                     >
                       <PenLine className="h-4 w-4" strokeWidth={1.75} aria-hidden />
@@ -661,7 +557,7 @@ export default function ArenaPage() {
                       variant="secondary"
                       className="h-11 border border-hairline"
                       onClick={() => {
-                        window.location.href = `/challenges?problem=${pickSlug}&title=${encodeURIComponent(pickTitle)}`;
+                        router.push(`/challenges?problem=${pickSlug}&title=${encodeURIComponent(pickTitle)}`);
                       }}
                     >
                       <Medal className="h-4 w-4" strokeWidth={1.75} aria-hidden />
@@ -671,7 +567,7 @@ export default function ArenaPage() {
                       variant="ghost"
                       className="h-11"
                       onClick={() => {
-                        window.location.href = `/practice/${pickSlug}/compare`;
+                        router.push(`/practice/${pickSlug}/compare`);
                       }}
                     >
                       <ArrowLeftRight className="h-4 w-4" strokeWidth={1.75} aria-hidden />
@@ -712,7 +608,7 @@ export default function ArenaPage() {
                       size="lg"
                       className="w-full font-semibold md:w-auto"
                       onClick={() => {
-                        window.location.href = `/practice/${pickSlug}`;
+                        router.push(`/practice/${pickSlug}`);
                       }}
                     >
                       <Play className="h-4 w-4" strokeWidth={2} aria-hidden />
@@ -722,7 +618,7 @@ export default function ArenaPage() {
                       variant="secondary"
                       className="h-12 w-full border border-hairline md:w-auto"
                       onClick={() => {
-                        window.location.href = "/stuck";
+                        router.push("/stuck");
                       }}
                     >
                       <LifeBuoy className="h-4 w-4" strokeWidth={1.75} aria-hidden />
@@ -807,7 +703,7 @@ export default function ArenaPage() {
 
           <div className="flex flex-col gap-2 lg:gap-3">
             {activityError && (
-              <ErrorCard message={activityError} onRetry={() => setActivityRefreshKey((k) => k + 1)} />
+              <ErrorCard message={activityError} onRetry={() => void retryActivity()} />
             )}
 
             <ChallengeLoop
@@ -865,7 +761,7 @@ export default function ArenaPage() {
                 title="Practicing solo"
                 body="Invite your people to start the streak."
                 action={
-                  <Button variant="ghost" className="min-h-[44px] px-0 hover:bg-transparent" onClick={() => (window.location.href = "/squad")}>
+                  <Button variant="ghost" className="min-h-[44px] px-0 hover:bg-transparent" onClick={() => router.push("/squad")}>
                     Invite
                   </Button>
                 }
@@ -875,7 +771,7 @@ export default function ArenaPage() {
               <RailNote
                 body="Connect LeetCode to verify your solves."
                 action={
-                  <Button variant="ghost" className="min-h-[44px] px-0 hover:bg-transparent" onClick={() => (window.location.href = "/squad")}>
+                  <Button variant="ghost" className="min-h-[44px] px-0 hover:bg-transparent" onClick={() => router.push("/squad")}>
                     Connect LeetCode
                   </Button>
                 }
