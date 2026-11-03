@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowUpRight, Bookmark, Check, ChevronRight, Copy, RotateCcw, Sparkles, Swords, Trash2 } from "lucide-react";
+import { SarathiMark } from "@/components/ai/Sarathi";
+import { ArrowUpRight, Bookmark, Check, ChevronRight, Copy, RotateCcw, Swords, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { copyText } from "@/lib/clipboard";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -299,9 +300,9 @@ export default function ProblemPage() {
     { value: "Your approach", label: "Your approach" },
     {
       value: "Practice with AI",
-      label: "Practice with AI",
-      shortLabel: "AI Practice",
-      icon: <Sparkles className="hidden h-4 w-4 text-pattern md:block" strokeWidth={1.5} aria-hidden />,
+      label: "Ask Sarathi",
+      shortLabel: "Sarathi",
+      icon: <SarathiMark className="hidden h-4 w-4 text-primary md:block" />,
     },
   ];
 
@@ -733,29 +734,29 @@ export default function ProblemPage() {
             )}
 
             {tab === "Practice with AI" && (
-              <section className="grid gap-3 md:grid-cols-2" aria-label="Practice with AI">
-                {user && status === "solved" && profile?.active_squad_id ? (
+              <section className="grid gap-3 md:grid-cols-2" aria-label="Ask Sarathi">
+                {user && status === "solved" ? (
                   <>
                     <BoundedAssistant
                       feature="explain-back"
-                      squadId={profile.active_squad_id}
+                      squadId={profile?.active_squad_id ?? null}
                       problemSlug={slug}
                       problemTitle={problem?.title ?? null}
                       input={coreIdea}
                     />
                     <BoundedAssistant
                       feature="interview-sim"
-                      squadId={profile.active_squad_id}
+                      squadId={profile?.active_squad_id ?? null}
                       problemSlug={slug}
                       problemTitle={problem?.title ?? null}
                       input={coreIdea}
                     />
                   </>
                 ) : null}
-                {user && status === "attempted" && profile?.active_squad_id ? (
+                {user && status === "attempted" ? (
                   <BoundedAssistant
                     feature="explain-mistake"
-                    squadId={profile.active_squad_id}
+                    squadId={profile?.active_squad_id ?? null}
                     problemSlug={slug}
                     problemTitle={problem?.title ?? null}
                   />
@@ -763,8 +764,8 @@ export default function ProblemPage() {
                 {(!user || status === "unsolved") && (
                   <div className="rounded-lg border border-hairline bg-surface p-4 md:col-span-2 md:p-6">
                     <p className="flex items-start gap-2 text-sm leading-6 text-text-secondary">
-                      <Sparkles className="mt-1 h-4 w-4 shrink-0 text-pattern" strokeWidth={1.5} aria-hidden />
-                      Attempt the problem first. These tools respond to your work, they never hand over code.
+                      <SarathiMark className="mt-1 h-4 w-4 shrink-0 text-primary" />
+                      Attempt the problem first. Sarathi responds to your work, never hands over code: your guide steers, you fight.
                     </p>
                   </div>
                 )}

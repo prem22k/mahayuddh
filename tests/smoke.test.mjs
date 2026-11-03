@@ -2079,7 +2079,7 @@ describe("decideStuckAssistant", () => {
     });
     assert.equal(d.allowed, false);
     assert.equal(d.outcome, "no_provider");
-    assert.match(d.message, /no AI provider is configured/i);
+    assert.match(d.message, /Sarathi is away right now, so there is no answer to give/i);
   });
 
   it("refuses solution vending — §45's first named bad use", () => {

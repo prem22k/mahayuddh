@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useId, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { SarathiHeader } from "@/components/ai/Sarathi";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Spinner";
 import { LEVEL_LABEL, STUCK_LEVELS } from "@/lib/stuckLadder";
@@ -95,15 +95,10 @@ export function StuckAssistant({
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-hairline bg-surface-raised p-4">
-      <div className="flex flex-col gap-0.5">
-        <span className="flex items-center gap-2 text-sm font-semibold leading-5 text-text-primary">
-          <Sparkles className="h-4 w-4 text-pattern" strokeWidth={1.5} aria-hidden />
-          Stuck assistant
-        </span>
-        <p className="text-xs leading-4 text-text-secondary">
-          Hints only, at the level you choose. It will not answer above it.
-        </p>
-      </div>
+      <SarathiHeader
+        title="Ask Sarathi"
+        blurb="Your guide steers, you fight. Hints only, at the level you choose, never above it."
+      />
 
       <div className="flex flex-col gap-1.5">
         <div
@@ -161,7 +156,7 @@ export function StuckAssistant({
         <div className="flex flex-col gap-1 rounded-lg border border-hairline bg-well p-3">
           <p className="text-sm leading-5 text-text-secondary">{blocked}</p>
           <p className="text-xs leading-4 text-text-tertiary">
-            This is not a placeholder answer. No AI feature here will invent one.
+            Sarathi never makes up an answer to fill the gap.
           </p>
         </div>
       )}

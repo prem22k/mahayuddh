@@ -104,11 +104,11 @@ const sections: LegalSection[] = [
           <li><strong>Supabase</strong>: our database and sign-in, and the sign-up and password-reset emails.</li>
           <li><strong>Vercel</strong>: hosts the website. <strong>Render</strong>: hosts a backup copy of the website that reads the same database.</li>
           <li>
-            <strong>AI providers.</strong> When you use an AI feature (the stuck assistant, explain-back, mistake
-            explanations or the interview simulation) in a squad that has AI turned on, the problem and the text you
-            submit are sent to the AI service we have configured to write the reply: currently the Kilo AI Gateway,
-            which passes it to the model it selects. With the free models we use, the model&rsquo;s provider may keep
-            that text to improve its service. Do not put personal information in that text.
+            <strong>Sarathi, the AI practice guide.</strong> When you ask Sarathi for help (stuck hints, explain-back,
+            mistake explanations or interview follow-ups), the problem and the text you
+            submit are sent to a third-party AI service, which passes them to the model it selects to write
+            Sarathi&rsquo;s reply. With the free models we use, the model&rsquo;s provider may keep that text to improve
+            its service. Do not put personal information in that text.
           </li>
           <li><strong>LeetCode</strong>: we read public data for the LeetCode username you connect, and your history if you give us a session.</li>
           <li><strong>Browser push services</strong> (from Google, Mozilla or Apple) deliver push alerts if you turn them on.</li>
