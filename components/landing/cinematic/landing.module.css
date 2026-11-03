@@ -1,0 +1,442 @@
+/*
+ * Landing-only stagecraft. The app avoids light, depth and big motion; the
+ * public landing is allowed them (confirmed 2026-11-03), so they live here and
+ * never leak into globals.
+ *
+ * Every scroll-linked rule reads --p (0 → 1). It defaults to 1, so without
+ * JavaScript, or with reduced motion, everything renders in its final state.
+ */
+
+.page {
+  --light: 255 232 198;
+  /* the same lamp as it reads on a dark face: deeper, warmer */
+  --face: 255 206 146;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  overflow-x: clip;
+}
+
+/* ── Opening shot ─────────────────────────────────────────────── */
+
+.line {
+  display: block;
+  overflow: clip;
+  /* room for descenders (p, y) inside the mask */
+  padding-block-end: 0.14em;
+  margin-block-end: -0.14em;
+}
+
+.lineInner {
+  display: block;
+  animation: rise 1100ms var(--ease-out) both;
+  animation-delay: var(--d, 0ms);
+}
+
+@keyframes rise {
+  from {
+    transform: translate3d(0, 112%, 0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+.fadeUp {
+  animation: fadeUp 900ms var(--ease-out) both;
+  animation-delay: var(--d, 0ms);
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.heroPassEnter {
+  animation: passIn 1400ms var(--ease-out) both;
+  animation-delay: 300ms;
+  transform-origin: 50% 100%;
+}
+
+@keyframes passIn {
+  from {
+    opacity: 0;
+    transform: perspective(1400px) translate3d(0, 72px, 0) rotateX(18deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The house lights come up over the hero Pass after it lands. */
+.heroLight {
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+  left: 50%;
+  top: -78%;
+  width: 165%;
+  aspect-ratio: 1.45;
+  translate: -50% 0;
+  background: radial-gradient(
+    closest-side,
+    rgb(var(--light) / 0.24),
+    rgb(var(--light) / 0.085) 50%,
+    transparent
+  );
+  animation: lightOn 2200ms ease-out 650ms both;
+}
+
+@keyframes lightOn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* One pass of light across the hero Pass, like a lamp catching a card. */
+.sheen {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(
+    100deg,
+    transparent 38%,
+    rgb(var(--light) / 0.085) 46%,
+    transparent 56%
+  );
+  background-size: 300% 100%;
+  background-position: 100% 0;
+  animation: sheen 2400ms var(--ease-out) 1100ms both;
+}
+
+@keyframes sheen {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+
+/* As the visitor scrolls away from the opening shot, the headline lifts and
+   dims while the Pass eases toward the camera. --q defaults to 0. */
+.heroDrift {
+  transform: translate3d(0, calc(var(--q, 0) * -110px), 0);
+  opacity: calc(1 - var(--q, 0) * 0.75);
+}
+
+.heroDolly {
+  transform-origin: 50% 0%;
+  transform: translate3d(0, calc(var(--q, 0) * -36px), 0) scale(calc(1 + var(--q, 0) * 0.035));
+}
+
+/* ── Statements: words light up as they cross the reading line ── */
+
+.statement {
+  --p: 1;
+}
+
+/* ── Depth inside a beat ─────────────────────────────────────────
+   Each beat reports --b (0 entering at the bottom, 0.5 centered, 1 leaving
+   at the top). Words sit on a far layer and drift slower than the page; the
+   piece sits on a near layer and travels faster, so the camera seems to move
+   through the stage rather than past a flat page. */
+/* The camera passes each beat like a crane past a set: a beat entering from
+   below is seen slightly from above (tilted back, a touch smaller), sits square
+   to the lens at the centre, and tips toward the viewer as it leaves. */
+.beatCam {
+  transform-origin: 50% 50%;
+  transform: perspective(1700px) rotateX(calc((0.5 - var(--b, 0.5)) * 16deg))
+    scale(calc(1 - max(var(--b, 0.5) - 0.5, 0.5 - var(--b, 0.5)) * 0.09));
+}
+
+.far {
+  translate: 0 calc((var(--b, 0.5) - 0.5) * 56px);
+}
+
+.near {
+  translate: 0 calc((var(--b, 0.5) - 0.5) * -40px);
+}
+
+.word {
+  opacity: calc(0.12 + 0.88 * clamp(0, var(--p) * var(--n) * 1.35 - var(--i), 1));
+}
+
+.monoWord {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.9em;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
+/* ── Stage: each real piece rises into its own pool of light ──── */
+
+.stage {
+  --p: 1;
+  position: relative;
+}
+
+.stageLight {
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+  left: 50%;
+  top: -70%;
+  width: min(1250px, 165%);
+  aspect-ratio: 1.5;
+  translate: -50% 0;
+  background: radial-gradient(
+    closest-side,
+    rgb(var(--light) / 0.17),
+    rgb(var(--light) / 0.06) 50%,
+    transparent
+  );
+  opacity: var(--p);
+}
+
+.stageBody {
+  position: relative;
+  z-index: 1;
+  opacity: calc(0.15 + 0.85 * var(--p));
+}
+
+/* Four ways onto the stage, chosen per beat so no two neighbours enter alike. */
+.enterRise {
+  transform-origin: 50% 100%;
+  transform: perspective(1400px) translate3d(0, calc((1 - var(--p)) * 72px), 0)
+    rotateX(calc((1 - var(--p)) * 12deg));
+}
+
+.enterTurnRight {
+  transform-origin: 100% 50%;
+  transform: perspective(1600px) translate3d(calc((1 - var(--p)) * 64px), calc((1 - var(--p)) * 24px), 0)
+    rotateY(calc((1 - var(--p)) * -18deg));
+}
+
+.enterTurnLeft {
+  transform-origin: 0% 50%;
+  transform: perspective(1600px) translate3d(calc((1 - var(--p)) * -64px), calc((1 - var(--p)) * 24px), 0)
+    rotateY(calc((1 - var(--p)) * 18deg));
+}
+
+.enterDolly {
+  transform-origin: 50% 30%;
+  transform: translate3d(0, calc((1 - var(--p)) * 40px), 0) scale(calc(0.88 + 0.12 * var(--p)));
+}
+
+/* Contact shadow under a piece, so it sits on the stage instead of floating. */
+.floor {
+  position: absolute;
+  z-index: -1;
+  left: 6%;
+  right: 6%;
+  bottom: -34px;
+  height: 68px;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgb(0 0 0 / 0.7), transparent);
+}
+
+/* ── The Pass, with notches actually cut through ─────────────── */
+
+.pass {
+  --stub-w: 30%;
+  --notch: 10px;
+  position: relative;
+  display: flex;
+  min-width: 0;
+  overflow: clip;
+  /* light falls from above-left onto the face: bright top, shaded bottom */
+  background:
+    radial-gradient(
+      115% 95% at 30% -22%,
+      rgb(var(--face) / calc(0.17 * var(--p, 1))),
+      rgb(var(--face) / calc(0.055 * var(--p, 1))) 42%,
+      transparent 72%
+    ),
+    linear-gradient(180deg, transparent 55%, rgb(0 0 0 / 0.22)),
+    var(--color-surface);
+  border: 1px solid var(--color-hairline);
+  border-top-color: rgb(var(--face) / 0.28);
+  border-radius: 16px;
+  -webkit-mask:
+    radial-gradient(circle calc(var(--notch) * 2) at calc(100% - var(--stub-w)) 0, #0000 calc(var(--notch) - 0.5px), #000 calc(var(--notch) + 0.5px)) top / 100% 51%
+      no-repeat,
+    radial-gradient(circle calc(var(--notch) * 2) at calc(100% - var(--stub-w)) 100%, #0000 calc(var(--notch) - 0.5px), #000 calc(var(--notch) + 0.5px)) bottom /
+      100% 51% no-repeat;
+  mask:
+    radial-gradient(circle calc(var(--notch) * 2) at calc(100% - var(--stub-w)) 0, #0000 calc(var(--notch) - 0.5px), #000 calc(var(--notch) + 0.5px)) top / 100% 51%
+      no-repeat,
+    radial-gradient(circle calc(var(--notch) * 2) at calc(100% - var(--stub-w)) 100%, #0000 calc(var(--notch) - 0.5px), #000 calc(var(--notch) + 0.5px)) bottom /
+      100% 51% no-repeat;
+}
+
+/* Overhead light catching the top edge of the body. */
+.pass::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 6%;
+  width: 72%;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgb(var(--light) / 0.6), transparent);
+}
+
+.passBody {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.passStub {
+  flex: 0 0 var(--stub-w);
+  min-width: 0;
+  background:
+    radial-gradient(
+      140% 90% at 15% -25%,
+      rgb(var(--face) / calc(0.11 * var(--p, 1))),
+      transparent 65%
+    ),
+    linear-gradient(180deg, transparent 55%, rgb(0 0 0 / 0.2)),
+    var(--color-surface-raised);
+  border-left: 1px dashed var(--color-hairline-strong);
+}
+
+@media (max-width: 767px) {
+  .pass {
+    --stub-h: 116px;
+    flex-direction: column;
+    -webkit-mask:
+      radial-gradient(circle calc(var(--notch) * 2) at 0 calc(100% - var(--stub-h)), #0000 calc(var(--notch) - 0.5px), #000 calc(var(--notch) + 0.5px)) left / 51%
+        100% no-repeat,
+      radial-gradient(circle calc(var(--notch) * 2) at 100% calc(100% - var(--stub-h)), #0000 calc(var(--notch) - 0.5px), #000 calc(var(--notch) + 0.5px)) right /
+        51% 100% no-repeat;
+    mask:
+      radial-gradient(circle calc(var(--notch) * 2) at 0 calc(100% - var(--stub-h)), #0000 calc(var(--notch) - 0.5px), #000 calc(var(--notch) + 0.5px)) left / 51%
+        100% no-repeat,
+      radial-gradient(circle calc(var(--notch) * 2) at 100% calc(100% - var(--stub-h)), #0000 calc(var(--notch) - 0.5px), #000 calc(var(--notch) + 0.5px)) right /
+        51% 100% no-repeat;
+  }
+
+  .passStub {
+    flex: 0 0 var(--stub-h);
+    border-left: 0;
+    border-top: 1px dashed var(--color-hairline-strong);
+  }
+}
+
+/* The same overhead light on the pieces that are plain cards. */
+.litCard {
+  background:
+    radial-gradient(
+      115% 90% at 30% -22%,
+      rgb(var(--face) / calc(0.15 * var(--p, 1))),
+      rgb(var(--face) / calc(0.045 * var(--p, 1))) 42%,
+      transparent 72%
+    ),
+    linear-gradient(180deg, transparent 55%, rgb(0 0 0 / 0.2)),
+    var(--color-surface);
+  border-top-color: rgb(var(--face) / 0.26);
+}
+
+/* ── Small authored motions inside the pieces ────────────────── */
+
+.reveal {
+  transition:
+    filter 600ms var(--ease-out),
+    opacity 600ms var(--ease-out);
+}
+
+.spoiler {
+  filter: blur(7px);
+  opacity: 0.5;
+  user-select: none;
+}
+
+.pop {
+  animation: pop 460ms var(--ease-out) both;
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.35);
+  }
+  60% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.roll {
+  display: inline-block;
+  animation: roll 520ms var(--ease-out) both;
+}
+
+@keyframes roll {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 40%, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.dock {
+  animation: dockIn 280ms var(--ease-out) both;
+}
+
+@keyframes dockIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lineInner,
+  .fadeUp,
+  .heroPassEnter,
+  .heroLight,
+  .sheen,
+  .pop,
+  .roll,
+  .dock {
+    animation: none !important;
+  }
+
+  .sheen {
+    display: none;
+  }
+
+  .far,
+  .near {
+    translate: none;
+  }
+
+  .beatCam {
+    transform: none;
+  }
+
+  .reveal {
+    transition: opacity 120ms linear;
+  }
+}
