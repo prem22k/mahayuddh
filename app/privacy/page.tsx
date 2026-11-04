@@ -105,11 +105,6 @@ const sections: LegalSection[] = [
           <li><strong>Google (Gmail)</strong>: sends the sign-up confirmation and password-reset emails.</li>
           <li><strong>Vercel</strong>: hosts the website.</li>
           <li>
-            <strong>PostHog</strong>: when something in Mahayuddh breaks, an error report: the error message, where
-            in the code it happened, the page&rsquo;s route, your browser type and your account ID (not your name or
-            email), so we can fix it. No screen recordings, no cookies and no tracking of what you click.
-          </li>
-          <li>
             <strong>Sarathi, the AI practice guide.</strong> When you ask Sarathi for help (stuck hints, explain-back,
             mistake explanations or interview follow-ups), the problem and the text you
             submit are sent to a third-party AI service, which passes them to the model it selects to write
