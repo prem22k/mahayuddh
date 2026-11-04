@@ -11,6 +11,8 @@ export interface ActiveProblem {
   category: string;
   /** Set when the battle was started from an accepted challenge. */
   challengeId?: string;
+  /** Background time counts when opened on LeetCode. */
+  openedOnLeetCode?: boolean;
 }
 
 const ACTIVE_KEY = "mahayuddh_active_problem";
@@ -18,6 +20,7 @@ const SECONDS_KEY = "mahayuddh_timer_seconds";
 const ACCUM_KEY = "mahayuddh_timer_accum";
 const BATTLE_KEY = "mahayuddh_battle_id";
 const STARTED_AT_KEY = "mahayuddh_battle_started_at";
+const RUNNING_SINCE_KEY = "mahayuddh_timer_running_since";
 
 /**
  * Stable battle state. Changes only on start/stop/problem switch — never
@@ -66,6 +69,10 @@ const SolvingTimerContext = createContext<SolvingTimerContextType>({
 
 export function SolvingProvider({ children }: { children: React.ReactNode }) {
   const [activeProblem, setActiveProblemState] = useState<ActiveProblem | null>(null);
+  const activeProblemRef = useRef<ActiveProblem | null>(null);
+  useEffect(() => {
+    activeProblemRef.current = activeProblem;
+  }, [activeProblem]);
   const [isPlaying, setIsPlayingState] = useState(false);
   const [seconds, setSecondsState] = useState(0);
   // Accumulated elapsed seconds (float). The single source of truth for the
@@ -114,6 +121,32 @@ export function SolvingProvider({ children }: { children: React.ReactNode }) {
           setStartedAt(parsed);
         }
       }
+      // Section E: clock survives reloaded tab when opened on LeetCode
+      const savedRunningSince = localStorage.getItem(RUNNING_SINCE_KEY);
+      if (savedRunningSince && saved) {
+        try {
+          const parsedProblem = JSON.parse(saved) as ActiveProblem;
+          if (parsedProblem?.openedOnLeetCode) {
+            const since = Number(savedRunningSince);
+            if (Number.isFinite(since) && since > 0) {
+              const delta = Math.max(0, (Date.now() - since) / 1000);
+              accumRef.current += delta;
+              const floored = Math.floor(accumRef.current);
+              setSecondsState(floored);
+              lastPerfRef.current = performance.now();
+              isPlayingRef.current = true;
+              setIsPlayingState(true);
+            }
+          }
+        } catch {
+          // ignore
+        }
+        try {
+          localStorage.removeItem(RUNNING_SINCE_KEY);
+        } catch {
+          // ignore
+        }
+      }
     } catch (e) {
       console.warn("Could not restore active problem from storage", e);
     }
@@ -132,6 +165,11 @@ export function SolvingProvider({ children }: { children: React.ReactNode }) {
         isPlayingRef.current = true;
         setIsPlayingState(true);
       } else {
+        try {
+          localStorage.removeItem(RUNNING_SINCE_KEY);
+        } catch {
+          // ignore
+        }
         if (lastPerfRef.current != null) {
           const now = performance.now();
           accumRef.current += Math.max(0, (now - lastPerfRef.current) / 1000);
@@ -158,13 +196,33 @@ export function SolvingProvider({ children }: { children: React.ReactNode }) {
       accumRef.current += Math.max(0, (now - lastPerfRef.current) / 1000);
       lastPerfRef.current = null;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying]);
 
-  // Auto-pause when the tab hides: background time is not solving time.
+  // Auto-pause when the tab hides: background time is not solving time,
+  // EXCEPT when the battle was opened on LeetCode, because that tab is
+  // where the solving happens.
   useEffect(() => {
     const onVis = () => {
-      if (document.hidden && isPlayingRef.current) {
+      if (!document.hidden) {
+        // Back on this tab: the live clock is counting again, so a later
+        // reload must not add the away gap a second time.
+        try {
+          localStorage.removeItem(RUNNING_SINCE_KEY);
+        } catch {
+          // ignore
+        }
+        return;
+      }
+      if (isPlayingRef.current) {
+        if (activeProblemRef.current?.openedOnLeetCode) {
+          try {
+            localStorage.setItem(RUNNING_SINCE_KEY, String(Date.now()));
+            persistTimer(accumRef.current, startedAtRef.current, Math.floor(accumRef.current));
+          } catch {
+            // ignore
+          }
+          return;
+        }
         if (lastPerfRef.current != null) {
           const now = performance.now();
           accumRef.current += Math.max(0, (now - lastPerfRef.current) / 1000);
@@ -192,6 +250,7 @@ export function SolvingProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem(ACCUM_KEY);
         localStorage.removeItem(BATTLE_KEY);
         localStorage.removeItem(STARTED_AT_KEY);
+        localStorage.removeItem(RUNNING_SINCE_KEY);
       }
     } catch (e) {
       console.warn("Could not save active problem to storage", e);
@@ -237,6 +296,7 @@ export function SolvingProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem(SECONDS_KEY);
       localStorage.removeItem(ACCUM_KEY);
       localStorage.removeItem(STARTED_AT_KEY);
+      localStorage.removeItem(RUNNING_SINCE_KEY);
     } catch {
       // ignore
     }
@@ -257,6 +317,7 @@ export function SolvingProvider({ children }: { children: React.ReactNode }) {
             localStorage.removeItem(SECONDS_KEY);
             localStorage.removeItem(ACCUM_KEY);
             localStorage.removeItem(STARTED_AT_KEY);
+            localStorage.removeItem(RUNNING_SINCE_KEY);
           } catch {
             // ignore
           }
@@ -278,7 +339,10 @@ export function SolvingProvider({ children }: { children: React.ReactNode }) {
       const now = performance.now();
       const delta = Math.max(0, (now - lastPerfRef.current) / 1000);
       // Cap one tick at 5s; the visibility handler already pauses on hide.
-      accumRef.current += Math.min(delta, 5);
+      // Not for a battle opened on LeetCode: it keeps running while this tab
+      // is hidden, and browsers slow hidden tabs' timers to once a minute, so
+      // one tick legitimately covers a long gap.
+      accumRef.current += activeProblemRef.current?.openedOnLeetCode ? delta : Math.min(delta, 5);
       lastPerfRef.current = now;
       const floored = Math.floor(accumRef.current);
       setSecondsState((prev) => (prev === floored ? prev : floored));

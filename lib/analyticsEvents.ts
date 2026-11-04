@@ -13,6 +13,7 @@ export const ANALYTICS_EVENTS = [
   // Core battle loop
   "battle_started",
   "battle_solved",
+  "picker_started",
   "battle_failed",
   // Learning loop
   "approach_written",
