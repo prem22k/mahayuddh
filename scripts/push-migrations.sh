@@ -28,14 +28,21 @@ if [[ ! -f "$LINK" ]]; then
 fi
 TARGET=$(python3 -I -c 'import json,sys; j=json.load(open(sys.argv[1])); print(j.get("name","?") + " (" + j.get("ref","?") + ")")' "$LINK")
 
+# --agent no + --output-format json: the same plain JSON array whether this
+# runs in a person's terminal (which would otherwise get a table) or an agent.
 query_json() {
-  npx -y supabase@latest db query --remote --read-only "$1" 2>/dev/null
+  npx -y supabase@latest db query --remote --read-only --agent no --output-format json "$1" 2>/dev/null
 }
 
 applied=$(query_json "select version from supabase_migrations.schema_migrations" | python3 -I -c '
 import json, sys
 s = sys.stdin.read()
-print("\n".join(r["version"] for r in json.loads(s[s.index("{"):])["rows"]))')
+start = min((i for i in (s.find("["), s.find("{")) if i >= 0), default=-1)
+if start < 0:
+    sys.exit("Could not read the migration history from the Supabase CLI. Run: npx supabase@latest login")
+data = json.loads(s[start:])
+rows = data["rows"] if isinstance(data, dict) else data
+print("\n".join(r["version"] for r in rows))')
 
 pending=()
 for f in supabase/migrations/*.sql; do
@@ -73,7 +80,9 @@ for f in "${pending[@]}"; do
     echo "commit;"
   } > "$tmp/$base.sql"
   echo "→ $base"
-  if ! npx -y supabase@latest db query --remote -f "$tmp/$base.sql" > "$tmp/$base.out" 2>&1; then
+  # --yes: you confirmed above; the CLI's own prompt can't show with output
+  # going to a file.
+  if ! npx -y supabase@latest db query --remote --agent no --yes -f "$tmp/$base.sql" > "$tmp/$base.out" 2>&1; then
     echo "  failed; stopped here. Nothing from this migration was kept. Output:"
     tail -n 20 "$tmp/$base.out" | sed 's/^/    /'
     exit 1
