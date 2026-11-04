@@ -164,7 +164,10 @@ export async function fetchLeetCodeProfile(username: string): Promise<LeetCodeUs
   }
 }
 
-export async function fetchRecentSubmissions(username: string): Promise<RecentSubmission[] | null> {
+export async function fetchRecentSubmissions(
+  username: string,
+  opts?: { fresh?: boolean }
+): Promise<RecentSubmission[] | null> {
   const query = `
     query getRecentSubmissions($username: String!) {
       recentAcSubmissionList(username: $username, limit: 100) {
@@ -178,7 +181,10 @@ export async function fetchRecentSubmissions(username: string): Promise<RecentSu
   try {
     const res = await fetch(
       LEETCODE_GRAPHQL_ENDPOINT,
-      leetcodeInit({ query, variables: { username } }, { revalidate: 30 })
+      leetcodeInit(
+        { query, variables: { username } },
+        opts?.fresh ? { noStore: true } : { revalidate: 30 }
+      )
     );
 
     if (!res.ok) throw new Error(`LeetCode recents HTTP ${res.status}`);

@@ -411,7 +411,7 @@
 }
 
 @utility solve-dock-idle {
-  max-width: 560px;
+  max-width: 760px;
 }
 
 @utility solve-capsule {

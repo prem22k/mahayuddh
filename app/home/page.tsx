@@ -423,6 +423,9 @@ export default function ArenaPage() {
       slug: pickSlug,
       difficulty: pickDifficulty,
       category: pickPattern,
+      // The solving happens in the LeetCode tab opened below, so the timer
+      // keeps running while this tab is hidden (see SolvingProvider).
+      openedOnLeetCode: true,
     });
     window.open(`https://leetcode.com/problems/${pickSlug}/`, "_blank", "noopener");
   };

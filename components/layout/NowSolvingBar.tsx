@@ -10,6 +10,8 @@ import {
   Check,
   ArrowUp,
   MoreHorizontal,
+  Shuffle,
+  Search,
 } from "lucide-react";
 import { cn, formatTime } from "@/lib/utils";
 import { ProblemLink } from "@/components/ui/ProblemLink";
@@ -22,12 +24,25 @@ import {
 import { useAuth } from "@/components/providers/AuthProvider";
 import { toggleProblemStatus, setProblemStatus } from "@/lib/data/sheets";
 import { track } from "@/lib/analytics";
-import { startBattle, heartbeatBattle, endBattle } from "@/lib/data/battles";
+import { startBattle, heartbeatBattle, endBattle, verifyBattle, type SolvedQuestion } from "@/lib/data/battles";
 import { logProblemEvent } from "@/lib/data/problemEvents";
 import { logFeedEvent } from "@/lib/data/feed";
 import { revengeResultLabel, RevengeResult } from "@/lib/revenge";
 import { StuckLadder } from "@/components/battle/StuckLadder";
 import { detectRevengeCompletion } from "@/lib/data/revenge";
+import {
+  QuestionPicker,
+  RandomDifficultySegmented,
+  useQuestionCatalog,
+  pickRandomProblem,
+  loadPickerFilters,
+  savePickerFilters,
+  loadRandomDifficulty,
+  saveRandomDifficulty,
+  type PickerFilters,
+} from "./QuestionPicker";
+import { problemUrl } from "@/components/ui/ProblemLink";
+import type { ListProblem } from "@/types/database";
 
 interface NowSolvingBarProps {
   onSearchOpen?: () => void;
@@ -36,14 +51,31 @@ interface NowSolvingBarProps {
 /** Which problem the stored battle id belongs to (resume-after-refresh guard). */
 const BATTLE_SLUG_KEY = "mahayuddh_battle_slug";
 
+/** When the person left this tab during a battle opened on LeetCode (ms epoch). */
+const LEFT_AT_KEY = "mahayuddh_left_at";
+/** Away at least this long before the return check runs: a quick tab switch is not a solve. */
+const AWAY_CHECK_MS = 45_000;
+
 interface BattleOutcome {
   kind: "solved" | "failed";
   title: string;
   seconds: number;
+  evidence?: "leetcode" | "none";
+  otherSolved?: SolvedQuestion[];
+}
+
+interface VerificationNotice {
+  kind: "unverified" | "others_only";
+  title: string;
+  username?: string;
+  reachable?: boolean;
+  linked?: boolean;
+  solvedOthers?: SolvedQuestion[];
 }
 
 export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
-  const { user, profile, session } = useAuth();
+  void onSearchOpen;
+  const { user, profile } = useAuth();
   // The shell can mount before auth resolves. Until it has, a solve or fail
   // would skip the write (no user) yet still end the battle, so the ending
   // actions stay locked.
@@ -54,10 +86,11 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
     isPlaying,
     setIsPlaying,
     resetSolving,
+    startSolving,
   } = useSolving();
   // Ticking subscription: only the dock reads the per-second timer, so only
   // the dock re-renders on tick. Timer math itself is untouched.
-  const { seconds } = useSolvingTimer();
+  const { seconds, startedAt } = useSolvingTimer();
 
   // Elapsed time is the provider's accumulated value (performance.now()
   // deltas, frozen while paused). Never derived from Date.now() here, so
@@ -83,9 +116,49 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
   const [attemptCount, setAttemptCount] = useState(1);
   const [capsuleMenuOpen, setCapsuleMenuOpen] = useState(false);
 
+  // Idle question picker filters & catalog
+  // Defaults on the first render (it is server-rendered too), then the saved
+  // values once mounted, so the server and client markup agree.
+  const [filters, setFiltersState] = useState<PickerFilters>({ difficulty: "", category: "" });
+  const setFilters = useCallback((next: PickerFilters) => {
+    setFiltersState(next);
+    savePickerFilters(next);
+  }, []);
+
+  // Difficulty for the random button only
+  const [randomDifficulty, setRandomDifficultyState] = useState<string>("");
+  useEffect(() => {
+    setFiltersState(loadPickerFilters());
+    setRandomDifficultyState(loadRandomDifficulty());
+  }, []);
+  const setRandomDifficulty = useCallback((next: string) => {
+    setRandomDifficultyState(next);
+    saveRandomDifficulty(next);
+  }, []);
+
+  const isIdle = !activeProblem;
+  const catalog = useQuestionCatalog(isIdle, user?.id ?? null);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+
+  // LeetCode verification states
+  const [verificationNotice, setVerificationNotice] = useState<VerificationNotice | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const isVerifyingRef = useRef(false);
+  const [cooldownSec, setCooldownSec] = useState(0);
+
+  // Cooldown countdown
+  useEffect(() => {
+    if (cooldownSec <= 0) return;
+    const t = setInterval(() => {
+      setCooldownSec((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [cooldownSec]);
+
   // Load scratchpad note whenever activeProblem changes
   useEffect(() => {
     setSessionExpired(false);
+    setVerificationNotice(null);
     if (activeProblem?.slug) {
       const savedNote = localStorage.getItem(`mahayuddh_notes_${activeProblem.slug}`) || "";
       setScratchpadNote(savedNote);
@@ -287,21 +360,28 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
   }, [resetSolving, setActiveProblem]);
 
   // The outcome line is a confirmation, not a state: it steps aside on its own.
+  // Solved card stays for 15s; failed outcome line keeps 4s.
   useEffect(() => {
     if (!outcome) return;
-    const t = setTimeout(() => setOutcome(null), 4000);
+    const timeoutMs = outcome.kind === "solved" ? 15000 : 4000;
+    const t = setTimeout(() => setOutcome(null), timeoutMs);
     return () => clearTimeout(t);
   }, [outcome]);
 
-  const handleComplete = useCallback(async (evidence: "leetcode" | "none" = "none") => {
-    if (!activeProblem || !user || submittingRef.current) return;
-    submittingRef.current = true;
-    setSubmitting(true);
-    setSaveError(null);
-    // Snapshot: the dock clears below, so nothing after this reads live state.
-    const problem = activeProblem;
-    const duration = elapsedSec;
-    const endedBattleId = battleId;
+  const handleComplete = useCallback(
+    async (
+      evidence: "leetcode" | "none" = "none",
+      durationOverride?: number,
+      otherSolved?: SolvedQuestion[]
+    ) => {
+      if (!activeProblem || !user || submittingRef.current) return;
+      submittingRef.current = true;
+      setSubmitting(true);
+      setSaveError(null);
+      // Snapshot: the dock clears below, so nothing after this reads live state.
+      const problem = activeProblem;
+      const duration = durationOverride !== undefined ? durationOverride : elapsedSec;
+      const endedBattleId = battleId;
 
     try {
       // Persist first: only celebrate + notify when the write lands, so open
@@ -387,7 +467,14 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
 
       setIsPlaying(false);
       clearBattle();
-      setOutcome({ kind: "solved", title: problem.title, seconds: duration });
+      setVerificationNotice(null);
+      setOutcome({
+        kind: "solved",
+        title: problem.title,
+        seconds: duration,
+        evidence,
+        otherSolved,
+      });
 
       try {
         const confetti = (await import("canvas-confetti")).default;
@@ -476,42 +563,246 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
     clearBattle();
   }, [activeProblem, battleId, elapsedSec, setIsPlaying, clearBattle]);
 
-  // Background auto-detection: check if active problem was accepted on LeetCode while solving
-  useEffect(() => {
-    if (!isPlaying || !activeProblem?.slug || !profile?.leetcode_username) return;
+  const runVerification = useCallback(async () => {
+    if (!activeProblem || isVerifyingRef.current) return;
 
-    const interval = setInterval(async () => {
-      // Visibility gate only: the timer/heartbeat math below is untouched.
-      // A hidden tab skips the network poll; detection resumes on return.
-      if (document.visibilityState !== "visible") return;
-      try {
-        const res = await fetch("/api/sync/leetcode", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-          },
-          body: JSON.stringify({ username: profile.leetcode_username }),
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        const activeSlug = activeProblem.slug.toLowerCase();
-        const isAc = (data?.recentSubmissions || []).some(
-          (s: { titleSlug: string }) => s.titleSlug?.toLowerCase() === activeSlug
-        );
-        if (isAc) {
-          handleComplete("leetcode");
-        }
-      } catch {
-        // silent fail
+    if (!battleId) {
+      setVerificationNotice({
+        kind: "unverified",
+        title: activeProblem.title,
+        linked: false,
+      });
+      return;
+    }
+
+    isVerifyingRef.current = true;
+    setIsVerifying(true);
+
+    try {
+      const res = await verifyBattle(battleId);
+
+      if (res.status === 429 && res.retry_after) {
+        setCooldownSec(res.retry_after);
+        return;
       }
-    }, 20000);
 
-    return () => clearInterval(interval);
-  }, [isPlaying, activeProblem?.slug, profile?.leetcode_username, handleComplete, session?.access_token]);
+      if (!res.linked) {
+        setVerificationNotice({
+          kind: "unverified",
+          title: activeProblem.title,
+          linked: false,
+        });
+        return;
+      }
+
+      if (res.reachable === false) {
+        setVerificationNotice({
+          kind: "unverified",
+          title: activeProblem.title,
+          linked: true,
+          reachable: false,
+          username: res.username,
+        });
+        return;
+      }
+
+      // C1: Target found
+      if (res.target) {
+        setVerificationNotice(null);
+        const battleStartedAtSec = res.started_at
+          ? Math.floor(new Date(res.started_at).getTime() / 1000)
+          : Math.floor((startedAt ?? Date.now()) / 1000);
+        const duration = Math.min(
+          elapsedSec,
+          Math.max(0, res.target.accepted_at - battleStartedAtSec)
+        );
+
+        const others = (res.solved || []).filter(
+          (s) => s.slug.toLowerCase() !== activeProblem.slug.toLowerCase()
+        );
+
+        for (const s of others) {
+          window.dispatchEvent(
+            new CustomEvent("problem-status-changed", {
+              detail: { slug: s.slug, status: "solved" },
+            })
+          );
+        }
+
+        await handleComplete("leetcode", duration, others);
+        return;
+      }
+
+      // C2: Others found
+      const others = res.solved || [];
+      if (others.length > 0) {
+        for (const s of others) {
+          window.dispatchEvent(
+            new CustomEvent("problem-status-changed", {
+              detail: { slug: s.slug, status: "solved" },
+            })
+          );
+        }
+        setVerificationNotice({
+          kind: "others_only",
+          title: activeProblem.title,
+          linked: true,
+          reachable: true,
+          username: res.username,
+          solvedOthers: others,
+        });
+        return;
+      }
+
+      // C3: None found
+      setVerificationNotice({
+        kind: "unverified",
+        title: activeProblem.title,
+        linked: true,
+        reachable: true,
+        username: res.username,
+      });
+    } catch {
+      setVerificationNotice({
+        kind: "unverified",
+        title: activeProblem.title,
+        linked: true,
+        reachable: false,
+      });
+    } finally {
+      isVerifyingRef.current = false;
+      setIsVerifying(false);
+    }
+  }, [activeProblem, battleId, startedAt, elapsedSec, handleComplete]);
+
+  // Coming back from LeetCode: check once. The moment the person left lives in
+  // sessionStorage, so a tab the phone unloaded in the background still gets
+  // its check after it reloads. The listener is always on and reads refs, so a
+  // tab switch in the same click that started the battle is never missed.
+  const activeProblemRef = useRef(activeProblem);
+  useEffect(() => {
+    activeProblemRef.current = activeProblem;
+  }, [activeProblem]);
+  // When a return asked for a check (ms epoch). The check waits for auth, the
+  // battle id and the leader election, but only briefly: a stale request must
+  // not fire for a battle started later.
+  const checkRequestedAtRef = useRef<number | null>(null);
+  const [checkTick, setCheckTick] = useState(0);
+
+  useEffect(() => {
+    const readLeftAt = (): number | null => {
+      try {
+        const v = Number(sessionStorage.getItem(LEFT_AT_KEY));
+        return Number.isFinite(v) && v > 0 ? v : null;
+      } catch {
+        return null;
+      }
+    };
+    const clearLeftAt = () => {
+      try {
+        sessionStorage.removeItem(LEFT_AT_KEY);
+      } catch {
+        // ignore
+      }
+    };
+    const onVis = () => {
+      if (document.hidden) {
+        if (!activeProblemRef.current?.openedOnLeetCode || readLeftAt() != null) return;
+        try {
+          sessionStorage.setItem(LEFT_AT_KEY, String(Date.now()));
+        } catch {
+          // ignore
+        }
+        return;
+      }
+      const left = readLeftAt();
+      clearLeftAt();
+      if (left != null && Date.now() - left >= AWAY_CHECK_MS) {
+        checkRequestedAtRef.current = Date.now();
+        setCheckTick((n) => n + 1);
+      }
+    };
+    // A reload while away lands here visible, with the stored time intact.
+    if (document.visibilityState === "visible") onVis();
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+
+  useEffect(() => {
+    const requestedAt = checkRequestedAtRef.current;
+    if (requestedAt == null) return;
+    if (Date.now() - requestedAt > 15_000) {
+      checkRequestedAtRef.current = null;
+      return;
+    }
+    // Still restoring (the provider restores the battle after this mounts),
+    // or auth / the battle session hasn't arrived yet: wait for the next run.
+    if (!activeProblem || !user || !battleId) return;
+    if (!activeProblem.openedOnLeetCode || !isHeartbeatLeader) {
+      checkRequestedAtRef.current = null;
+      return;
+    }
+    checkRequestedAtRef.current = null;
+    void runVerification();
+  }, [checkTick, activeProblem, user, battleId, isHeartbeatLeader, runVerification]);
+
+  const handleStartProblem = useCallback(
+    (p: ListProblem) => {
+      const slug = p.title_slug.toLowerCase();
+      track("picker_started", {
+        problem_slug: slug,
+        via: "list",
+        difficulty: filters.difficulty || "any",
+        topic: filters.category || "any",
+      });
+      startSolving({
+        id: p.order_index,
+        title: p.title,
+        slug,
+        difficulty: p.difficulty,
+        category: p.category,
+        openedOnLeetCode: true,
+      });
+      setIsPickerOpen(false);
+    },
+    [filters, startSolving]
+  );
+
+  const handleRandomQuestion = useCallback(() => {
+    const choice = pickRandomProblem(catalog.problems, catalog.statusMap, randomDifficulty);
+    if (!choice) {
+      setIsPickerOpen(true);
+      return;
+    }
+    const slug = choice.title_slug.toLowerCase();
+    const url = problemUrl(slug);
+    window.open(url, "_blank", "noopener,noreferrer");
+    track("picker_started", {
+      problem_slug: slug,
+      via: "lucky",
+      difficulty: randomDifficulty || "any",
+    });
+    startSolving({
+      id: choice.order_index,
+      title: choice.title,
+      slug,
+      difficulty: choice.difficulty,
+      category: choice.category,
+      openedOnLeetCode: true,
+    });
+  }, [catalog.problems, catalog.statusMap, randomDifficulty, startSolving]);
 
   return (
     <>
+      <QuestionPicker
+        isOpen={isPickerOpen}
+        onClose={() => setIsPickerOpen(false)}
+        filters={filters}
+        onFilterChange={setFilters}
+        catalog={catalog}
+        onStart={handleStartProblem}
+      />
+
       {/* ── REVENGE COMPLETE (Step 17). A solve that answers a recorded failure
           is a different event from a solve: it closes a loop the user opened. ── */}
       {revengeResult && (
@@ -560,6 +851,191 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
             >
               Next battle
             </Link>
+          </div>
+        </div>
+      )}
+
+      {/* ── CONGRATULATION CARD (Section C1) ── */}
+      {outcome?.kind === "solved" && !revengeResult && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed z-160 left-1/2 -translate-x-1/2 w-104 max-w-[calc(100vw-2rem)] rounded-xl border border-verified/30 bg-surface-raised p-4 shadow-overlay bottom-[calc(64px+12px+56px+env(safe-area-inset-bottom))] md:bottom-24"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium uppercase tracking-wide text-verified">
+                {outcome.evidence === "leetcode" ? "Verified on LeetCode" : "Solved"}
+              </div>
+              {outcome.otherSolved && outcome.otherSolved.length > 0 ? (
+                <>
+                  <div className="mt-0.5 text-sm font-semibold text-text-primary">
+                    You solved {1 + outcome.otherSolved.length} questions while you were away
+                  </div>
+                  <div className="mt-2 flex items-baseline gap-2">
+                    <span className="font-mono text-2xl font-semibold text-text-primary tnum">
+                      {formatTime(outcome.seconds)}
+                    </span>
+                    <span className="text-xs text-text-tertiary">on the clock</span>
+                  </div>
+                  <div className="mt-0.5 truncate text-xs text-text-secondary">
+                    {outcome.title}
+                  </div>
+                  <div className="mt-3 space-y-1.5 border-t border-hairline pt-2">
+                    <div className="text-xs text-text-tertiary">Also solved:</div>
+                    {outcome.otherSolved.map((s) => (
+                      <div key={s.slug} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="truncate text-text-primary">{s.title}</span>
+                        {s.difficulty && <DifficultyBadgeNew difficulty={s.difficulty} size="sm" />}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mt-0.5 truncate text-sm font-semibold text-text-primary">
+                    You solved {outcome.title}
+                  </div>
+                  <div className="mt-2 flex items-baseline gap-2">
+                    <span className="font-mono text-2xl font-semibold text-text-primary tnum">
+                      {formatTime(outcome.seconds)}
+                    </span>
+                    <span className="text-xs text-text-tertiary">on the clock</span>
+                  </div>
+                </>
+              )}
+            </div>
+            <button
+              onClick={() => setOutcome(null)}
+              className="shrink-0 rounded-md p-1 text-text-secondary transition-colors hover:text-text-primary"
+              aria-label="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="mt-3 flex items-center gap-2 pt-1">
+            <button
+              onClick={() => {
+                setOutcome(null);
+                setIsPickerOpen(true);
+              }}
+              className="rounded-md border border-hairline bg-surface-overlay px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:border-hairline-strong hover:bg-surface-raised"
+            >
+              Next question
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── VERIFICATION NOTICE CARD (Section C2 & C3) ── */}
+      {verificationNotice && activeProblem && !revengeResult && !outcome && (
+        <div
+          role="region"
+          aria-label="Solve verification"
+          className="fixed z-160 left-1/2 -translate-x-1/2 w-104 max-w-[calc(100vw-2rem)] rounded-xl border border-hairline bg-surface-raised p-4 shadow-overlay bottom-[calc(64px+12px+56px+env(safe-area-inset-bottom))] md:bottom-24"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              {verificationNotice.kind === "others_only" &&
+                verificationNotice.solvedOthers &&
+                verificationNotice.solvedOthers.length > 0 && (
+                  <div className="mb-3 rounded-lg border border-verified/30 bg-surface-overlay p-3">
+                    <div className="text-xs font-medium uppercase tracking-wide text-verified">
+                      Verified on LeetCode
+                    </div>
+                    <div className="mt-0.5 text-sm font-semibold text-text-primary">
+                      You solved {verificationNotice.solvedOthers.length} question
+                      {verificationNotice.solvedOthers.length === 1 ? "" : "s"} while you were away
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      {verificationNotice.solvedOthers.map((s) => (
+                        <div key={s.slug} className="flex items-center justify-between gap-2 text-xs">
+                          <span className="truncate text-text-primary">{s.title}</span>
+                          {s.difficulty && <DifficultyBadgeNew difficulty={s.difficulty} size="sm" />}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              <h3 className="text-sm font-semibold text-text-primary">
+                Did you solve {verificationNotice.title}?
+              </h3>
+              <p className="mt-1 text-xs text-text-secondary leading-relaxed">
+                {!verificationNotice.linked ? (
+                  "Your LeetCode account isn't linked, so we can't check for you. Link it and future solves verify on their own."
+                ) : verificationNotice.reachable === false ? (
+                  "We couldn't reach LeetCode to check. You can check again, or tell us how it went."
+                ) : (
+                  <>
+                    We couldn&apos;t find an accepted submission from{" "}
+                    {verificationNotice.username || "your account"} on LeetCode since you started.
+                    Make sure you submitted while signed in as{" "}
+                    {verificationNotice.username || "the account linked here"}, the account linked
+                    here.
+                  </>
+                )}
+              </p>
+            </div>
+            <button
+              onClick={() => setVerificationNotice(null)}
+              className="shrink-0 rounded-md p-1 text-text-secondary transition-colors hover:text-text-primary"
+              aria-label="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="mt-3.5 flex flex-wrap items-center gap-2 pt-1 border-t border-hairline">
+            <button
+              type="button"
+              onClick={() => {
+                setVerificationNotice(null);
+                void handleComplete("none");
+              }}
+              className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-on-primary hover:bg-primary-hover transition-colors"
+            >
+              I solved it
+            </button>
+            {verificationNotice.linked && (
+              <button
+                type="button"
+                onClick={() => void runVerification()}
+                disabled={isVerifying || cooldownSec > 0}
+                className="rounded-md border border-hairline bg-surface-overlay px-3 py-1.5 text-xs font-medium text-text-primary hover:border-hairline-strong hover:bg-surface-raised transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {cooldownSec > 0
+                  ? `Try again in ${cooldownSec}s`
+                  : isVerifying
+                  ? "Checking…"
+                  : "Check again"}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setVerificationNotice(null)}
+              className="rounded-md px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface-overlay transition-colors"
+            >
+              Still working on it
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setVerificationNotice(null);
+                setStuckOpen(true);
+              }}
+              className="rounded-md px-2.5 py-1.5 text-xs font-medium text-pattern hover:bg-pattern-tint transition-colors"
+            >
+              I&apos;m stuck
+            </button>
+            {!verificationNotice.linked && (
+              <Link
+                href="/profile#leetcode"
+                className="ml-auto text-xs font-medium text-primary hover:underline"
+              >
+                Link LeetCode
+              </Link>
+            )}
           </div>
         </div>
       )}
@@ -695,10 +1171,18 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                     <Play className="ml-0.5 h-4 w-4" strokeWidth={1.75} />
                   )}
                 </button>
-                <ProblemLink
-                  slug={activeProblem.slug}
-                  className="flex h-8 w-8 items-center justify-center rounded-md text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
-                />
+                <span
+                  onClickCapture={() => {
+                    if (activeProblem && !activeProblem.openedOnLeetCode) {
+                      setActiveProblem({ ...activeProblem, openedOnLeetCode: true });
+                    }
+                  }}
+                >
+                  <ProblemLink
+                    slug={activeProblem.slug}
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-text-secondary hover:bg-surface-overlay hover:text-text-primary"
+                  />
+                </span>
                 <button
                   onClick={() => handleComplete()}
                   disabled={submitting || !canEnd}
@@ -818,32 +1302,27 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
               </div>
             </div>
           </>
-        ) : outcome ? (
+        ) : outcome?.kind === "failed" ? (
           <>
-            {/* The battle just ended: say how, then step aside for the idle dock. */}
+            {/* Desktop failed outcome line */}
             <div
               role="status"
               aria-live="polite"
               className="solve-dock solve-dock-idle hidden justify-between gap-3 pl-4 pr-2 md:flex"
             >
               <span className="flex min-w-0 items-center gap-3 text-sm">
-                {outcome.kind === "solved" ? (
-                  <Check className="h-4 w-4 shrink-0 text-verified" strokeWidth={2.25} aria-hidden />
-                ) : (
-                  <span className="h-2 w-2 shrink-0 rounded-full bg-text-tertiary" aria-hidden />
-                )}
-                <span className={cn("shrink-0 font-medium", outcome.kind === "solved" ? "text-verified" : "text-text-secondary")}>
-                  {outcome.kind === "solved" ? "Solved" : "Attempt logged"}
-                </span>
+                <span className="h-2 w-2 shrink-0 rounded-full bg-text-tertiary" aria-hidden />
+                <span className="shrink-0 font-medium text-text-secondary">Attempt logged</span>
                 <span className="truncate text-text-primary">{outcome.title}</span>
                 <span className="shrink-0 font-mono text-xs text-text-tertiary tnum">
                   {formatTime(outcome.seconds)}
                 </span>
               </span>
               <button
+                type="button"
                 onClick={() => {
                   setOutcome(null);
-                  onSearchOpen?.();
+                  setIsPickerOpen(true);
                 }}
                 className="flex h-9 shrink-0 items-center gap-2 rounded-md border border-hairline px-3 text-sm font-medium text-text-primary transition-colors hover:border-hairline-strong hover:bg-surface-overlay"
               >
@@ -851,15 +1330,10 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                 <ArrowUp className="h-3.5 w-3.5" strokeWidth={1.75} />
               </button>
             </div>
+            {/* Mobile failed outcome line */}
             <div role="status" aria-live="polite" className="solve-capsule md:hidden">
-              {outcome.kind === "solved" ? (
-                <Check className="h-4 w-4 shrink-0 text-verified" strokeWidth={2.25} aria-hidden />
-              ) : (
-                <span className="h-2 w-2 shrink-0 rounded-full bg-text-tertiary" aria-hidden />
-              )}
-              <span className={cn("shrink-0 text-sm font-medium", outcome.kind === "solved" ? "text-verified" : "text-text-secondary")}>
-                {outcome.kind === "solved" ? "Solved" : "Attempt logged"}
-              </span>
+              <span className="h-2 w-2 shrink-0 rounded-full bg-text-tertiary" aria-hidden />
+              <span className="shrink-0 text-sm font-medium text-text-secondary">Attempt logged</span>
               <span className="min-w-0 flex-1 truncate text-sm text-text-primary">{outcome.title}</span>
               <span className="shrink-0 pr-3 font-mono text-xs text-text-tertiary tnum">
                 {formatTime(outcome.seconds)}
@@ -867,18 +1341,58 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
             </div>
           </>
         ) : (
-          <div className="solve-dock solve-dock-idle hidden justify-between pl-4 pr-2 md:flex">
-            <span className="flex items-center gap-3 text-sm text-text-secondary">
-              <span className="h-2 w-2 rounded-full bg-text-tertiary" aria-hidden />
-              No battle running
-            </span>
-            <button
-              onClick={onSearchOpen}
-              className="flex h-9 items-center gap-2 rounded-md border border-hairline px-3 text-sm font-medium text-text-primary transition-colors hover:border-hairline-strong hover:bg-surface-overlay"
-            >
-              Pick a problem
-              <ArrowUp className="h-3.5 w-3.5" strokeWidth={1.75} />
-            </button>
+          <div className="relative pointer-events-auto flex flex-col items-center w-full max-w-[360px] md:max-w-[760px]">
+            {/* Desktop idle row */}
+            <div className="solve-dock solve-dock-idle hidden justify-between items-center pl-4 pr-2 md:flex">
+              <div className="flex shrink-0 items-center gap-3 pl-1">
+                <button
+                  type="button"
+                  onClick={() => setIsPickerOpen(true)}
+                  className="flex h-9 items-center gap-2 rounded-md border border-hairline px-3 text-sm font-medium text-text-primary transition-colors hover:border-hairline-strong hover:bg-surface-overlay"
+                >
+                  <Search className="h-3.5 w-3.5 text-text-tertiary" strokeWidth={1.75} />
+                  Choose a question
+                </button>
+              </div>
+              <div className="flex shrink-0 items-center gap-2.5">
+                <RandomDifficultySegmented
+                  value={randomDifficulty}
+                  onChange={setRandomDifficulty}
+                />
+                <button
+                  type="button"
+                  onClick={handleRandomQuestion}
+                  className="flex h-9 items-center gap-2 rounded-md border border-hairline px-3 text-sm font-medium text-text-primary transition-colors hover:border-hairline-strong hover:bg-surface-overlay"
+                >
+                  <Shuffle className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  Random question
+                </button>
+              </div>
+            </div>
+
+            {/* Mobile idle capsule */}
+            <div className="solve-capsule md:hidden">
+              <button
+                type="button"
+                onClick={() => setIsPickerOpen(true)}
+                className="flex min-h-[44px] min-w-0 flex-1 items-center justify-start truncate px-1 text-sm text-text-secondary hover:text-text-primary transition-colors"
+              >
+                <span className="truncate">Choose a question</span>
+              </button>
+              <RandomDifficultySegmented
+                value={randomDifficulty}
+                onChange={setRandomDifficulty}
+                isMobile
+              />
+              <button
+                type="button"
+                onClick={handleRandomQuestion}
+                aria-label="Random question"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-hairline text-text-primary transition-colors hover:border-hairline-strong hover:bg-surface-overlay"
+              >
+                <Shuffle className="h-4 w-4" strokeWidth={1.75} />
+              </button>
+            </div>
           </div>
         )}
       </div>

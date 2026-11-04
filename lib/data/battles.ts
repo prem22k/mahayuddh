@@ -78,3 +78,43 @@ export async function getBattlesForSlug(problemSlug: string, limit = 10): Promis
     .limit(limit);
   return (data ?? []) as Battle[];
 }
+
+export interface SolvedQuestion {
+  slug: string;
+  title: string;
+  accepted_at: number;
+  difficulty?: string;
+}
+
+export interface BattleVerificationResult {
+  linked: boolean;
+  username?: string;
+  reachable?: boolean;
+  started_at?: string;
+  target?: SolvedQuestion | null;
+  solved?: SolvedQuestion[];
+  error?: string;
+  retry_after?: number;
+  status?: number;
+}
+
+export async function verifyBattle(battleId: string): Promise<BattleVerificationResult> {
+  const t = await token();
+  const res = await fetch("/api/battles/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(t ? { Authorization: `Bearer ${t}` } : {}) },
+    body: JSON.stringify({ battle_id: battleId }),
+  });
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  return {
+    linked: json.linked === true,
+    username: typeof json.username === "string" ? json.username : undefined,
+    reachable: typeof json.reachable === "boolean" ? json.reachable : undefined,
+    started_at: typeof json.started_at === "string" ? json.started_at : undefined,
+    target: (json.target as SolvedQuestion | null) ?? null,
+    solved: Array.isArray(json.solved) ? (json.solved as SolvedQuestion[]) : [],
+    error: typeof json.error === "string" ? json.error : undefined,
+    retry_after: typeof json.retry_after === "number" ? json.retry_after : undefined,
+    status: res.status,
+  };
+}
