@@ -49,14 +49,10 @@ export function PassTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
-function sentence(r: string): string {
-  const t = r.trim().replace(/[.]+$/, "");
-  return t.charAt(0).toLowerCase() + t.slice(1);
-}
-
 /**
- * "Why this one · N reasons" disclosure. Desktop: an inline underlined toggle
- * with the reasons summarised underneath. Phone: a quiet well box.
+ * "Why this one · N reasons" disclosure: the reasons show only when opened
+ * (a summary under the closed toggle repeated them). Desktop: an inline
+ * underlined toggle. Phone: a quiet well box.
  */
 export function WhyThisOne({ reasons }: { reasons: string[] }) {
   const [open, setOpen] = useState(false);
@@ -85,11 +81,6 @@ export function WhyThisOne({ reasons }: { reasons: string[] }) {
           aria-hidden
         />
       </button>
-      {!open && (
-        <p className="mt-1 hidden text-[15px] leading-6 text-text-tertiary md:block">
-          {reasons.map(sentence).join(", ")}
-        </p>
-      )}
       {open && (
         <ul className="flex flex-col gap-1.5 pb-3 pt-2 text-xs leading-5 text-text-secondary max-md:border-t max-md:border-hairline md:mt-2 md:rounded-md md:border md:border-hairline md:bg-well md:p-3">
           {reasons.map((r, i) => (
