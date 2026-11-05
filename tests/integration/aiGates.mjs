@@ -284,6 +284,11 @@ try {
   for (const { feature } of BOUNDED) {
     await db.from("ai_calls").delete().eq("squad_id", squad.id).eq("feature", feature);
   }
+  // Since e09dcd4 a call needs room in the caller's own hour as well as the
+  // squad's (min of the two). The budget checks above logged 30+ charged calls
+  // as this synthetic owner, so without this the routes below answer
+  // rate_limited before they ever reach the provider gate this section tests.
+  await db.from("ai_calls").delete().eq("user_id", owner).in("squad_id", [fresh.id, fresh2.id]);
 
   // ai_enabled is currently true from the check above.
   // ai_calls_remaining returns a scalar, not a set: .select() on it yields null
