@@ -3,15 +3,11 @@ import { Profile } from "@/types/database";
 import { DataError } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
 
-export const PUBLIC_PROFILE_COLUMNS =
-  "id,username,leetcode_username,leetcode_verified_at,avatar_url,active_squad_id,contest_rating,global_rank,streak,total_easy,total_medium,total_hard,contest_attended,contest_global_rank,contest_top_percentage,last_synced_at,created_at";
+import { PUBLIC_PROFILE_COLUMNS } from "@/lib/data/profileColumns";
 
-/**
- * The signed-in user's own profile: the public columns plus first-run state.
- * Never use this for other people's profiles: anonymous visitors have no
- * SELECT grant on the first-run columns, so the query would fail for them.
- */
-export const OWN_PROFILE_COLUMNS = `${PUBLIC_PROFILE_COLUMNS},onboarded_at,tour_completed_at`;
+// The column lists live in profileColumns.ts so server routes and /api/health
+// can import them without this browser module.
+export { PUBLIC_PROFILE_COLUMNS, OWN_PROFILE_COLUMNS } from "@/lib/data/profileColumns";
 
 export async function getSquadProfiles(opts?: {
   limit?: number;
