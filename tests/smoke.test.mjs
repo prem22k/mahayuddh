@@ -13,7 +13,13 @@ import assert from "node:assert/strict";
 import { parseProblemStatusEvent, applyStatusChange } from "../lib/problemStatusEvent.ts";
 import { toStatusMap, countByStatus } from "../lib/statusMap.ts";
 import { safeNext } from "../lib/safeNext.ts";
-import { pickDailyBattle, formatDuration, toSquadSlugSet } from "../lib/dailyBattle.ts";
+import {
+  pickDailyBattle,
+  pickSquadDailyBattle,
+  formatDuration,
+  toSquadSlugSet,
+} from "../lib/dailyBattle.ts";
+import { squadTodayKey } from "../lib/squadDays.ts";
 import { ANALYTICS_EVENTS } from "../lib/analyticsEvents.ts";
 import {
   buildBattleCard,
@@ -316,6 +322,148 @@ describe("pickDailyBattle (deterministic engine)", () => {
     if (pick?.problem.title_slug === "two-sum") {
       assert.equal(pick.personalBest, "24:57");
     }
+  });
+});
+
+describe("pickSquadDailyBattle", () => {
+  const problem = (slug, category = "Arrays") => ({
+    id: `id-${slug}`,
+    list_id: "list-1",
+    title: slug.replace(/-/g, " "),
+    title_slug: slug,
+    difficulty: "Easy",
+    category,
+    order_index: 1,
+    created_at: "2026-01-01T00:00:00.000Z",
+  });
+  const problems = [
+    problem("two-sum"),
+    problem("lru-cache", "Design"),
+    problem("3sum"),
+    problem("valid-parentheses", "Stack"),
+  ];
+  const base = {
+    problems,
+    squadId: "squad-1",
+    dayKey: "2026-11-05",
+    memberCount: 4,
+    solvedBy: new Map(),
+  };
+
+  it("ignores each viewer's statuses when choosing the shared problem", () => {
+    const baseline = pickSquadDailyBattle({ ...base, myStatus: {} });
+    assert.ok(baseline);
+    const winner = baseline.problem.title_slug;
+    const viewerA = { [winner]: "solved" };
+    const viewerB = Object.fromEntries(problems.map((p) => [p.title_slug, "attempted"]));
+    viewerB[winner] = "solved";
+
+    assert.equal(pickSquadDailyBattle({ ...base, myStatus: viewerA })?.problem.title_slug, winner);
+    assert.equal(pickSquadDailyBattle({ ...base, myStatus: viewerB })?.problem.title_slug, winner);
+  });
+
+  it("chooses the same duplicate row for any input order", () => {
+    const fromZ = {
+      ...problem("shared-problem", "Arrays"),
+      id: "shared-z",
+      list_id: "z-sheet",
+      order_index: 1,
+    };
+    const fromA = {
+      ...problem("shared-problem", "Design"),
+      id: "shared-a",
+      list_id: "a-sheet",
+      order_index: 2,
+    };
+    const other = {
+      ...problem("other-problem", "Arrays"),
+      id: "other-1",
+      list_id: "m-sheet",
+      order_index: 1,
+    };
+    const rows = [fromZ, other, fromA];
+    const pickFor = (problems) =>
+      pickSquadDailyBattle({ ...base, problems, goalPattern: "Design" });
+
+    const baseline = pickFor(rows);
+    assert.ok(baseline);
+    for (const shuffled of [rows, [...rows].reverse(), [other, fromA, fromZ]]) {
+      const pick = pickFor(shuffled);
+      assert.ok(pick);
+      assert.equal(pick.problem.title_slug, baseline.problem.title_slug);
+      assert.equal(pick.problem.list_id, baseline.problem.list_id);
+    }
+    // "a-sheet" wins on list_id, and its Design category earns the goal bonus.
+    assert.equal(baseline.problem.title_slug, "shared-problem");
+    assert.equal(baseline.problem.list_id, "a-sheet");
+    assert.equal(baseline.problem.category, "Design");
+  });
+
+  it("never picks a problem every counted member has solved while another is available", () => {
+    const pick = pickSquadDailyBattle({
+      ...base,
+      solvedBy: new Map([
+        ["two-sum", 4],
+        ["lru-cache", 4],
+        ["3sum", 4],
+      ]),
+    });
+    assert.ok(pick);
+    assert.equal(pick.problem.title_slug, "valid-parentheses");
+    assert.ok(pick.why.includes("Fresh for all 4 of you: nobody had solved it before today."));
+  });
+
+  it("falls back to the least-solved rematch when everyone has solved them all", () => {
+    const pick = pickSquadDailyBattle({
+      ...base,
+      memberCount: 2,
+      solvedBy: new Map([
+        ["two-sum", 2],
+        ["lru-cache", 3],
+        ["3sum", 2],
+        ["valid-parentheses", 4],
+      ]),
+    });
+    assert.ok(pick);
+    assert.ok(pick.why.includes("Your squad has solved every problem here. Rematch."));
+    assert.ok(["two-sum", "3sum"].includes(pick.problem.title_slug));
+  });
+
+  it("is deterministic for one day and varies across days", () => {
+    const pickFor = (dayKey) =>
+      pickSquadDailyBattle({ ...base, dayKey })?.problem.title_slug;
+    const sameDay = Array.from({ length: 5 }, () => pickFor(base.dayKey));
+    assert.equal(new Set(sameDay).size, 1);
+
+    const otherDays = new Set(
+      Array.from({ length: 30 }, (_, i) =>
+        pickFor(`2026-12-${String(i + 1).padStart(2, "0")}`)
+      )
+    );
+    assert.ok(otherDays.size > 1, "dayKey must feed the tiebreak");
+  });
+
+  it("states honest squad progress and puts the personal reason first", () => {
+    const pick = pickSquadDailyBattle({
+      problems: [problem("two-sum")],
+      squadId: "squad-1",
+      dayKey: "2026-11-05",
+      memberCount: 3,
+      solvedBy: new Map([["two-sum", 1]]),
+      myStatus: { "two-sum": "solved" },
+    });
+    assert.ok(pick);
+    assert.equal(pick.why[0], "You've solved this before. Beat your time.");
+    assert.ok(pick.why.includes("2 of 3 in your squad hadn't solved it before today."));
+    assert.ok(pick.why.length <= 3);
+  });
+
+  it("pickDailyBattle without dateStr uses today's IST day key", () => {
+    const args = { problems, statusMap: {}, userId: "u1" };
+    assert.equal(
+      pickDailyBattle(args)?.problem.title_slug,
+      pickDailyBattle({ ...args, dateStr: squadTodayKey() })?.problem.title_slug
+    );
   });
 });
 
