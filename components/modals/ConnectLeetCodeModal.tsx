@@ -6,6 +6,8 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { useLeetCodeSynced } from "@/lib/leetcode/useLeetCodeSynced";
 import { syncUserProfileStats } from "@/lib/data/profiles";
 import { copyText } from "@/lib/clipboard";
+import { syncErrorMessage } from "@/lib/syncError";
+import { VerifyLeetCodePanel } from "@/components/leetcode/VerifyLeetCodePanel";
 import { cn } from "@/lib/utils";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { Button } from "@/components/ui/Button";
@@ -32,12 +34,19 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [removingSession, setRemovingSession] = useState(false);
+  const [justConnectedHandle, setJustConnectedHandle] = useState<string | null>(null);
+  const [forbiddenHandle, setForbiddenHandle] = useState<string | null>(null);
 
   // The modal stays mounted while closed, so the handle captured at mount can
   // predate the profile load. Fill it in on open if the field is still empty.
   const linkedHandle = profile?.leetcode_username || "";
   useEffect(() => {
-    if (isOpen && linkedHandle) setUsername((u) => u || linkedHandle);
+    if (isOpen) {
+      if (linkedHandle) setUsername((u) => u || linkedHandle);
+    } else {
+      setJustConnectedHandle(null);
+      setForbiddenHandle(null);
+    }
   }, [isOpen, linkedHandle]);
 
   if (!isOpen) return null;
@@ -76,39 +85,66 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
   }
 })();`;
 
+  const triggerConfetti = async () => {
+    try {
+      const confetti = (await import("canvas-confetti")).default;
+      confetti({
+        particleCount: 60,
+        spread: 60,
+        origin: { y: 0.8 },
+        colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
+      });
+    } catch {
+      // ignore
+    }
+  };
+
   // 1. Instant Handle Sync
   const handleInstantSync = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !username.trim()) return;
+    const trimmed = username.trim();
+    if (!user || !trimmed) return;
     setSubmitting(true);
     setError(null);
     setSuccess(null);
+    setForbiddenHandle(null);
 
     try {
-      const updated = await syncUserProfileStats(user.id, username.trim());
+      const updated = await syncUserProfileStats(user.id, trimmed);
       if (!updated) {
         setError("Could not find LeetCode account. Please check your username.");
         return;
       }
 
       await leetcodeSynced();
-      setSuccess(`Connected @${username.trim()}! Solved stats, rating, and last 100 ACs synced.`);
-      try {
-        const confetti = (await import("canvas-confetti")).default;
-        confetti({
-          particleCount: 60,
-          spread: 60,
-          origin: { y: 0.8 },
-          colors: ["#F5B83D", "#3DDC97", "#8B91F7", "#EDEDEF"],
-        });
-      } catch {
-        // ignore
-      }
-      setTimeout(() => {
+      setSuccess(`Connected @${trimmed}. Synced your solved stats, rating and last 100 accepted problems.`);
+      await triggerConfetti();
+
+      const alreadyVerified =
+        Boolean(updated.leetcode_verified_at) &&
+        updated.leetcode_username?.toLowerCase() === trimmed.toLowerCase();
+
+      if (alreadyVerified) {
+        setTimeout(() => {
+          onConnected?.();
+          onClose();
+        }, 1500);
+      } else {
         onConnected?.();
-        onClose();
-      }, 1500);
+        setJustConnectedHandle(trimmed);
+      }
     } catch (err) {
+      if (err instanceof Response) {
+        if (err.status === 403) {
+          const json = (await err.json().catch(() => ({}))) as { error?: string };
+          setError(json.error || "This handle is linked to another account.");
+          setForbiddenHandle(trimmed.toLowerCase());
+          return;
+        }
+        const msg = await syncErrorMessage(err, "Failed to sync LeetCode stats. Please try again.");
+        setError(msg);
+        return;
+      }
       console.error("Connect handle error:", err);
       setError("Failed to sync LeetCode stats. Please try again.");
     } finally {
@@ -227,8 +263,7 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
             Sync LeetCode status
           </h2>
           <p className="mt-1 text-xs leading-5 text-text-secondary">
-            Optional. Mahayuddh works fully without LeetCode; connecting adds contest stats and
-            verified solves.
+            Optional. Mahayuddh works fully without LeetCode. Connecting adds contest stats; verifying your handle makes your solves count as verified.
           </p>
         </div>
         <button
@@ -258,49 +293,120 @@ export function ConnectLeetCodeModal({ isOpen, onClose, onConnected }: ConnectLe
 
         {/* ── Tab 1: Instant Handle Connect ── */}
         {activeTab === "handle" && (
-          <form onSubmit={handleInstantSync} className="space-y-4">
-            <p className="text-xs leading-5 text-text-secondary">
-              Syncs your <span className="text-text-primary">contest rating, global rank, daily streak, and last 100 accepted problems</span>.
-            </p>
+          <div className="space-y-4">
+            {!justConnectedHandle && !forbiddenHandle && profile?.leetcode_username && (
+              profile.leetcode_verified_at ? (
+                <div className="flex items-center gap-1.5 text-xs text-text-secondary">
+                  <Check className="h-3.5 w-3.5 shrink-0 text-verified" strokeWidth={1.5} aria-hidden />
+                  <span>@{profile.leetcode_username} is verified as yours.</span>
+                </div>
+              ) : (
+                <VerifyLeetCodePanel
+                  handle={profile.leetcode_username}
+                  onVerified={async () => {
+                    await triggerConfetti();
+                    onConnected?.();
+                    setTimeout(() => {
+                      onClose();
+                    }, 1500);
+                  }}
+                />
+              )
+            )}
 
-            <div>
-              <label htmlFor="lc-handle" className={labelCls}>
-                LeetCode username
-              </label>
-              <div className="relative">
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-xs text-text-tertiary"
-                >
-                  leetcode.com/
-                </span>
-                <input
-                  id="lc-handle"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="your_handle"
-                  className={cn(inputCls, "pl-[112px]")}
-                  required
-                  autoFocus
-                  autoComplete="off"
-                  spellCheck={false}
+            {justConnectedHandle ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-semibold text-text-primary">
+                    One more step: prove it&apos;s yours
+                  </h3>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={onClose}
+                    className="h-8 px-2.5 text-xs text-text-secondary"
+                  >
+                    Later
+                  </Button>
+                </div>
+                <VerifyLeetCodePanel
+                  handle={justConnectedHandle}
+                  onVerified={async () => {
+                    await triggerConfetti();
+                    onConnected?.();
+                    setTimeout(() => {
+                      onClose();
+                    }, 1500);
+                  }}
                 />
               </div>
-            </div>
+            ) : (
+              <>
+                {forbiddenHandle && (
+                  <VerifyLeetCodePanel
+                    handle={forbiddenHandle}
+                    onVerified={async () => {
+                      setForbiddenHandle(null);
+                      setError(null);
+                      await triggerConfetti();
+                      onConnected?.();
+                      setTimeout(() => {
+                        onClose();
+                      }, 1500);
+                    }}
+                  />
+                )}
 
-            <Button
-              type="submit"
-              variant="primary"
-              size="full"
-              loading={submitting}
-              disabled={!username.trim()}
-              className="h-11 md:h-10"
-            >
-              Connect and sync stats
-              <ArrowRight className="h-4 w-4" strokeWidth={1.5} aria-hidden />
-            </Button>
-          </form>
+                <form onSubmit={handleInstantSync} className="space-y-4">
+                  <p className="text-xs leading-5 text-text-secondary">
+                    Syncs your <span className="text-text-primary">contest rating, global rank, daily streak, and last 100 accepted problems</span>.
+                  </p>
+
+                  <div>
+                    <label htmlFor="lc-handle" className={labelCls}>
+                      LeetCode username
+                    </label>
+                    <div className="relative">
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-xs text-text-tertiary"
+                      >
+                        leetcode.com/
+                      </span>
+                      <input
+                        id="lc-handle"
+                        type="text"
+                        value={username}
+                        onChange={(e) => {
+                          setUsername(e.target.value);
+                          setError(null);
+                          setForbiddenHandle(null);
+                        }}
+                        placeholder="your_handle"
+                        className={cn(inputCls, "pl-[112px]")}
+                        required
+                        autoFocus
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                    </div>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="full"
+                    loading={submitting}
+                    disabled={!username.trim()}
+                    className="h-11 md:h-10"
+                  >
+                    Connect and sync stats
+                    <ArrowRight className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+                  </Button>
+                </form>
+              </>
+            )}
+          </div>
         )}
 
         {/* ── Tab 2: 1-Click Browser Sync (Zero-Friction) ── */}

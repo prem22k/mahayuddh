@@ -263,7 +263,7 @@ export function UserStatsDossierModal({
               />
               <span className="truncate">
                 {linked
-                  ? `From LeetCode · ${synced ? `synced ${synced}` : "not synced yet"}`
+                  ? `From LeetCode · ${synced ? `synced ${synced}` : "not synced yet"}${profile.leetcode_verified_at ? "" : " · unverified"}`
                   : "LeetCode not connected"}
               </span>
             </p>

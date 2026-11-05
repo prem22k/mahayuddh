@@ -17,6 +17,8 @@ export interface Profile {
   id: string;
   username: string;
   leetcode_username: string | null;
+  /** When the owner proved control of leetcode_username with a profile code; null = self-reported. */
+  leetcode_verified_at: string | null;
   avatar_url: string | null;
   active_squad_id: string | null;
   contest_rating: number | null;

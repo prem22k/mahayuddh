@@ -14,6 +14,7 @@ import { useLeetCodeSynced } from "@/lib/leetcode/useLeetCodeSynced";
 import { cn } from "@/lib/utils";
 import { safeNext } from "@/lib/safeNext";
 import { Wordmark } from "@/components/landing/Brand";
+import { VerifyLeetCodePanel } from "@/components/leetcode/VerifyLeetCodePanel";
 
 interface ApiResponse<T = Record<string, unknown>> {
   ok: boolean;
@@ -78,6 +79,7 @@ export default function OnboardingPage() {
   const [objective, setObjective] = useState<string>("");
   const [lcDraft, setLcDraft] = useState("");
   const [connectedHandle, setConnectedHandle] = useState<string | null>(null);
+  const [forbiddenHandle, setForbiddenHandle] = useState<string | null>(null);
   const [squadChoice, setSquadChoice] = useState<"create" | "join" | "solo">("create");
   const [squadName, setSquadName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
@@ -228,15 +230,22 @@ export default function OnboardingPage() {
 
     setIsConnectingLc(true);
     setErrorMsg(null);
+    setForbiddenHandle(null);
 
     const res = await api("/api/sync/leetcode", "POST", { username: handle });
     setIsConnectingLc(false);
 
     if (res.ok) {
       setConnectedHandle(handle);
+      setForbiddenHandle(null);
       await leetcodeSynced();
     } else {
       setErrorMsg(res.error || "Couldn't connect LeetCode. Try again.");
+      if (res.status === 403) {
+        setForbiddenHandle(handle.toLowerCase());
+      } else {
+        setForbiddenHandle(null);
+      }
     }
   };
 
@@ -493,7 +502,7 @@ export default function OnboardingPage() {
                     Connect LeetCode
                   </h1>
                   <p className="mt-1 text-sm text-text-secondary">
-                    Optional. Your solves get verified automatically; everything works without it.
+                    Optional. Link your LeetCode to sync your stats. Prove it&apos;s yours and your solves get checked automatically.
                   </p>
                 </div>
 
@@ -504,8 +513,21 @@ export default function OnboardingPage() {
                       Connected @{profile.leetcode_username}
                     </p>
                     <p className="mt-1 text-xs text-text-secondary">
-                      Your LeetCode account is connected and verifies your daily battle solves.
+                      {profile.leetcode_verified_at
+                        ? "Your LeetCode account is connected and verifies your daily battle solves."
+                        : "Prove it's yours so your battle solves get checked. You can also do this later from Profile."}
                     </p>
+                    {!profile.leetcode_verified_at && (
+                      <VerifyLeetCodePanel
+                        handle={profile.leetcode_username}
+                        collapsed
+                        className="mt-3"
+                        onVerified={async () => {
+                          await refreshProfile();
+                          await leetcodeSynced();
+                        }}
+                      />
+                    )}
                   </div>
                 ) : (
                   <div>
@@ -530,6 +552,7 @@ export default function OnboardingPage() {
                           onChange={(e) => {
                             setLcDraft(e.target.value);
                             setErrorMsg(null);
+                            setForbiddenHandle(null);
                           }}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
@@ -563,10 +586,21 @@ export default function OnboardingPage() {
                     </div>
 
                     {connectedHandle && (
-                      <p className="mt-2.5 flex items-center gap-1.5 text-xs font-medium text-verified">
-                        <Check className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
-                        Connected @{connectedHandle}
-                      </p>
+                      <div className="mt-2.5">
+                        <p className="flex items-center gap-1.5 text-xs font-medium text-verified">
+                          <Check className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                          Connected @{connectedHandle}
+                        </p>
+                        <VerifyLeetCodePanel
+                          handle={connectedHandle}
+                          collapsed
+                          className="mt-3"
+                          onVerified={async () => {
+                            await refreshProfile();
+                            await leetcodeSynced();
+                          }}
+                        />
+                      </div>
                     )}
 
                     {errorMsg && (
@@ -575,8 +609,23 @@ export default function OnboardingPage() {
                       </p>
                     )}
 
+                    {forbiddenHandle && (
+                      <VerifyLeetCodePanel
+                        handle={forbiddenHandle}
+                        collapsed
+                        className="mt-3"
+                        onVerified={async (h) => {
+                          setConnectedHandle(h);
+                          setForbiddenHandle(null);
+                          setErrorMsg(null);
+                          await refreshProfile();
+                          await leetcodeSynced();
+                        }}
+                      />
+                    )}
+
                     <p className="mt-2 text-xs leading-5 text-text-tertiary">
-                      Everything works without it. Connecting lets us verify your solves.
+                      Everything works without it.
                     </p>
                   </div>
                 )}

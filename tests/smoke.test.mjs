@@ -31,6 +31,7 @@ import {
   suggestLevel,
 } from "../lib/stuckLadder.ts";
 import { daysBetween, relativeDays } from "../lib/format.ts";
+import { generateVerifyCode, normalizeLeetCodeHandle, profileHasCode, VERIFY_CODE_ALPHABET } from "../lib/leetcodeVerify.ts";
 import {
   buildRecap,
   weekOf,
@@ -139,6 +140,87 @@ import {
 
 // A real-ish LeetCode slug list: these are what must survive a round trip.
 const SLUG_RE = /^[a-z0-9-]{1,80}$/;
+
+describe("leetcode ownership helpers", () => {
+  it("200 generated codes all match /^MY-[A-Z2-9]{6}$/ and use only alphabet chars", () => {
+    for (let i = 0; i < 200; i++) {
+      const code = generateVerifyCode();
+      assert.match(code, /^MY-[A-Z2-9]{6}$/);
+      assert.equal(code.slice(0, 3), "MY-");
+      const suffix = code.slice(3);
+      assert.equal(suffix.length, 6);
+      for (const ch of suffix) {
+        assert.ok(VERIFY_CODE_ALPHABET.includes(ch));
+      }
+    }
+  });
+
+  it("an injected rand gives a predictable code", () => {
+    const codeAllZeros = generateVerifyCode(() => 0);
+    assert.equal(codeAllZeros, "MY-AAAAAA");
+
+    let counter = 0;
+    const codeSeq = generateVerifyCode(() => counter++);
+    assert.equal(codeSeq, `MY-${VERIFY_CODE_ALPHABET.slice(0, 6)}`);
+  });
+
+  it("handles normalization with URLs, @, and whitespace", () => {
+    assert.equal(normalizeLeetCodeHandle("  @Lee215 "), "lee215");
+    assert.equal(normalizeLeetCodeHandle("https://leetcode.com/u/Lee215/"), "lee215");
+    assert.equal(normalizeLeetCodeHandle("leetcode.com/lee215"), "lee215");
+    assert.equal(normalizeLeetCodeHandle("https://www.leetcode.com/profile/lee215"), "lee215");
+  });
+
+  it("returns null for invalid handles", () => {
+    assert.equal(normalizeLeetCodeHandle(""), null);
+    assert.equal(normalizeLeetCodeHandle("a b"), null);
+    assert.equal(normalizeLeetCodeHandle("<script>"), null);
+    assert.equal(normalizeLeetCodeHandle("x".repeat(51)), null);
+    assert.equal(normalizeLeetCodeHandle(42), null);
+    assert.equal(normalizeLeetCodeHandle(null), null);
+  });
+
+  it("profileHasCode returns true for codes in Summary/Name with variations", () => {
+    const code = "MY-ABCDEF";
+
+    // Inside other Summary text
+    assert.equal(
+      profileHasCode({ aboutMe: "Hello, my verify code is MY-ABCDEF thanks!" }, code),
+      true
+    );
+
+    // In lowercase
+    assert.equal(
+      profileHasCode({ aboutMe: "my-abcdef" }, code),
+      true
+    );
+
+    // With an en dash
+    assert.equal(
+      profileHasCode({ aboutMe: "MY–ABCDEF" }, code),
+      true
+    );
+
+    // With spaces inside ("MY - ABC DEF" style)
+    assert.equal(
+      profileHasCode({ aboutMe: "MY - ABC DEF" }, code),
+      true
+    );
+
+    // In realName only
+    assert.equal(
+      profileHasCode({ realName: "MY-ABCDEF", aboutMe: null }, code),
+      true
+    );
+  });
+
+  it("profileHasCode returns false for null/empty fields and for a different code", () => {
+    const code = "MY-ABCDEF";
+    assert.equal(profileHasCode({ aboutMe: null, realName: null }, code), false);
+    assert.equal(profileHasCode({ aboutMe: "", realName: "" }, code), false);
+    assert.equal(profileHasCode({ aboutMe: "MY-ZYXWVU", realName: null }, code), false);
+  });
+});
 
 describe("slug guards (DB CHECK mirror)", () => {
   it("accepts real LeetCode slugs", () => {

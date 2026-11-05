@@ -5,7 +5,7 @@
  * EXTERNAL DEPENDENCIES (undocumented-endpoint ban — see execution plan Step 0.5):
  * - POST https://leetcode.com/graphql — public, no auth. Operations:
  *   getUserProfile, getRecentSubmissions, userProfileCalendar,
- *   problemsetQuestionListV2. Rate: polite (~1 req/1.5s in cron, 12s timeout,
+ *   problemsetQuestionListV2, getUserOwnership. Rate: polite (~1 req/1.5s in cron, 12s timeout,
  *   300-600s ISR revalidate). Fallback when down: callers return null / keep
  *   last persisted stats (never regress cumulative totals); UI shows retry.
  * - GET/POST https://leetcode.com/accounts/login/ — credential login, returns
@@ -227,6 +227,48 @@ export async function fetchUserCalendar(username: string): Promise<UserCalendarS
   } catch (error) {
     console.error("Error fetching user calendar:", error);
     return null;
+  }
+}
+
+const OWNERSHIP_QUERY = `
+  query getUserOwnership($username: String!) {
+    matchedUser(username: $username) {
+      username
+      profile {
+        realName
+        aboutMe
+      }
+    }
+  }
+`;
+
+export async function fetchLeetCodeOwnershipFields(
+  username: string
+): Promise<
+  | { status: "ok"; username: string; realName: string; aboutMe: string }
+  | { status: "not_found" }
+  | { status: "unreachable" }
+> {
+  try {
+    const res = await fetch(
+      LEETCODE_GRAPHQL_ENDPOINT,
+      leetcodeInit({ query: OWNERSHIP_QUERY, variables: { username } }, { noStore: true, timeoutMs: 12000 })
+    );
+
+    if (!res.ok) return { status: "unreachable" };
+
+    const data = await res.json();
+    const matchedUser = data?.data?.matchedUser;
+    if (!matchedUser) return { status: "not_found" };
+
+    return {
+      status: "ok",
+      username: matchedUser.username,
+      realName: typeof matchedUser.profile?.realName === "string" ? matchedUser.profile.realName : "",
+      aboutMe: typeof matchedUser.profile?.aboutMe === "string" ? matchedUser.profile.aboutMe : "",
+    };
+  } catch {
+    return { status: "unreachable" };
   }
 }
 

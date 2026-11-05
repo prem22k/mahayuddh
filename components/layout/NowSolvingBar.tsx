@@ -70,6 +70,7 @@ interface VerificationNotice {
   username?: string;
   reachable?: boolean;
   linked?: boolean;
+  needsVerify?: boolean;
   solvedOthers?: SolvedQuestion[];
 }
 
@@ -595,6 +596,17 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
         return;
       }
 
+      if (res.verified === false) {
+        setVerificationNotice({
+          kind: "unverified",
+          title: activeProblem.title,
+          linked: true,
+          needsVerify: true,
+          username: res.username,
+        });
+        return;
+      }
+
       if (res.reachable === false) {
         setVerificationNotice({
           kind: "unverified",
@@ -962,7 +974,9 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                 Did you solve {verificationNotice.title}?
               </h3>
               <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                {!verificationNotice.linked ? (
+                {verificationNotice.needsVerify ? (
+                  `@${verificationNotice.username || "your account"} isn't verified as yours yet, so we can't check LeetCode for you. Verify it once and future solves check themselves.`
+                ) : !verificationNotice.linked ? (
                   "Your LeetCode account isn't linked, so we can't check for you. Link it and future solves verify on their own."
                 ) : verificationNotice.reachable === false ? (
                   "We couldn't reach LeetCode to check. You can check again, or tell us how it went."
@@ -997,7 +1011,7 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
             >
               I solved it
             </button>
-            {verificationNotice.linked && (
+            {verificationNotice.linked && !verificationNotice.needsVerify && (
               <button
                 type="button"
                 onClick={() => void runVerification()}
@@ -1034,6 +1048,14 @@ export function NowSolvingBar({ onSearchOpen }: NowSolvingBarProps) {
                 className="ml-auto text-xs font-medium text-primary hover:underline"
               >
                 Link LeetCode
+              </Link>
+            )}
+            {verificationNotice.needsVerify && (
+              <Link
+                href="/profile#leetcode"
+                className="ml-auto text-xs font-medium text-primary hover:underline"
+              >
+                Verify LeetCode
               </Link>
             )}
           </div>

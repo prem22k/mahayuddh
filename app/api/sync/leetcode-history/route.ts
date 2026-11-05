@@ -95,7 +95,14 @@ export async function POST(request: Request) {
       .eq("leetcode_username", handle)
       .maybeSingle();
     if (owner && owner.id !== user.id) {
-      return NextResponse.json({ error: "Forbidden. This LeetCode handle belongs to another squad member." }, { status: 403 });
+      return NextResponse.json(
+        {
+          error: `Someone on Mahayuddh already linked @${handle}. If it's yours, verify it to take it back.`,
+          code: "handle_taken",
+          handle,
+        },
+        { status: 403 }
+      );
     }
   }
 

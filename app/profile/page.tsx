@@ -33,6 +33,7 @@ import { createClient } from "@/lib/supabase/client";
 import { SignInMethods } from "@/components/profile/SignInMethods";
 import { replayTour } from "@/components/tour/replay";
 import { useLeetCodeSynced } from "@/lib/leetcode/useLeetCodeSynced";
+import { VerifyLeetCodePanel } from "@/components/leetcode/VerifyLeetCodePanel";
 
 const NO_SQUADS: Squad[] = [];
 
@@ -74,6 +75,8 @@ export default function ProfilePage() {
   const leetcodeSynced = useLeetCodeSynced();
 
   const [connectOpen, setConnectOpen] = useState(false);
+  // Set when the person verifies on this page, so the success line stays up.
+  const [verifiedHere, setVerifiedHere] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [objective, setObjective] = useState<string>("");
@@ -289,6 +292,7 @@ export default function ProfilePage() {
   const email = user?.email ?? "";
   const emailConfirmed = !!user?.email_confirmed_at;
   const lcHandle = profile?.leetcode_username;
+  const isVerified = Boolean(profile?.leetcode_verified_at);
   const lcSolved = (profile?.total_easy ?? 0) + (profile?.total_medium ?? 0) + (profile?.total_hard ?? 0);
   const synced = profile?.last_synced_at
     ? new Date(profile.last_synced_at).toLocaleDateString(undefined, {
@@ -500,11 +504,20 @@ export default function ProfilePage() {
               <p className="flex items-center gap-2 text-xs text-text-tertiary">
                 <span
                   aria-hidden
-                  className={cn("h-2 w-2 rounded-full", lcHandle ? "bg-text-secondary" : "border border-hairline-strong")}
+                  className={cn(
+                    "h-2 w-2 rounded-full",
+                    isVerified
+                      ? "bg-verified"
+                      : lcHandle
+                        ? "bg-text-secondary"
+                        : "border border-hairline-strong"
+                  )}
                 />
-                {lcHandle
-                  ? "Public proof verified by LeetCode sync"
-                  : "LeetCode not connected · solves are self-reported"}
+                {isVerified
+                  ? `LeetCode @${lcHandle} verified · your LeetCode solves count as verified`
+                  : lcHandle
+                    ? `LeetCode @${lcHandle} not verified yet · solves are self-reported`
+                    : "LeetCode not connected · solves are self-reported"}
               </p>
               <div className="grid grid-cols-2 gap-2 md:flex md:items-center md:gap-2.5">
                 <a href="#account" className={cn(outlineAction, "h-11 md:h-9 md:px-3.5")}>
@@ -648,12 +661,16 @@ export default function ProfilePage() {
           <SettingsCard
             id="leetcode"
             title="LeetCode connection"
-            description="Verifies accepted submissions and battle times."
+            description="Checks your accepted submissions and battle times once your handle is verified."
             badge={
-              lcHandle ? (
-                <span className="inline-flex h-5 items-center gap-1 rounded-full border border-hairline-strong px-2 text-[11px] font-medium text-text-secondary">
+              isVerified ? (
+                <span className="inline-flex h-5 items-center gap-1 rounded-full border border-verified/40 px-2 text-[11px] font-medium text-verified">
                   <Check className="h-3 w-3" strokeWidth={2} aria-hidden />
-                  Connected
+                  Verified
+                </span>
+              ) : lcHandle ? (
+                <span className="inline-flex h-5 items-center rounded-full border border-hairline px-2 text-[11px] font-medium text-text-tertiary">
+                  Not verified
                 </span>
               ) : (
                 <span className="inline-flex h-5 items-center rounded-full border border-hairline px-2 text-[11px] font-medium text-text-tertiary">
@@ -735,6 +752,16 @@ export default function ProfilePage() {
                     </button>
                   </div>
                 </div>
+                {lcHandle && (!isVerified || verifiedHere) && (
+                  <VerifyLeetCodePanel
+                    handle={lcHandle}
+                    onVerified={async () => {
+                      // Keep the panel up so its "delete the code" line stays visible.
+                      setVerifiedHere(true);
+                      await leetcodeSynced();
+                    }}
+                  />
+                )}
                 <div className="flex items-center justify-between gap-3 rounded-lg border border-hairline bg-surface-raised p-3 md:p-3.5">
                   <div className="flex min-w-0 flex-col gap-0.5">
                     <span className="text-xs font-semibold text-text-primary">Import full history</span>
