@@ -37,6 +37,8 @@ import {
   suggestLevel,
 } from "../lib/stuckLadder.ts";
 import { daysBetween, relativeDays } from "../lib/format.ts";
+import { classifySchemaError, combineSchemaStates } from "../lib/health/schemaCheck.ts";
+import { PUBLIC_PROFILE_COLUMNS, OWN_PROFILE_COLUMNS } from "../lib/data/profileColumns.ts";
 import { generateVerifyCode, normalizeLeetCodeHandle, profileHasCode, VERIFY_CODE_ALPHABET } from "../lib/leetcodeVerify.ts";
 import {
   buildRecap,
@@ -146,6 +148,32 @@ import {
 
 // A real-ish LeetCode slug list: these are what must survive a round trip.
 const SLUG_RE = /^[a-z0-9-]{1,80}$/;
+
+describe("health schema check", () => {
+  it("calls a missing column, table or grant a mismatch", () => {
+    for (const code of ["42703", "42P01", "42501", "PGRST200", "PGRST204"]) {
+      assert.equal(classifySchemaError({ code }), "mismatch", code);
+    }
+  });
+  it("never calls a blip a mismatch", () => {
+    assert.equal(classifySchemaError(null), "ok");
+    assert.equal(classifySchemaError(undefined), "ok");
+    assert.equal(classifySchemaError({ code: "57014" }), "unknown"); // statement timeout
+    assert.equal(classifySchemaError({ code: "PGRST301" }), "unknown"); // JWT problem
+    assert.equal(classifySchemaError({}), "unknown");
+  });
+  it("any mismatch wins, then any unknown", () => {
+    assert.equal(combineSchemaStates(["ok", "ok"]), "ok");
+    assert.equal(combineSchemaStates(["ok", "unknown"]), "unknown");
+    assert.equal(combineSchemaStates(["unknown", "mismatch"]), "mismatch");
+    assert.equal(combineSchemaStates([]), "unknown");
+  });
+  it("checks the columns the profile pages select, including verification", () => {
+    assert.ok(PUBLIC_PROFILE_COLUMNS.split(",").includes("leetcode_verified_at"));
+    assert.ok(OWN_PROFILE_COLUMNS.startsWith(PUBLIC_PROFILE_COLUMNS + ","));
+    assert.ok(!PUBLIC_PROFILE_COLUMNS.includes("leetcode_session_encrypted"));
+  });
+});
 
 describe("leetcode ownership helpers", () => {
   it("200 generated codes all match /^MY-[A-Z2-9]{6}$/ and use only alphabet chars", () => {

@@ -6,8 +6,14 @@ Supabase holds all state. RPO is 24 hours via the nightly backup.
 
 ## Quick map
 
-- Health: `GET /api/health` → `{ ok: true, db: "up" | "down" }` (200 when up,
-  503 when down, never leaks details).
+- Health: `GET /api/health` → `{ ok: true, db: "up" | "down", schema: "ok" |
+  "mismatch" | "unknown" }` (200 when db is up, 503 when down, never leaks
+  details). `schema` selects zero rows of every profiles column the app reads
+  (`lib/data/profileColumns.ts`). `mismatch` means production lacks a column or
+  grant the deployed code selects: signed-in pages fail while `db` is up. The
+  probe opens a `[schema]` issue (no Render wake; a backup on the same database
+  can't help). Fix: from an up-to-date `main`, `bash scripts/push-migrations.sh
+  --dry-run`, then apply; if nothing is pending, roll back the last deploy.
 - Failover hub: `/offline` (auto-retry + countdown, backup button after
   2 failed retries). Same backup button lives in `app/global-error.tsx`.
 - Backup banner: shown on all pages when `NEXT_PUBLIC_BACKUP_MODE=true`.

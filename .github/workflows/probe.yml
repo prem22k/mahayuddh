@@ -7,6 +7,12 @@ name: Prod probe (Render wake)
 # consecutive-recovery state lives in the incident issue's comments, so no
 # external state store is needed. Missing secrets/vars → warning + exit 0,
 # never red (fail closed).
+#
+# Separately, /api/health reports `schema`: "mismatch" when production lacks a
+# profiles column (or grant) the deployed code selects, which breaks every
+# signed-in page while db stays "up". A backup on the same database can't fix
+# that, so it never wakes Render: it opens one "[schema]" issue right away and
+# closes it on the next "ok". "unknown" (timeouts, blips) does nothing.
 on:
   schedule:
     - cron: "*/5 * * * *"
@@ -51,6 +57,8 @@ jobs:
           cp /tmp/health.json probe-state/last-health.json 2>/dev/null || echo '{}' > probe-state/last-health.json
           DB=$(jq -r '.db // "down"' /tmp/health.json 2>/dev/null || echo "down")
           echo "db=$DB" >> "$GITHUB_OUTPUT"
+          SCHEMA=$(jq -r '.schema // "unknown"' /tmp/health.json 2>/dev/null || echo "unknown")
+          echo "schema=$SCHEMA" >> "$GITHUB_OUTPUT"
           if [ "$CODE" = "200" ] && [ "$DB" = "up" ]; then
             echo "healthy=true" >> "$GITHUB_OUTPUT"
           else
@@ -122,6 +130,40 @@ jobs:
               ;;
             *)
               gh issue comment "$OPEN" --body "Recovery probe success 1 of 2 — primary healthy once, waiting for one more consecutive success before suspending."
+              ;;
+          esac
+
+      - name: Handle schema mismatch
+        if: steps.probe.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SCHEMA: ${{ steps.probe.outputs.schema }}
+        run: |
+          # Exact title prefix: the failover steps search "[probe]" and must
+          # never pick this issue up.
+          OPEN=$(gh issue list --state open --search "[schema] in:title" --json number,title \
+            --jq '[.[] | select(.title | startswith("[schema]"))][0].number // empty' || true)
+          case "$SCHEMA" in
+            mismatch)
+              echo "::error::/api/health reports schema: mismatch — production is missing a profiles column or grant the deployed code selects."
+              if [ -n "$OPEN" ]; then
+                echo "Schema incident #$OPEN already open — not duplicating."
+                exit 0
+              fi
+              STAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+              BODY="/api/health on $APP_URL reports schema: mismatch at $STAMP. Production's profiles table is missing a column (or a grant) that the deployed code selects, so signed-in pages fail while db is still up. Most likely a migration from the last merge was never applied: from an up-to-date main, run bash scripts/push-migrations.sh --dry-run, then apply what it lists. If nothing is pending, roll back the last Vercel deployment. This issue closes itself on the next healthy check."
+              gh issue create --title "[schema] Production is missing columns the app reads — $STAMP" --body "$BODY" --label incident 2>/dev/null || \
+              gh issue create --title "[schema] Production is missing columns the app reads — $STAMP" --body "$BODY"
+              ;;
+            ok)
+              if [ -n "$OPEN" ]; then
+                gh issue close "$OPEN" --comment "Schema check passes again: every profiles column the app reads exists in production."
+              else
+                echo "Schema ok."
+              fi
+              ;;
+            *)
+              echo "Schema state: ${SCHEMA:-unknown} — no action."
               ;;
           esac
 
