@@ -88,6 +88,7 @@ export interface SolvedQuestion {
 
 export interface BattleVerificationResult {
   linked: boolean;
+  verified?: boolean;
   username?: string;
   reachable?: boolean;
   started_at?: string;
@@ -108,6 +109,7 @@ export async function verifyBattle(battleId: string): Promise<BattleVerification
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   return {
     linked: json.linked === true,
+    verified: typeof json.verified === "boolean" ? json.verified : undefined,
     username: typeof json.username === "string" ? json.username : undefined,
     reachable: typeof json.reachable === "boolean" ? json.reachable : undefined,
     started_at: typeof json.started_at === "string" ? json.started_at : undefined,

@@ -176,10 +176,11 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json({ error: "Bad outcome." }, { status: 400 });
     }
+    // Evidence is stamped by /api/battles/verify after it finds the accepted
+    // submission; a browser-sent value is ignored (and the DB guard refuses browser writes).
     const patch: Record<string, unknown> = {
       outcome,
       ended_at: new Date().toISOString(),
-      evidence: body.evidence === "leetcode" ? "leetcode" : "none",
     };
     if (typeof body.duration_sec === "number" && body.duration_sec >= 0) patch.duration_sec = Math.trunc(body.duration_sec);
     if (typeof body.scratchpad_md === "string" && body.scratchpad_md.length <= 20000) patch.scratchpad_md = body.scratchpad_md;

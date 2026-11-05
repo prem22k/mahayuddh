@@ -12,7 +12,7 @@ import { OBJECTIVE_VALUES } from "@/lib/objectives";
 // Every response here is the caller's own profile, so it carries the
 // first-run columns too (same list as OWN_PROFILE_COLUMNS in lib/data).
 const PUBLIC_PROFILE_SELECT =
-  "id,username,leetcode_username,avatar_url,active_squad_id,contest_rating,global_rank,streak,total_easy,total_medium,total_hard,contest_attended,contest_global_rank,contest_top_percentage,last_synced_at,created_at,onboarded_at,tour_completed_at";
+  "id,username,leetcode_username,leetcode_verified_at,avatar_url,active_squad_id,contest_rating,global_rank,streak,total_easy,total_medium,total_hard,contest_attended,contest_global_rank,contest_top_percentage,last_synced_at,created_at,onboarded_at,tour_completed_at";
 
 async function getAuthedUserId(request: Request) {
   const token = extractBearerToken(request);

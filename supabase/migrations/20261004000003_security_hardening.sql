@@ -11,7 +11,8 @@
 --    attribute_join, count_referral_open, notify_contest_reminders,
 --    mark_solved_from_leetcode, stuck_reminder_allowed,
 --    suggestion_remind_allowed, my_referral_links(uuid),
---    owns_note(uuid,uuid), note_shared_with(uuid,uuid,bool).
+--    owns_note(uuid,uuid), note_shared_with(uuid,uuid,bool),
+--    claim_leetcode_handle.
 --    FUTURE FUNCTIONS: add them here explicitly. The default-privileges
 --    revoke at the end stops silent auto-exposure.
 -- 2. search_path pinned on the 12 functions missing it (hijack surface).

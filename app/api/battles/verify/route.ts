@@ -63,20 +63,25 @@ export async function POST(request: Request) {
   // 2. Load the caller's profiles.leetcode_username
   const { data: profile } = await supabase
     .from("profiles")
-    .select("leetcode_username")
+    .select("leetcode_username, leetcode_verified_at")
     .eq("id", user.id)
     .maybeSingle();
 
-  const rawUsername = (profile as { leetcode_username?: string | null } | null)?.leetcode_username;
+  const rawUsername = (profile as { leetcode_username?: string | null; leetcode_verified_at?: string | null } | null)?.leetcode_username;
   const username = rawUsername?.trim().toLowerCase();
   if (!username) {
     return NextResponse.json({ linked: false }, { status: 200 });
   }
 
+  const isVerified = (profile as { leetcode_verified_at?: string | null } | null)?.leetcode_verified_at != null;
+  if (!isVerified) {
+    return NextResponse.json({ linked: true, verified: false, username }, { status: 200 });
+  }
+
   // 3. fetchRecentSubmissions with { fresh: true }
   const recents = await fetchRecentSubmissions(username, { fresh: true });
   if (!recents) {
-    return NextResponse.json({ linked: true, username, reachable: false }, { status: 200 });
+    return NextResponse.json({ linked: true, verified: true, username, reachable: false }, { status: 200 });
   }
 
   // 4. Submissions filtering: timestamp >= floor(started_at_ms/1000) - 60
@@ -131,6 +136,21 @@ export async function POST(request: Request) {
   const targetSlug = battle.problem_slug.toLowerCase();
   const target = earliestBySlug.get(targetSlug) ?? null;
 
+  if (target) {
+    const { error: stampErr } = await supabase
+      .from("battles")
+      .update({ evidence: "leetcode" })
+      .eq("id", battleId)
+      .eq("user_id", user.id)
+      .eq("outcome", "in_progress");
+    if (stampErr) {
+      console.warn(
+        "Failed to stamp battle evidence:",
+        redactForLog({ error: stampErr.message, battle_id: battleId, user_id: user.id })
+      );
+    }
+  }
+
   // 5. Mark OTHER solved questions for caller
   const otherSlugs = solved
     .filter((s) => s.slug !== targetSlug)
@@ -159,6 +179,7 @@ export async function POST(request: Request) {
   return NextResponse.json(
     {
       linked: true,
+      verified: true,
       username,
       reachable: true,
       started_at: battle.started_at,

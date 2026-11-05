@@ -232,6 +232,7 @@ export default function ComparePage() {
             id: challengeTargetId,
             username: rematchTargetName ?? "member",
             leetcode_username: null,
+            leetcode_verified_at: null,
             avatar_url: null,
             active_squad_id: null,
             contest_rating: null,

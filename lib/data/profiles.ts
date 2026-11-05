@@ -4,7 +4,7 @@ import { DataError } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
 
 export const PUBLIC_PROFILE_COLUMNS =
-  "id,username,leetcode_username,avatar_url,active_squad_id,contest_rating,global_rank,streak,total_easy,total_medium,total_hard,contest_attended,contest_global_rank,contest_top_percentage,last_synced_at,created_at";
+  "id,username,leetcode_username,leetcode_verified_at,avatar_url,active_squad_id,contest_rating,global_rank,streak,total_easy,total_medium,total_hard,contest_attended,contest_global_rank,contest_top_percentage,last_synced_at,created_at";
 
 /**
  * The signed-in user's own profile: the public columns plus first-run state.
@@ -64,7 +64,7 @@ export async function syncUserProfileStats(
     });
 
     if (!res.ok) {
-      if (res.status === 429) throw res;
+      if (res.status === 429 || res.status === 403) throw res;
       console.warn("Failed to fetch LeetCode stats from sync endpoint");
       return null;
     }
@@ -85,8 +85,8 @@ export async function syncUserProfileStats(
       }
     }
   } catch (err) {
-    // A thrown Response (429 cooldown) must propagate so callers can surface
-    // Retry-After; every other failure degrades to null.
+    // A thrown Response (429 cooldown, 403 ownership) must propagate so callers can surface
+    // errors through syncErrorMessage; every other failure degrades to null.
     if (err instanceof Response) throw err;
     console.error("Error syncing profile stats:", err);
   }

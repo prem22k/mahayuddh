@@ -152,15 +152,19 @@ async function persistStats(
   const attended = stats.contestAttended ?? 0;
   const { data: prev } = await supabase
     .from("profiles")
-    .select("total_easy, total_medium, total_hard, streak")
+    .select("total_easy, total_medium, total_hard, streak, leetcode_username")
     .eq("id", opts.userId)
     .maybeSingle();
 
+  const handleBeingWritten = leetcodeUsername.trim().toLowerCase();
+  const prevHandle = (prev as { leetcode_username?: string | null } | null)?.leetcode_username?.trim().toLowerCase() ?? null;
+  const sameHandle = prevHandle !== null && prevHandle === handleBeingWritten;
+
   const nowISO = new Date().toISOString();
   const updateData: Partial<Profile> & { streak_updated_at?: string | null } = {
-    total_easy: Math.max(prev?.total_easy ?? 0, stats.totalEasy ?? 0),
-    total_medium: Math.max(prev?.total_medium ?? 0, stats.totalMedium ?? 0),
-    total_hard: Math.max(prev?.total_hard ?? 0, stats.totalHard ?? 0),
+    total_easy: sameHandle ? Math.max(prev?.total_easy ?? 0, stats.totalEasy ?? 0) : (stats.totalEasy ?? 0),
+    total_medium: sameHandle ? Math.max(prev?.total_medium ?? 0, stats.totalMedium ?? 0) : (stats.totalMedium ?? 0),
+    total_hard: sameHandle ? Math.max(prev?.total_hard ?? 0, stats.totalHard ?? 0) : (stats.totalHard ?? 0),
     // Never-competed users stay null so they can't masquerade as true 1500s.
     contest_rating: attended > 0 ? (stats.contestRating ?? null) : null,
     global_rank: stats.ranking ?? null, // Official LeetCode Profile Global Rank (e.g. 2328998)
@@ -217,10 +221,11 @@ async function verifySuggestions(
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id")
+    .select("id, leetcode_verified_at")
     .eq("leetcode_username", leetcodeUsername.trim().toLowerCase())
     .maybeSingle();
-  if (!profile) return 0;
+  // Completing a squadmate's challenge as "Verified on LeetCode" needs a proven handle.
+  if (!profile || !(profile as { leetcode_verified_at?: string | null }).leetcode_verified_at) return 0;
 
   const recentSlugs = new Set(recentSubmissions.map((s) => s.titleSlug.toLowerCase()));
 
@@ -516,14 +521,22 @@ export async function POST(request: Request) {
     // Ownership check: only allow syncing a handle linked to the caller's
     // own profile, or a handle not yet claimed by anyone (first-connect flow).
     // Stored lowered by the DB trigger, so exact match == case-insensitive.
+    const handle = username.trim().toLowerCase();
     if (service) {
       const { data: owner } = await service
         .from("profiles")
         .select("id")
-        .eq("leetcode_username", username.trim().toLowerCase())
+        .eq("leetcode_username", handle)
         .maybeSingle();
       if (owner && owner.id !== authedUserId) {
-        return NextResponse.json({ error: "Forbidden. This LeetCode handle belongs to another squad member." }, { status: 403 });
+        return NextResponse.json(
+          {
+            error: `Someone on Mahayuddh already linked @${handle}. If it's yours, verify it to take it back.`,
+            code: "handle_taken",
+            handle,
+          },
+          { status: 403 }
+        );
       }
       await service
         .from("sync_rate_limits")
