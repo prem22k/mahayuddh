@@ -35,8 +35,18 @@ import { getRecentFeed } from "@/lib/data/feed";
 import { getOpenReviews } from "@/lib/data/review";
 import { getActiveGoals, computeGoalProgress, GoalProgress } from "@/lib/data/goals";
 import { getBattlesForSlug } from "@/lib/data/battles";
-import { getProblemHistory, cacheDailyBattle } from "@/lib/data/dailyBattles";
-import { pickDailyBattle, formatDuration, ProblemHistory } from "@/lib/dailyBattle";
+import {
+  getProblemHistory,
+  getSquadDailyInputs,
+  cacheDailyBattle,
+} from "@/lib/data/dailyBattles";
+import {
+  pickDailyBattle,
+  pickSquadDailyBattle,
+  formatDuration,
+  ProblemHistory,
+} from "@/lib/dailyBattle";
+import { squadTodayKey } from "@/lib/squadDays";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSolving, useSolvingTimer } from "@/components/providers/SolvingProvider";
 import { Pass } from "@/components/pass/Pass";
@@ -135,7 +145,7 @@ export default function ArenaPage() {
   );
   const problems = allProblems.data ?? NO_PROBLEMS;
   const statusMap = myStatuses.data ?? NO_STATUSES;
-  const loading = allProblems.isLoading || myStatuses.isLoading;
+  const baseLoading = allProblems.isLoading || myStatuses.isLoading;
   const loadError =
     allProblems.error || myStatuses.error ? "Couldn't load today's battle. Try again." : null;
   const handleRetryLoad = () => {
@@ -174,6 +184,7 @@ export default function ArenaPage() {
   });
   const goalPattern = squadInfo.data?.goalPattern ?? null;
   const squadMemberIds = squadInfo.data?.memberIds ?? NO_STRINGS;
+  const memberKey = squadMemberIds.join(",");
   const feed = squadInfo.data?.feed ?? NO_FEED;
   const goal = squadInfo.data?.goal ?? null;
 
@@ -196,22 +207,65 @@ export default function ArenaPage() {
   );
   const history = !userId ? NO_HISTORY : (historyQuery.data ?? null);
 
-  const computed = useMemo(
-    () =>
-      problems.length === 0
-        ? null
-        : pickDailyBattle({
-            problems,
-            statusMap,
-            userId: user?.id ?? undefined,
-            squadSlugs: undefined,
-            goalPattern,
-            history: history ?? undefined,
-          }),
-    [problems, statusMap, user, goalPattern, history]
+  // One shared pick per squad: score only squad-level inputs so every member
+  // arrives at the same problem. Viewer status/history only shape personal text.
+  const uniqueSlugs = useMemo(
+    () => Array.from(new Set(problems.map((p) => p.title_slug.toLowerCase()))),
+    [problems]
   );
+  const squadPickEnabled = squadId !== null && squadMemberIds.length >= 2;
+  const squadDailyInputs = useCachedQuery(
+    squadPickEnabled && problems.length > 0
+      ? ["squad-daily-inputs", squadId, squadTodayKey(), memberKey]
+      : null,
+    () => getSquadDailyInputs(squadId as string, uniqueSlugs)
+  );
+  const squadInputs =
+    squadPickEnabled && squadDailyInputs.error == null ? squadDailyInputs.data : undefined;
+  const squadDailyLoading =
+    squadId !== null &&
+    (squadInfo.isLoading || (squadPickEnabled && problems.length > 0 && squadDailyInputs.isLoading));
+  const loading = baseLoading || squadDailyLoading;
 
-  const memberKey = squadMemberIds.join(",");
+  const computed = useMemo(() => {
+    if (problems.length === 0) return null;
+    if (squadPickEnabled && squadId !== null && squadDailyInputs.error == null) {
+      // Wait for the shared inputs instead of computing (and showing) a solo
+      // pick that would be replaced a moment later.
+      if (!squadInputs) return null;
+      return pickSquadDailyBattle({
+        problems,
+        squadId,
+        dayKey: squadTodayKey(),
+        memberCount: squadInputs.memberCount,
+        solvedBy: squadInputs.solvedBy,
+        goalPattern,
+        myStatus: statusMap,
+        myHistory: history ?? undefined,
+      });
+    }
+    // No squad, a squad of one, or the squad inputs failed: solo still works.
+    return pickDailyBattle({
+      problems,
+      statusMap,
+      userId: user?.id ?? undefined,
+      squadSlugs: undefined,
+      goalPattern,
+      history: history ?? undefined,
+      dateStr: squadTodayKey(),
+    });
+  }, [
+    problems,
+    statusMap,
+    user,
+    goalPattern,
+    history,
+    squadId,
+    squadPickEnabled,
+    squadInputs,
+    squadDailyInputs.error,
+  ]);
+
   const activity =
     useCachedQuery(
       computed && squadMemberIds.length > 0
@@ -298,11 +352,11 @@ export default function ArenaPage() {
   const incomingLoaded = userId != null && (incoming.data !== undefined || incoming.error != null);
 
   useEffect(() => {
-    if (computed && user?.id) {
+    if (!loading && !authLoading && computed && user?.id) {
       cacheDailyBattle(user.id, { ...computed, squadContext: profile?.active_squad_id ? activity : null });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [computed?.problem.title_slug, user?.id]);
+  }, [computed?.problem.title_slug, user?.id, loading, authLoading]);
 
   // Resolved battle facts. Only real rows: with no pick the Pass renders an
   // honest error/empty card instead (see pickUnavailable below).
@@ -313,7 +367,12 @@ export default function ArenaPage() {
   const pickNo = computed?.problem.order_index != null ? String(computed.problem.order_index) : "";
   const reasons = computed?.why ?? [];
 
-  const solvedToday = pickSlug ? statusMap[pickSlug] === "solved" : false;
+  const usingSquadPick = squadPickEnabled && squadInputs != null;
+  const solvedToday = pickSlug
+    ? usingSquadPick
+      ? userId != null && solvedTodayIds.has(userId)
+      : statusMap[pickSlug] === "solved"
+    : false;
 
   const lastSolveSec =
     useCachedQuery(solvedToday && pickSlug ? ["last-solve-sec", pickSlug] : null, async () => {

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { DailyPick, ProblemHistory } from "@/lib/dailyBattle";
 import { DataError } from "@/lib/data/errors";
+import { squadStartOfTodayUtcISO, squadTodayKey } from "@/lib/squadDays";
 
 /**
  * Per-user history for the Daily Battle signals (plan Step 6).
@@ -60,8 +61,103 @@ export async function getProblemHistory(slugs?: string[]): Promise<Map<string, P
   return out;
 }
 
+const PAGE_SIZE = 1000;
+const IN_CHUNK_SIZE = 200;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/**
+ * Squad-level inputs for the shared Daily Battle.
+ *
+ * Counts the members who were already in the squad at today's IST midnight
+ * (falling back to every current member when the squad formed today), then
+ * counts, per slug, how many of those members solved it before midnight.
+ */
+export async function getSquadDailyInputs(
+  squadId: string,
+  slugs: string[]
+): Promise<{ memberIds: string[]; memberCount: number; solvedBy: Map<string, number> }> {
+  const supabase = createClient();
+  const since = squadStartOfTodayUtcISO();
+
+  const { data: memberData, error: memberError } = await supabase
+    .from("squad_members")
+    .select("user_id, joined_at, active")
+    .eq("squad_id", squadId);
+  if (memberError) {
+    throw new DataError("daily-battle", "Couldn't load your squad for today's battle. Retry.", {
+      cause: memberError,
+    });
+  }
+
+  const current = (
+    (memberData ?? []) as { user_id: string; joined_at: string | null; active: boolean | null }[]
+  ).filter((m) => m.active !== false);
+  const sinceMs = Date.parse(since);
+  const joinedBeforeToday = current.filter((m) => {
+    if (!m.joined_at) return false;
+    const joinedMs = Date.parse(m.joined_at);
+    return !Number.isNaN(joinedMs) && joinedMs < sinceMs;
+  });
+  // A squad formed today has fewer than two members who joined before
+  // midnight; count all current members rather than treating it as empty.
+  const counted = joinedBeforeToday.length >= 2 ? joinedBeforeToday : current;
+  const memberIds = Array.from(new Set(counted.map((m) => m.user_id)));
+
+  const uniqueSlugs = Array.from(
+    new Set(slugs.map((s) => s.toLowerCase()).filter((s) => s.length > 0))
+  );
+  const solvedBy = new Map<string, number>();
+  if (memberIds.length === 0 || uniqueSlugs.length === 0) {
+    return { memberIds, memberCount: memberIds.length, solvedBy };
+  }
+
+  // PostgREST caps a response at 1000 rows. Page every chunk until a short
+  // page so a long solve history is not silently truncated, and keep each
+  // `in` list small enough that the URL stays short.
+  const usersBySlug = new Map<string, Set<string>>();
+  for (const slugChunk of chunk(uniqueSlugs, IN_CHUNK_SIZE)) {
+    for (const userChunk of chunk(memberIds, IN_CHUNK_SIZE)) {
+      let from = 0;
+      for (;;) {
+        const { data, error } = await supabase
+          .from("user_problem_status")
+          .select("user_id, problem_slug")
+          .in("user_id", userChunk)
+          .eq("status", "solved")
+          .in("problem_slug", slugChunk)
+          .or(`solved_at.is.null,solved_at.lt.${since}`)
+          .order("user_id", { ascending: true })
+          .order("problem_slug", { ascending: true })
+          .range(from, from + PAGE_SIZE - 1);
+        if (error) {
+          throw new DataError("daily-battle", "Couldn't load your squad's solves. Retry.", {
+            cause: error,
+          });
+        }
+        const page = (data ?? []) as { user_id: string; problem_slug: string }[];
+        for (const row of page) {
+          const slug = row.problem_slug.toLowerCase();
+          const users = usersBySlug.get(slug) ?? new Set<string>();
+          users.add(row.user_id);
+          usersBySlug.set(slug, users);
+        }
+        if (page.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
+    }
+  }
+
+  for (const [slug, users] of usersBySlug) solvedBy.set(slug, users.size);
+  return { memberIds, memberCount: memberIds.length, solvedBy };
+}
+
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return squadTodayKey();
 }
 
 /**
