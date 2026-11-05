@@ -97,9 +97,11 @@ begin
   end if;
 
   -- Release every other holder. Their stats came from this handle, so they go
-  -- too; the next sync of whatever they link next fills them again.
+  -- too, and so does a LeetCode profile picture; the next sync of whatever
+  -- they link next fills them again.
   update public.profiles
      set leetcode_username = null,
+         avatar_url = case when avatar_url like 'https://assets.leetcode.com/%' then null else avatar_url end,
          total_easy = 0, total_medium = 0, total_hard = 0,
          streak = 0,
          contest_rating = null, global_rank = null,
@@ -112,7 +114,8 @@ begin
   -- Switching from another handle: drop that handle's stats as well (the
   -- sync's never-regress floor would otherwise keep the old account's totals).
   update public.profiles
-     set total_easy = 0, total_medium = 0, total_hard = 0,
+     set avatar_url = case when avatar_url like 'https://assets.leetcode.com/%' then null else avatar_url end,
+         total_easy = 0, total_medium = 0, total_hard = 0,
          streak = 0,
          contest_rating = null, global_rank = null,
          contest_attended = 0, contest_global_rank = null, contest_top_percentage = null,

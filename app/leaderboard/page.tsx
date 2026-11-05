@@ -3,6 +3,7 @@
 import Link from "next/link";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
+  BadgeCheck,
   Clock,
   ExternalLink,
   Flame,
@@ -504,11 +505,26 @@ export default function LeaderboardPage() {
                         {member.leetcode_username && (
                           <span
                             className={cn(
-                              "truncate font-mono text-xs leading-4 text-text-tertiary",
+                              "flex min-w-0 items-center gap-1 font-mono text-xs leading-4 text-text-tertiary",
                               isCurrentUser && "md:hidden"
                             )}
                           >
-                            @{member.leetcode_username}
+                            <span className="truncate">@{member.leetcode_username}</span>
+                            {member.leetcode_verified_at ? (
+                              <span
+                                role="img"
+                                aria-label="Verified LeetCode owner"
+                                title="Verified LeetCode owner"
+                                className="inline-flex shrink-0"
+                              >
+                                <BadgeCheck className="h-3 w-3 text-verified" strokeWidth={1.5} aria-hidden />
+                              </span>
+                            ) : (
+                              // No visible label: on a narrow row it would squeeze the
+                              // handle to "@". The check mark is the signal; the
+                              // dossier and profile say "unverified" in words.
+                              <span className="sr-only">, not verified</span>
+                            )}
                           </span>
                         )}
                       </span>

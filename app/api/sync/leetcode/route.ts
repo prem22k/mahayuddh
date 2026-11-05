@@ -86,7 +86,7 @@ async function persistStatsByHandle(
   const handle = leetcodeUsername.trim().toLowerCase();
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, total_easy, total_medium, total_hard, streak")
+    .select("id, total_easy, total_medium, total_hard, streak, leetcode_verified_at")
     .eq("leetcode_username", handle)
     .maybeSingle();
 
@@ -94,6 +94,9 @@ async function persistStatsByHandle(
     console.warn(`Sync: no squad profile for LeetCode handle ${leetcodeUsername}`);
     return false;
   }
+  // Only a proven handle may set the profile picture: an unverified link
+  // must not put someone else's face on this account.
+  if (!profile.leetcode_verified_at) delete updateData.avatar_url;
 
   const { error } = await supabase
     .from("profiles")
@@ -152,7 +155,7 @@ async function persistStats(
   const attended = stats.contestAttended ?? 0;
   const { data: prev } = await supabase
     .from("profiles")
-    .select("total_easy, total_medium, total_hard, streak, leetcode_username")
+    .select("total_easy, total_medium, total_hard, streak, leetcode_username, leetcode_verified_at")
     .eq("id", opts.userId)
     .maybeSingle();
 
@@ -179,7 +182,10 @@ async function persistStats(
     updateData.streak = Math.trunc(stats.streak);
     updateData.streak_updated_at = nowISO;
   }
-  if (stats.avatar) updateData.avatar_url = stats.avatar;
+  // Only a proven handle may set the profile picture (see persistStatsByHandle).
+  const verifiedSameHandle =
+    sameHandle && Boolean((prev as { leetcode_verified_at?: string | null } | null)?.leetcode_verified_at);
+  if (stats.avatar && verifiedSameHandle) updateData.avatar_url = stats.avatar;
 
   // Authenticated self-sync: write by user id (also claims handle on first connect).
   // Single server-side writer; clients never update stats directly.
@@ -495,11 +501,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized. Please log in first." }, { status: 401 });
     }
 
-    // Throttle: at most one sync per user per 60s (LeetCode + write protection).
-    // Read-only check here; the stamp lands after ownership verification so
-    // rejected (403/404) requests don't burn the caller's cooldown.
-    const SYNC_COOLDOWN_MS = 60_000;
+    // Ownership check: only allow syncing a handle linked to the caller's
+    // own profile, or a handle not yet claimed by anyone (first-connect flow).
+    // Stored lowered by the DB trigger, so exact match == case-insensitive.
+    // Runs before the cooldown: it is one DB read, never calls LeetCode, and a
+    // taken handle should say so (and how to take it back) even mid-cooldown.
+    const handle = username.trim().toLowerCase();
     const service = getServiceClient();
+    if (service) {
+      const { data: owner } = await service
+        .from("profiles")
+        .select("id")
+        .eq("leetcode_username", handle)
+        .maybeSingle();
+      if (owner && owner.id !== authedUserId) {
+        return NextResponse.json(
+          {
+            error: `Someone on Mahayuddh already linked @${handle}. If it's yours, verify it to take it back.`,
+            code: "handle_taken",
+            handle,
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Throttle: at most one sync per user per 60s (LeetCode + write protection).
+    // The stamp lands after this check passes, so a rejected request doesn't
+    // burn the caller's cooldown.
+    const SYNC_COOLDOWN_MS = 60_000;
     if (service) {
       const { data: limit } = await service
         .from("sync_rate_limits")
@@ -518,26 +548,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // Ownership check: only allow syncing a handle linked to the caller's
-    // own profile, or a handle not yet claimed by anyone (first-connect flow).
-    // Stored lowered by the DB trigger, so exact match == case-insensitive.
-    const handle = username.trim().toLowerCase();
     if (service) {
-      const { data: owner } = await service
-        .from("profiles")
-        .select("id")
-        .eq("leetcode_username", handle)
-        .maybeSingle();
-      if (owner && owner.id !== authedUserId) {
-        return NextResponse.json(
-          {
-            error: `Someone on Mahayuddh already linked @${handle}. If it's yours, verify it to take it back.`,
-            code: "handle_taken",
-            handle,
-          },
-          { status: 403 }
-        );
-      }
       await service
         .from("sync_rate_limits")
         .upsert({ user_id: authedUserId, last_sync_at: new Date().toISOString() }, { onConflict: "user_id" });
