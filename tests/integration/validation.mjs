@@ -15,8 +15,8 @@
  *   - each gate returns no row for a squad with no members
  *   - the board assembles all five gates in §58's order
  *   - the qualitative gate is absent from the board, not counted-and-lost
- *   - gate text cannot name a person (the functions are callable by anon)
- *   - observations are private to the observer, anonymous insert rejected
+ *   - gate functions are product-admin only (signed-out and non-admin calls rejected); output cannot name a person
+ *   - observations are product-admin only, anonymous and non-admin inserts rejected
  *   - triage is world-readable but admin-writable
  *
  * Run: npm run test:integration:validation
@@ -93,6 +93,8 @@ async function main() {
   console.log("Step 27 — validation gates and observation log\n");
 
   const observer = await makeUser();
+  const { error: adminErr } = await service.from("profiles").update({ is_product_admin: true }).eq("id", observer.id);
+  assert(!adminErr, `set product admin: ${adminErr?.message}`);
   const emptySquad = await makeSquad(observer.id);
 
   console.log("an empty squad must measure as unknown, not as failure");
@@ -192,12 +194,31 @@ async function main() {
       `expected '0 of N members…', got '${row.measured}'`);
   });
 
-  await check("gate output cannot name a person", async () => {
-    // These functions are granted to anon so a member can review their own
-    // squad. That is only safe if the text carries counts, never identities.
+  await check("signed-out client calling validation_gate_board gets an error", async () => {
     const anon = createClient(env.NEXT_PUBLIC_SUPABASE_URL, anonKey, { auth: { persistSession: false } });
-    const { data, error } = await anon.rpc("validation_gate_board", { p_squad_id: squad });
-    assert(!error, `anon call failed: ${error?.message}`);
+    const { error } = await anon.rpc("validation_gate_board", { p_squad_id: squad });
+    assert(error, "signed-out call succeeded");
+  });
+
+  const nonAdmin = await makeUser();
+  const nonAdminClient = await asUser(nonAdmin.email);
+
+  await check("non-admin signed-in user gets 42501 from gate functions", async () => {
+    const { error: bErr } = await nonAdminClient.rpc("validation_gate_board", { p_squad_id: squad });
+    assert(bErr && bErr.code === "42501", `expected 42501 from validation_gate_board, got ${bErr?.code}: ${bErr?.message}`);
+
+    const { error: sErr } = await nonAdminClient.rpc("validation_squads");
+    assert(sErr && sErr.code === "42501", `expected 42501 from validation_squads, got ${sErr?.code}: ${sErr?.message}`);
+
+    const { error: tErr } = await nonAdminClient.rpc("validation_test_status", { p_squad_id: squad });
+    assert(tErr && tErr.code === "42501", `expected 42501 from validation_test_status, got ${tErr?.code}: ${tErr?.message}`);
+  });
+
+  await check("admin observer client gets rows and output does not leak username", async () => {
+    const c = await asUser(observer.email);
+    const { data, error } = await c.rpc("validation_gate_board", { p_squad_id: squad });
+    assert(!error, `admin call failed: ${error?.message}`);
+    assert((data ?? []).length > 0, "expected rows from validation_gate_board");
     const { data: profile } = await service.from("profiles").select("username").eq("id", observer.id).single();
     const blob = JSON.stringify(data ?? []);
     assert(!blob.includes(profile.username), `gate output leaked username: ${profile.username}`);
@@ -211,6 +232,12 @@ async function main() {
     const { error } = await anon.from("validation_observations")
       .insert({ category: "hesitation", observation: "anon attempt", observed_by: observer.id });
     assert(error, "RLS allowed an anonymous insert");
+  });
+
+  await check("the non-admin signed-in user cannot insert an observation naming themselves as observer", async () => {
+    const { error } = await nonAdminClient.from("validation_observations")
+      .insert({ category: "hesitation", observation: "non-admin attempt", observed_by: nonAdmin.id });
+    assert(error, "RLS allowed a non-admin to insert an observation");
   });
 
   await check("an insert naming someone else as observer is rejected", async () => {
@@ -284,13 +311,13 @@ async function main() {
   await check("a member cannot smuggle a label in with the proposal", async () => {
     // The insert policy cannot check the label, so the trigger does: a label is a
     // commitment and the rule belongs in the database, not in the client.
-    const c = await asUser(observer.email);
+    const c = nonAdminClient;
     const { error } = await c.from("feature_triage").insert({ feature: `${feature}-sneaky`, label: "CORE" });
     assert(error, "a non-admin attached a label at insert time");
   });
 
   await check("a non-admin cannot label a feature", async () => {
-    const c = await asUser(observer.email);
+    const c = nonAdminClient;
     // Asserted on the EFFECT, not on `error`. PostgREST returns no error and
     // zero rows for an UPDATE that RLS filtered out, so a test asserting
     // "no error" here would pass against a policy with no restriction on it at

@@ -18,11 +18,9 @@ import { gateBoard, testStatus } from "@/lib/validation/gates";
  * drift from the rows that produced them — the same reasoning as the Loop C
  * counters in `lib/data/impact.ts`.
  *
- * They are callable by anon as well as authenticated, which is deliberate: §58
- * asks whether a *squad* can be evaluated, and a member reviewing their own
- * squad should not need a different door from the researcher reviewing all of
- * them. Every function returns numbers, never names, so nothing here leaks who
- * is in a squad.
+ * They are product-admin only (migration 20261105000001): they list every
+ * squad and its activity, so the page is the team's research board. A
+ * signed-in non-admin gets Postgres error 42501, mapped to a plain message.
  */
 
 export interface SquadOption {
@@ -39,11 +37,27 @@ export interface Observation {
   created_at: string;
 }
 
+export async function getIsProductAdmin(userId: string): Promise<boolean> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("is_product_admin")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) {
+    throw new DataError("gates", "Couldn't check your access. Retry.", { cause: error });
+  }
+  return Boolean(data?.is_product_admin);
+}
+
 /** Every §58 gate, in order. Null squad_id means all squads. */
 export async function getGateBoard(squadId: string | null = null): Promise<GateBoard> {
   const supabase = createClient();
   const { data, error } = await supabase.rpc("validation_gate_board", { p_squad_id: squadId });
   if (error) {
+    if (error.code === "42501") {
+      throw new DataError("gates", "This page is for the Mahayuddh team.", { cause: error });
+    }
     throw new DataError("gates", "Couldn't read the validation gates. Retry.", { cause: error });
   }
   return gateBoard((data ?? []) as RawGateRow[]);
@@ -59,6 +73,9 @@ export async function getTestStatus(squadId: string | null = null): Promise<Test
   const supabase = createClient();
   const { data, error } = await supabase.rpc("validation_test_status", { p_squad_id: squadId });
   if (error) {
+    if (error.code === "42501") {
+      throw new DataError("gates", "This page is for the Mahayuddh team.", { cause: error });
+    }
     throw new DataError("gates", "Couldn't read the test status. Retry.", { cause: error });
   }
   const row = (data ?? [])[0] as
@@ -71,7 +88,12 @@ export async function getTestStatus(squadId: string | null = null): Promise<Test
 export async function getSquadsForValidation(): Promise<SquadOption[]> {
   const supabase = createClient();
   const { data, error } = await supabase.rpc("validation_squads");
-  if (error) throw new DataError("gates", "Couldn't load squads. Retry.", { cause: error });
+  if (error) {
+    if (error.code === "42501") {
+      throw new DataError("gates", "This page is for the Mahayuddh team.", { cause: error });
+    }
+    throw new DataError("gates", "Couldn't load squads. Retry.", { cause: error });
+  }
   return (data ?? []) as SquadOption[];
 }
 
@@ -107,7 +129,12 @@ export async function recordObservation(input: NewObservation): Promise<void> {
     observation: text,
     observed_by: userId,
   });
-  if (error) throw new DataError("observations", "Couldn't save that. Retry.", { cause: error });
+  if (error) {
+    if (error.code === "42501") {
+      throw new DataError("observations", "This page is for the Mahayuddh team.", { cause: error });
+    }
+    throw new DataError("observations", "Couldn't save that. Retry.", { cause: error });
+  }
 }
 
 /** Observations, newest first. RLS keeps this to the observer and admins. */

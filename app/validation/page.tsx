@@ -15,6 +15,7 @@ import {
   getGateBoard,
   getTestStatus,
   getSquadsForValidation,
+  getIsProductAdmin,
   listObservations,
   recordObservation,
   listTriage,
@@ -145,13 +146,18 @@ export default function ValidationPage() {
   const [squadId, setSquadId] = useState<string>("");
   const [readAt, setReadAt] = useState<Date | null>(null);
 
+  const adminQuery = useCachedQuery(
+    userId ? ["product-admin", userId] : null,
+    () => getIsProductAdmin(userId!)
+  );
+
   const squadsQuery = useCachedQuery(
-    userId ? ["squads-for-validation"] : null,
+    adminQuery.data === true ? ["squads-for-validation"] : null,
     getSquadsForValidation
   );
 
   const validationDataQuery = useCachedQuery(
-    userId ? ["validation-board", squadId || null] : null,
+    adminQuery.data === true ? ["validation-board", squadId || null] : null,
     async () => {
       const scope = squadId || null;
       const [b, st, o] = await Promise.all([
@@ -164,7 +170,7 @@ export default function ValidationPage() {
   );
 
   const triageQuery = useCachedQuery(
-    userId ? ["list-triage"] : null,
+    adminQuery.data === true ? ["list-triage"] : null,
     listTriage
   );
 
@@ -182,12 +188,13 @@ export default function ValidationPage() {
 
   const handleRefresh = useCallback(async () => {
     await Promise.all([
+      adminQuery.refresh(),
       validationDataQuery.refresh(),
       triageQuery.refresh(),
       squadsQuery.refresh(),
     ]);
     setReadAt(new Date());
-  }, [validationDataQuery, triageQuery, squadsQuery]);
+  }, [adminQuery, validationDataQuery, triageQuery, squadsQuery]);
 
   const handleObservationSaved = useCallback(async () => {
     await validationDataQuery.refresh();
@@ -211,6 +218,39 @@ export default function ValidationPage() {
             Sign in
           </Link>
           .
+        </p>
+      </div>
+    );
+  }
+
+  if (adminQuery.isLoading) return <ValidationSkeleton />;
+
+  if (adminQuery.error) {
+    return (
+      <div className="mx-auto max-w-reading space-y-3 py-6">
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-lg border border-error/30 bg-error-tint p-3 text-sm text-error"
+        >
+          <span>{dataErrorMessage(adminQuery.error, "Couldn't check your access. Retry.")}</span>
+          <button
+            type="button"
+            onClick={() => void adminQuery.refresh()}
+            className="min-h-[44px] shrink-0 cursor-pointer text-xs font-medium underline underline-offset-2 hover:text-text-primary md:min-h-0"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (adminQuery.data === false) {
+    return (
+      <div className="mx-auto max-w-reading space-y-3 py-6">
+        <h1 className="type-display-md text-text-primary">Quality gates</h1>
+        <p className="text-sm leading-6 text-text-secondary">
+          This page is for the Mahayuddh team. If you&apos;re on the team, ask for access.
         </p>
       </div>
     );
