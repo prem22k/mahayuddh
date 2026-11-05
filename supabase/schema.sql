@@ -34,20 +34,25 @@
 -- the auth schema stubbed) with zero errors, after which all 15 RPCs and 43 tables
 -- the app calls existed, and a trigger was observed firing rather than merely
 -- being present.
--- Last regenerated 2026-11-03 from the local stack (`db dump --local`) after
--- applying every migration through 20261103000001 (Sarathi for everyone,
--- first-run columns). The 2026-11-02 regeneration covered through
--- 20261102000003; the dump before that predated 20261004000000-08, so a
--- fresh install had no leaderboard snapshots, no
+-- Last regenerated 2026-11-05 from the local stack (`db dump --local`) after
+-- applying every migration through 20261105000001 (LeetCode ownership
+-- verification and server-only evidence labels; /validation for product
+-- admins only). The 2026-11-03 regeneration covered through 20261103000001,
+-- the 2026-11-02 one through 20261102000003; the dump before that predated
+-- 20261004000000-08, so a fresh install had no leaderboard snapshots, no
 -- notification prefs and none of the function-grant hardening. The privilege
 -- blocks after the seed rows restore what a dump cannot express. Verified in a
 -- rolled-back transaction: starting from Supabase's default grants (anon could
 -- execute all 66 public functions and read every profiles column), replaying
 -- this file leaves exactly the 13 app RPCs and the 2 notebook policy helpers
--- executable and the encrypted LeetCode session unreadable, with zero errors.
+-- executable by authenticated (anon: 10 of the RPCs; the three /validation
+-- ones are signed-in only and admin-checked inside) and the encrypted LeetCode
+-- session unreadable, with zero errors. Re-checked 2026-11-05.
 -- The versioned migrations in supabase/migrations/ remain the source of truth;
 -- this file is what a fresh install runs.
 -- ============================================================
+
+
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -142,6 +147,24 @@ COMMENT ON FUNCTION "public"."append_problem_event_on_battle_end"() IS 'Battle e
 
 
 
+CREATE OR REPLACE FUNCTION "public"."assert_product_admin"() RETURNS "void"
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+begin
+  if coalesce(current_setting('role', true), '') in ('anon', 'authenticated')
+     and not exists (
+       select 1 from public.profiles p
+       where p.id = (select auth.uid()) and p.is_product_admin
+     ) then
+    raise exception 'product admins only' using errcode = '42501';
+  end if;
+end $$;
+
+
+ALTER FUNCTION "public"."assert_product_admin"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."assert_referral_referrer_is_member"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -230,6 +253,62 @@ ALTER FUNCTION "public"."attribute_join"("p_referral_token" "text", "p_squad_id"
 
 COMMENT ON FUNCTION "public"."attribute_join"("p_referral_token" "text", "p_squad_id" "uuid", "p_user_id" "uuid") IS 'Attributes a join to the referrer who sent the link. First referrer wins, self-invites are ignored, and an unknown token attributes nothing.';
 
+
+
+CREATE OR REPLACE FUNCTION "public"."claim_leetcode_handle"("p_user_id" "uuid", "p_handle" "text") RETURNS integer
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+declare
+  v_handle text := lower(trim(p_handle));
+  v_released int := 0;
+begin
+  if v_handle is null or v_handle = '' or char_length(v_handle) > 50 then
+    raise exception 'invalid handle';
+  end if;
+
+  -- Release every other holder. Their stats came from this handle, so they go
+  -- too, and so does a LeetCode profile picture; the next sync of whatever
+  -- they link next fills them again.
+  update public.profiles
+     set leetcode_username = null,
+         avatar_url = case when avatar_url like 'https://assets.leetcode.com/%' then null else avatar_url end,
+         total_easy = 0, total_medium = 0, total_hard = 0,
+         streak = 0,
+         contest_rating = null, global_rank = null,
+         contest_attended = 0, contest_global_rank = null, contest_top_percentage = null,
+         last_synced_at = null
+   where lower(leetcode_username) = v_handle
+     and id <> p_user_id;
+  get diagnostics v_released = row_count;
+
+  -- Switching from another handle: drop that handle's stats as well (the
+  -- sync's never-regress floor would otherwise keep the old account's totals).
+  update public.profiles
+     set avatar_url = case when avatar_url like 'https://assets.leetcode.com/%' then null else avatar_url end,
+         total_easy = 0, total_medium = 0, total_hard = 0,
+         streak = 0,
+         contest_rating = null, global_rank = null,
+         contest_attended = 0, contest_global_rank = null, contest_top_percentage = null,
+         last_synced_at = null
+   where id = p_user_id
+     and leetcode_username is not null
+     and lower(leetcode_username) <> v_handle;
+
+  update public.profiles
+     set leetcode_username = v_handle,
+         leetcode_verified_at = now()
+   where id = p_user_id;
+  if not found then
+    raise exception 'profile not found';
+  end if;
+
+  delete from public.leetcode_verifications where user_id = p_user_id;
+  return v_released;
+end $$;
+
+
+ALTER FUNCTION "public"."claim_leetcode_handle"("p_user_id" "uuid", "p_handle" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."complete_challenge_from_battle"() RETURNS "trigger"
@@ -996,6 +1075,84 @@ $$;
 ALTER FUNCTION "public"."global_post_min_solves"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."guard_battle_evidence"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
+    AS $$
+begin
+  if current_user in ('anon', 'authenticated') then
+    if tg_op = 'INSERT' then
+      new.evidence := 'none';
+    else
+      new.evidence := old.evidence;
+    end if;
+  end if;
+  return new;
+end $$;
+
+
+ALTER FUNCTION "public"."guard_battle_evidence"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."guard_client_evidence_label"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
+    AS $_$
+declare
+  v_claims boolean;
+  v_battle_id uuid;
+begin
+  if current_user not in ('anon', 'authenticated') then
+    return new;
+  end if;
+
+  v_claims := coalesce(new.metadata->>'source', '') = 'leetcode'
+           or coalesce(new.metadata->>'evidence', '') = 'leetcode'
+           or coalesce(new.metadata->>'verified', '') in ('true', 'leetcode', 'verified');
+  if not v_claims then
+    return new;
+  end if;
+
+  if tg_table_name = 'problem_events' then
+    v_battle_id := new.battle_id;
+  elsif new.object_type = 'battle' and new.object_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    v_battle_id := new.object_id::uuid;
+  end if;
+
+  if v_battle_id is not null and exists (
+    select 1 from public.battles b
+    where b.id = v_battle_id and b.user_id = new.user_id and b.evidence = 'leetcode'
+  ) then
+    return new;
+  end if;
+
+  if new.problem_slug is not null and exists (
+    select 1 from public.battles b
+    where b.user_id = new.user_id
+      and lower(b.problem_slug) = lower(new.problem_slug)
+      and b.evidence = 'leetcode'
+      and b.started_at > now() - interval '1 day'
+  ) then
+    return new;
+  end if;
+
+  new.metadata := coalesce(new.metadata, '{}'::jsonb);
+  if new.metadata->>'source' = 'leetcode' then
+    new.metadata := jsonb_set(new.metadata, '{source}', '"self"');
+  end if;
+  if new.metadata ? 'evidence' then
+    new.metadata := jsonb_set(new.metadata, '{evidence}', '"none"');
+  end if;
+  if new.metadata ? 'verified' then
+    new.metadata := jsonb_set(new.metadata, '{verified}', 'false');
+  end if;
+  return new;
+end $_$;
+
+
+ALTER FUNCTION "public"."guard_client_evidence_label"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."guard_product_admin"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -1059,22 +1216,17 @@ CREATE OR REPLACE FUNCTION "public"."mark_solved_from_leetcode"("p_user_id" "uui
 declare
   affected int := 0;
   newly_solved text[];
+  v_verified boolean;
+  v_source text;
 begin
-  perform set_config('app.allow_attempted_promotion', 'on', true);
+  select leetcode_verified_at is not null into v_verified
+  from public.profiles where id = p_user_id;
+  v_verified := coalesce(v_verified, false);
+  v_source := case when v_verified then 'leetcode' else 'self' end;
 
-  -- Append-only history, one solved event per slug that was NOT already solved
-  -- in LeetCode. Re-syncs must not inflate the timeline.
-  insert into public.problem_events (user_id, problem_slug, kind, metadata)
-  select p_user_id, s, 'solved', jsonb_build_object('source', 'leetcode')
-  from unnest(p_slugs) as s
-  where not exists (
-    select 1 from public.problem_events e
-    where e.user_id = p_user_id
-      and e.problem_slug = s
-      and e.kind = 'solved'
-      and e.metadata->>'source' = 'leetcode'
-  )
-  on conflict do nothing;
+  -- Only a verified handle's submissions may promote a manual "attempted"
+  -- flag (preserve_attempted_on_manual_import enforces it).
+  perform set_config('app.allow_attempted_promotion', case when v_verified then 'on' else 'off' end, true);
 
   with ins as (
     insert into public.user_problem_status (user_id, problem_slug, status, solved_at)
@@ -1082,17 +1234,33 @@ begin
     on conflict (user_id, problem_slug) do update
       set status = 'solved', solved_at = now()
       where public.user_problem_status.status = 'attempted'
+        and v_verified
     returning problem_slug
   )
   select coalesce(array_agg(problem_slug), '{}'), count(*) into newly_solved, affected from ins;
 
-  -- Squad activity from LeetCode-only usage (anti-ghost, §50). One event per
-  -- newly promoted solve so a squad synced purely via LeetCode still has a feed.
+  -- Append-only history. Verified: one LeetCode event per slug, as before,
+  -- including slugs already solved by hand. Unverified: an event only for a
+  -- slug this call newly marked solved, and only if no solve is logged yet,
+  -- so history never says solved while the status still says attempted.
+  insert into public.problem_events (user_id, problem_slug, kind, metadata)
+  select p_user_id, s, 'solved', jsonb_build_object('source', v_source)
+  from unnest(case when v_verified then p_slugs else newly_solved end) as s
+  where not exists (
+    select 1 from public.problem_events e
+    where e.user_id = p_user_id
+      and e.problem_slug = s
+      and e.kind = 'solved'
+      and (not v_verified or e.metadata->>'source' = 'leetcode')
+  )
+  on conflict do nothing;
+
+  -- Squad activity from LeetCode-only usage (anti-ghost, §50).
   if newly_solved <> '{}' then
     insert into public.feed_events (user_id, event_type, object_type, object_id, squad_id, metadata)
     select p_user_id, 'solve', 'problem', s.slug,
       (select active_squad_id from public.profiles where id = p_user_id),
-      jsonb_build_object('duration_sec', null, 'source', 'leetcode')
+      jsonb_build_object('duration_sec', null, 'source', v_source)
     from unnest(newly_solved) as s(slug)
     where exists (select 1 from public.profiles where id = p_user_id and active_squad_id is not null);
   end if;
@@ -1770,6 +1938,37 @@ $$;
 ALTER FUNCTION "public"."reply_rate_limit"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."reset_leetcode_verified"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
+    AS $$
+begin
+  -- Browsers never set verification, on insert or update.
+  if current_user in ('anon', 'authenticated') then
+    if tg_op = 'UPDATE' then
+      new.leetcode_verified_at := old.leetcode_verified_at;
+    else
+      new.leetcode_verified_at := null;
+    end if;
+  end if;
+
+  -- A new handle starts unverified unless this same write verifies it.
+  if tg_op = 'UPDATE'
+     and lower(trim(new.leetcode_username)) is distinct from lower(trim(old.leetcode_username))
+     and new.leetcode_verified_at is not distinct from old.leetcode_verified_at then
+    new.leetcode_verified_at := null;
+  end if;
+
+  if new.leetcode_username is null then
+    new.leetcode_verified_at := null;
+  end if;
+  return new;
+end $$;
+
+
+ALTER FUNCTION "public"."reset_leetcode_verified"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."resolve_stuck_on_solve"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -2010,6 +2209,7 @@ CREATE OR REPLACE FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid" 
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
+  select public.assert_product_admin();
   select * from public.gate_activation(p_squad_id)
   union all select * from public.gate_social(p_squad_id)
   union all select * from public.gate_learning(p_squad_id)
@@ -2049,6 +2249,7 @@ CREATE OR REPLACE FUNCTION "public"."validation_squads"() RETURNS TABLE("squad_i
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
+  select public.assert_product_admin();
   select s.id, s.name, s.is_demo
   from public.squads s
   where exists (select 1 from public.squad_members m where m.squad_id = s.id)
@@ -2063,6 +2264,7 @@ CREATE OR REPLACE FUNCTION "public"."validation_test_status"("p_squad_id" "uuid"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
+  select public.assert_product_admin();
   select
     (select count(*) from public.squad_members m
       where public.validation_scope_has(p_squad_id, m.squad_id)),
@@ -2286,6 +2488,7 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "streak_updated_at" timestamp with time zone,
     "onboarded_at" timestamp with time zone,
     "tour_completed_at" timestamp with time zone,
+    "leetcode_verified_at" timestamp with time zone,
     CONSTRAINT "profiles_avatar_url_check" CHECK ((("avatar_url" IS NULL) OR (("avatar_url" ~~ 'https://%'::"text") AND ("char_length"("avatar_url") <= 2048) AND (("avatar_url" = 'https://assets.leetcode.com'::"text") OR ("avatar_url" ~~ 'https://assets.leetcode.com/%'::"text") OR ("avatar_url" = 'https://leetcode.com'::"text") OR ("avatar_url" ~~ 'https://leetcode.com/%'::"text") OR ("avatar_url" = 'https://lh3.googleusercontent.com'::"text") OR ("avatar_url" ~~ 'https://lh3.googleusercontent.com/%'::"text") OR ("avatar_url" = 'https://avatars.githubusercontent.com'::"text") OR ("avatar_url" ~~ 'https://avatars.githubusercontent.com/%'::"text"))))),
     CONSTRAINT "profiles_objective_check" CHECK ((("objective" IS NULL) OR ("objective" = ANY (ARRAY['internship'::"text", 'fulltime'::"text", 'consistency'::"text"])))),
     CONSTRAINT "profiles_stats_nonnegative" CHECK (((COALESCE("contest_rating", (0)::double precision) >= (0)::double precision) AND (COALESCE("streak", 0) >= 0) AND (COALESCE("total_easy", 0) >= 0) AND (COALESCE("total_medium", 0) >= 0) AND (COALESCE("total_hard", 0) >= 0) AND (COALESCE("contest_attended", 0) >= 0)))
@@ -2312,6 +2515,10 @@ COMMENT ON COLUMN "public"."profiles"."onboarded_at" IS 'First-run setup finishe
 
 
 COMMENT ON COLUMN "public"."profiles"."tour_completed_at" IS 'Walkthrough finished or dismissed. Null = show it once onboarded_at is set.';
+
+
+
+COMMENT ON COLUMN "public"."profiles"."leetcode_verified_at" IS 'When the owner proved control of leetcode_username with a profile code. Null = self-reported. Cleared when the handle changes.';
 
 
 
@@ -2511,6 +2718,24 @@ CREATE TABLE IF NOT EXISTS "public"."leaderboard_snapshots" (
 
 
 ALTER TABLE "public"."leaderboard_snapshots" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."leetcode_verifications" (
+    "user_id" "uuid" NOT NULL,
+    "handle" "text" NOT NULL,
+    "code" "text" NOT NULL,
+    "expires_at" timestamp with time zone NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "leetcode_verifications_code_check" CHECK (("code" ~ '^MY-[A-Z0-9]{6}$'::"text")),
+    CONSTRAINT "leetcode_verifications_handle_check" CHECK ((("char_length"("handle") >= 1) AND ("char_length"("handle") <= 50)))
+);
+
+
+ALTER TABLE "public"."leetcode_verifications" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."leetcode_verifications" IS 'One pending LeetCode ownership code per user. Written and read only by /api/leetcode/verify (service role).';
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."list_problems" (
@@ -3267,6 +3492,18 @@ BEGIN
                  WHERE conname = 'leaderboard_snapshots_pkey' AND conrelid = '"public"."leaderboard_snapshots"'::regclass) THEN
     ALTER TABLE "public"."leaderboard_snapshots"
     ADD CONSTRAINT "leaderboard_snapshots_pkey" PRIMARY KEY ("id");
+  END IF;
+END
+$guard$;
+
+
+
+DO $guard$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                 WHERE conname = 'leetcode_verifications_pkey' AND conrelid = '"public"."leetcode_verifications"'::regclass) THEN
+    ALTER TABLE "public"."leetcode_verifications"
+    ADD CONSTRAINT "leetcode_verifications_pkey" PRIMARY KEY ("user_id");
   END IF;
 END
 $guard$;
@@ -4253,6 +4490,18 @@ CREATE OR REPLACE TRIGGER "feature_triage_label_needs_admin" BEFORE INSERT ON "p
 
 
 
+CREATE OR REPLACE TRIGGER "guard_battle_evidence" BEFORE INSERT OR UPDATE ON "public"."battles" FOR EACH ROW EXECUTE FUNCTION "public"."guard_battle_evidence"();
+
+
+
+CREATE OR REPLACE TRIGGER "guard_client_evidence_label" BEFORE INSERT OR UPDATE ON "public"."feed_events" FOR EACH ROW EXECUTE FUNCTION "public"."guard_client_evidence_label"();
+
+
+
+CREATE OR REPLACE TRIGGER "guard_client_evidence_label" BEFORE INSERT OR UPDATE ON "public"."problem_events" FOR EACH ROW EXECUTE FUNCTION "public"."guard_client_evidence_label"();
+
+
+
 CREATE OR REPLACE TRIGGER "guard_product_admin" BEFORE UPDATE ON "public"."profiles" FOR EACH ROW EXECUTE FUNCTION "public"."guard_product_admin"();
 
 
@@ -4314,6 +4563,10 @@ CREATE OR REPLACE TRIGGER "refresh_fork_count_on_note_change" AFTER INSERT OR DE
 
 
 CREATE OR REPLACE TRIGGER "refresh_fork_counts_for_note" AFTER INSERT OR DELETE OR UPDATE ON "public"."notebook_notes" FOR EACH ROW EXECUTE FUNCTION "public"."refresh_fork_counts_for_note"();
+
+
+
+CREATE OR REPLACE TRIGGER "reset_leetcode_verified" BEFORE INSERT OR UPDATE ON "public"."profiles" FOR EACH ROW EXECUTE FUNCTION "public"."reset_leetcode_verified"();
 
 
 
@@ -4619,6 +4872,18 @@ BEGIN
                  WHERE conname = 'leaderboard_snapshots_user_id_fkey' AND conrelid = '"public"."leaderboard_snapshots"'::regclass) THEN
     ALTER TABLE "public"."leaderboard_snapshots"
     ADD CONSTRAINT "leaderboard_snapshots_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+  END IF;
+END
+$guard$;
+
+
+
+DO $guard$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                 WHERE conname = 'leetcode_verifications_user_id_fkey' AND conrelid = '"public"."leetcode_verifications"'::regclass) THEN
+    ALTER TABLE "public"."leetcode_verifications"
+    ADD CONSTRAINT "leetcode_verifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
   END IF;
 END
 $guard$;
@@ -5477,7 +5742,9 @@ CREATE POLICY "Researchers read observations" ON "public"."validation_observatio
 
 
 DROP POLICY IF EXISTS "Researchers write observations" ON "public"."validation_observations";
-CREATE POLICY "Researchers write observations" ON "public"."validation_observations" FOR INSERT WITH CHECK ((( SELECT "auth"."uid"() AS "uid") = "observed_by"));
+CREATE POLICY "Researchers write observations" ON "public"."validation_observations" FOR INSERT WITH CHECK (((( SELECT "auth"."uid"() AS "uid") = "observed_by") AND (EXISTS ( SELECT 1
+   FROM "public"."profiles" "p"
+  WHERE (("p"."id" = ( SELECT "auth"."uid"() AS "uid")) AND "p"."is_product_admin")))));
 
 
 
@@ -5892,6 +6159,9 @@ ALTER TABLE "public"."follows" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."leaderboard_snapshots" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."leetcode_verifications" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "public"."list_problems" ENABLE ROW LEVEL SECURITY;
 
 
@@ -6023,6 +6293,11 @@ GRANT ALL ON FUNCTION "public"."append_problem_event_on_battle_end"() TO "servic
 
 
 
+REVOKE ALL ON FUNCTION "public"."assert_product_admin"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."assert_product_admin"() TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."assert_referral_referrer_is_member"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."assert_referral_referrer_is_member"() TO "service_role";
 
@@ -6035,6 +6310,11 @@ GRANT ALL ON FUNCTION "public"."assert_triage_label_needs_admin"() TO "service_r
 
 REVOKE ALL ON FUNCTION "public"."attribute_join"("p_referral_token" "text", "p_squad_id" "uuid", "p_user_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."attribute_join"("p_referral_token" "text", "p_squad_id" "uuid", "p_user_id" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."claim_leetcode_handle"("p_user_id" "uuid", "p_handle" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."claim_leetcode_handle"("p_user_id" "uuid", "p_handle" "text") TO "service_role";
 
 
 
@@ -6151,6 +6431,16 @@ GRANT ALL ON FUNCTION "public"."global_leaderboard"("p_segment" "text", "p_patte
 
 REVOKE ALL ON FUNCTION "public"."global_post_min_solves"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."global_post_min_solves"() TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."guard_battle_evidence"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."guard_battle_evidence"() TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."guard_client_evidence_label"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."guard_client_evidence_label"() TO "service_role";
 
 
 
@@ -6307,6 +6597,11 @@ GRANT ALL ON FUNCTION "public"."reply_rate_limit"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."reset_leetcode_verified"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."reset_leetcode_verified"() TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."resolve_stuck_on_solve"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."resolve_stuck_on_solve"() TO "service_role";
 
@@ -6353,7 +6648,6 @@ GRANT ALL ON FUNCTION "public"."teachers_for_pattern"("p_pattern" "text", "p_lim
 
 REVOKE ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") TO "service_role";
-GRANT ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") TO "authenticated";
 
 
@@ -6365,14 +6659,12 @@ GRANT ALL ON FUNCTION "public"."validation_scope_has"("p_squad_id" "uuid", "p_ro
 
 REVOKE ALL ON FUNCTION "public"."validation_squads"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."validation_squads"() TO "service_role";
-GRANT ALL ON FUNCTION "public"."validation_squads"() TO "anon";
 GRANT ALL ON FUNCTION "public"."validation_squads"() TO "authenticated";
 
 
 
 REVOKE ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") TO "service_role";
-GRANT ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") TO "authenticated";
 
 
@@ -6554,6 +6846,11 @@ GRANT SELECT("tour_completed_at") ON TABLE "public"."profiles" TO "authenticated
 
 
 
+GRANT SELECT("leetcode_verified_at") ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT("leetcode_verified_at") ON TABLE "public"."profiles" TO "authenticated";
+
+
+
 GRANT ALL ON TABLE "public"."content_impact" TO "anon";
 GRANT ALL ON TABLE "public"."content_impact" TO "authenticated";
 GRANT ALL ON TABLE "public"."content_impact" TO "service_role";
@@ -6611,6 +6908,10 @@ GRANT ALL ON TABLE "public"."follows" TO "service_role";
 GRANT ALL ON TABLE "public"."leaderboard_snapshots" TO "anon";
 GRANT ALL ON TABLE "public"."leaderboard_snapshots" TO "authenticated";
 GRANT ALL ON TABLE "public"."leaderboard_snapshots" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."leetcode_verifications" TO "service_role";
 
 
 
@@ -6786,14 +7087,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
-
-
-
-
-
-
-
-
 
 -- ============================================================
 -- Seed rows (appended after the schema-only dump, which carries no data).
@@ -7069,14 +7362,16 @@ GRANT ALL ON FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."suggestion_chain"("p_leaf_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."teachers_for_pattern"("p_pattern" "text", "p_limit" integer) TO "anon";
 GRANT ALL ON FUNCTION "public"."teachers_for_pattern"("p_pattern" "text", "p_limit" integer) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."validation_gate_board"("p_squad_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."validation_squads"() TO "anon";
 GRANT ALL ON FUNCTION "public"."validation_squads"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."validation_test_status"("p_squad_id" "uuid") TO "authenticated";
 
 -- First-run columns (migration 20261103000001) are read by the signed-in user
 -- only. The column grant above includes every column, so take them back from
 -- anon to match production.
 revoke select (onboarded_at, tour_completed_at) on public.profiles from anon;
+
+-- LeetCode ownership codes (migration 20261105000000) are server-only. A fresh
+-- install hands anon/authenticated the default ALL on new tables; RLS with no
+-- policies already blocks every row, and this matches production's grants.
+revoke all on public.leetcode_verifications from anon, authenticated;
