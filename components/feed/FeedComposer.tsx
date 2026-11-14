@@ -328,20 +328,14 @@ export function FeedComposer({
         level: level as Parameters<typeof createStuckRequest>[0]["level"],
         visibility: audience === "squad" && squadId ? "squad" : "public",
         squadId: audience === "squad" ? squadId : null,
+        problemTitle: problem.title,
+        caption,
       });
       if (!res.ok) {
         setError(res.error);
         return;
       }
-      await logFeedEvent({
-        eventType: "stuck",
-        squadId: audience === "squad" ? squadId : null,
-        problemSlug: problem.slug,
-        problemTitle: problem.title,
-        objectType: "stuck_request",
-        objectId: res.request.id,
-        metadata: captionMetadata({ level }, caption),
-      });
+      // createStuckRequest writes the feed row; logging here too doubled it.
       void invalidate("ranked-feed", "recent-feed", "home-squad", "squad-pulse");
       finish("Asked for help.");
     } finally {
