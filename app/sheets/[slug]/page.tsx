@@ -96,9 +96,11 @@ function SheetContent() {
   // the read fails (or RLS scopes it away) the toggle stays honest about it
   // instead of rendering confident zeros.
   const squadSolversQuery = useCachedQuery(
-    showSquad && problems.length > 0 ? ["sheet-squad-statuses", slug] : null,
+    userId && showSquad && problems.length > 0 ? ["sheet-squad-statuses", slug] : null,
     async () => {
-      const rows = await getSquadProblemStatuses(problems.map((p) => p.title_slug));
+      const squadId = await getActiveSquadId(userId as string);
+      const memberIds = squadId ? await getSquadMemberIds(squadId) : [userId as string];
+      const rows = await getSquadProblemStatuses(problems.map((p) => p.title_slug), memberIds);
       const counts: Record<string, Set<string>> = {};
       for (const r of rows) {
         if (r.status !== "solved") continue;

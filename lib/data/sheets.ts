@@ -229,22 +229,27 @@ export async function createCustomList(
   return { success: true, slug };
 }
 
+/**
+ * Statuses on these slugs for exactly these users. `user_problem_status` is
+ * readable platform-wide, so the member list is required: without it a
+ * "squad" count is every user's solves.
+ */
 export async function getSquadProblemStatuses(
   problemSlugs: string[],
-  userId?: string
+  userIds: string[]
 ): Promise<UserProblemStatus[]> {
-  if (problemSlugs.length === 0) return [];
+  if (problemSlugs.length === 0 || userIds.length === 0) return [];
   const supabase = createClient();
 
   const rows: UserProblemStatus[] = [];
   const CHUNK = 200;
   for (let i = 0; i < problemSlugs.length; i += CHUNK) {
     const slice = problemSlugs.slice(i, i + CHUNK);
-    let query = supabase
+    const query = supabase
       .from("user_problem_status")
       .select(STATUS_COLUMNS)
-      .in("problem_slug", slice);
-    if (userId) query = query.eq("user_id", userId);
+      .in("problem_slug", slice)
+      .in("user_id", userIds);
     const { data, error } = await query;
     // Silent `continue` here would under-report progress without any signal.
     if (error) {

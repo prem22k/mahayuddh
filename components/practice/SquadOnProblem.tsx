@@ -60,7 +60,7 @@ export function SquadOnProblem({
     userId ? ["active-squad-on-problem", slug] : null,
     async () => {
       const others = await getActiveSquadMembers();
-      const rows = others.length ? await getSquadProblemStatuses([slug]).catch(() => []) : [];
+      const rows = others.length ? await getSquadProblemStatuses([slug], others.map((m) => m.id)).catch(() => []) : [];
       return {
         members: others,
         statuses: new Map(
