@@ -115,8 +115,8 @@ export default function FeedPage() {
   const platform = platformQuery.data ?? NO_PLATFORM;
 
   const discussionsQuery = useCachedQuery(
-    tab !== "platform" && !noSquad ? ["discussions", squadId, 10] : null,
-    () => getDiscussions({ problemSlug: null, squadId, limit: 10 }),
+    tab !== "platform" && !noSquad ? ["discussions", tab, squadId, 10] : null,
+    () => getDiscussions({ scope: tab as Exclude<FeedScope, "platform">, problemSlug: null, squadId, limit: 10 }),
     { freshForMs: 10_000 }
   );
   const discussions = discussionsQuery.data ?? NO_DISCUSSIONS;

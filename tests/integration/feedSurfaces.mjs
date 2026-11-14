@@ -142,6 +142,7 @@ try {
 
   const aliceEv = await makeEvent(alice.id, squad);
   const bobEv = await makeEvent(bob.id, squad);
+  let squadThread = null;
 
   // ── Ranking (§20) ─────────────────────────────────────────────────────────
   await as(alice.email, async (c) => {
@@ -255,6 +256,7 @@ try {
         Boolean(fe?.[0]?.id) || `lookup failed for object_id=${good.data}: ${feErr?.message ?? "no rows"}`
       );
     }
+    squadThread = good.data ?? null;
 
     // Public posting needs solves. Alice has none.
     const global = await c.rpc("create_discussion", {
@@ -264,6 +266,19 @@ try {
     });
     ok("posting to Global is refused without logged solves", Boolean(global.error));
   });
+
+  // ── A squad-only thread stays in its squad ────────────────────────────────
+  if (squadThread) {
+    const dave = await makeUser(5);
+    await as(dave.email, async (c) => {
+      const { data } = await c.from("discussions").select("id").eq("id", squadThread);
+      check("a non-member cannot read a squad-only discussion", (data ?? []).length, 0);
+    });
+    await as(bob.email, async (c) => {
+      const { data } = await c.from("discussions").select("id").eq("id", squadThread);
+      check("a squad member can read the squad's discussion", (data ?? []).length, 1);
+    });
+  }
 
   // ── Rate limit (§51) ───────────────────────────────────────────────────────
   await as(bob.email, async (c) => {

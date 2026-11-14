@@ -137,9 +137,19 @@ export interface DiscussionReply {
   author?: { id: string; username: string; avatar_url: string | null } | null;
 }
 
-/** Discussions for a scope, with reply counts — "meaningful discussion" (§20). */
+/**
+ * Discussions for a scope, with reply counts — "meaningful discussion" (§20).
+ *
+ * RLS already hides other squads' squad-only threads; the scope narrows what is
+ * left to the tab the reader is on, the same way get_ranked_feed does.
+ */
 export async function getDiscussions(
-  opts: { problemSlug?: string | null; squadId?: string | null; limit?: number } = {}
+  opts: {
+    scope?: Exclude<FeedScope, "platform">;
+    problemSlug?: string | null;
+    squadId?: string | null;
+    limit?: number;
+  } = {}
 ): Promise<Discussion[]> {
   const supabase = createClient();
   let query = supabase
@@ -149,6 +159,24 @@ export async function getDiscussions(
     .order("created_at", { ascending: false })
     .limit(opts.limit ?? 20);
   if (opts.problemSlug) query = query.eq("problem_slug", opts.problemSlug);
+  if (opts.scope === "squad") {
+    if (!opts.squadId) return [];
+    query = query.eq("squad_id", opts.squadId);
+  } else if (opts.scope === "global") {
+    query = query.eq("visibility", "global");
+  } else if (opts.scope === "following") {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return [];
+    const { data: follows } = await supabase
+      .from("follows")
+      .select("followed_id")
+      .eq("follower_id", user.id);
+    const ids = ((follows ?? []) as { followed_id: string }[]).map((f) => f.followed_id);
+    if (ids.length === 0) return [];
+    query = query.in("author_id", ids);
+  }
   const { data, error } = await query;
   if (error) throw new DataError("feed", "Couldn't load discussions. Retry.", { cause: error });
 
