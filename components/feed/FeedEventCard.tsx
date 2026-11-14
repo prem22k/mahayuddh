@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/Badge";
 import { blockUser, reportFeedEvent, type RankedFeedEvent } from "@/lib/data/feed";
 import { dataErrorMessage } from "@/lib/data/errors";
-import { FEED_ACTIONS, actionabilityLabel } from "@/lib/feedPolicy";
+import { FEED_ACTIONS, actionabilityLabel, solveEvidence } from "@/lib/feedPolicy";
 import { LEVEL_LABEL } from "@/lib/stuckLadder";
 import { shownSolveSec, titleFromSlug } from "@/lib/format";
 import { track } from "@/lib/analytics";
@@ -83,10 +83,7 @@ function metaPattern(ev: RankedFeedEvent): string | null {
 }
 
 function metaVerified(ev: RankedFeedEvent): boolean | null {
-  const v = ev.metadata?.verified ?? ev.metadata?.evidence;
-  if (v === true || v === "leetcode" || v === "verified") return true;
-  if (v === false || v === "self" || v === "self-reported") return false;
-  return null;
+  return solveEvidence(ev.metadata);
 }
 
 /** Optional one-line note the author added in the composer. Old rows have none. */
