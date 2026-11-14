@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { PatternChip, SelfReportedBadge, VerifiedBadge } from "@/components/ui/Badge";
-import { formatDuration, titleFromSlug } from "@/lib/format";
+import { formatDuration, shownSolveSec, titleFromSlug } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { FeedEvent } from "@/types/database";
 
@@ -25,7 +25,7 @@ function timeAgo(iso: string): string {
 
 function meta(e: FeedEvent) {
   const m = e.metadata ?? {};
-  const dur = typeof m.duration_sec === "number" && Number.isFinite(m.duration_sec) ? m.duration_sec : null;
+  const dur = shownSolveSec(typeof m.duration_sec === "number" ? m.duration_sec : null);
   const pattern = typeof m.pattern === "string" && m.pattern.length > 0 ? m.pattern : null;
   const v = m.verified ?? m.evidence;
   const verified =

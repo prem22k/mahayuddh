@@ -27,7 +27,7 @@ import { blockUser, reportFeedEvent, type RankedFeedEvent } from "@/lib/data/fee
 import { dataErrorMessage } from "@/lib/data/errors";
 import { FEED_ACTIONS, actionabilityLabel } from "@/lib/feedPolicy";
 import { LEVEL_LABEL } from "@/lib/stuckLadder";
-import { titleFromSlug } from "@/lib/format";
+import { shownSolveSec, titleFromSlug } from "@/lib/format";
 import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import type { StuckLevel } from "@/types/database";
@@ -74,7 +74,7 @@ function metaNumber(ev: RankedFeedEvent, key: string): number | null {
 }
 
 function metaDuration(ev: RankedFeedEvent): number | null {
-  return metaNumber(ev, "duration_sec");
+  return shownSolveSec(metaNumber(ev, "duration_sec"));
 }
 
 function metaPattern(ev: RankedFeedEvent): string | null {

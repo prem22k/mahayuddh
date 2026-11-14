@@ -36,7 +36,7 @@ import {
   isSpoilerLevel,
   suggestLevel,
 } from "../lib/stuckLadder.ts";
-import { daysBetween, relativeDays } from "../lib/format.ts";
+import { daysBetween, relativeDays, shownSolveSec } from "../lib/format.ts";
 import { classifySchemaError, combineSchemaStates } from "../lib/health/schemaCheck.ts";
 import { PUBLIC_PROFILE_COLUMNS, OWN_PROFILE_COLUMNS } from "../lib/data/profileColumns.ts";
 import { generateVerifyCode, normalizeLeetCodeHandle, profileHasCode, VERIFY_CODE_ALPHABET } from "../lib/leetcodeVerify.ts";
@@ -338,6 +338,18 @@ describe("formatDuration", () => {
     assert.equal(formatDuration(null), null);
     assert.equal(formatDuration(-5), null);
     assert.equal(formatDuration(NaN), null);
+  });
+});
+
+describe("shownSolveSec", () => {
+  it("hides solve times under 30s, which are a timer started and stopped", () => {
+    assert.equal(shownSolveSec(3), null);
+    assert.equal(shownSolveSec(17), null);
+    assert.equal(shownSolveSec(29.9), null);
+    assert.equal(shownSolveSec(30), 30);
+    assert.equal(shownSolveSec(2183), 2183);
+    assert.equal(shownSolveSec(null), null);
+    assert.equal(shownSolveSec(NaN), null);
   });
 });
 
