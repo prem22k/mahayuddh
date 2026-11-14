@@ -102,7 +102,7 @@ export default function SquadRecapsPage() {
           <div>
             <h1 className="type-title text-text-primary md:type-display-md">Weekly recaps</h1>
             <p className="mt-1 text-sm leading-5 text-text-tertiary md:text-[15px] md:leading-6 md:text-text-secondary">
-              Frozen every Sunday night. Nothing gets back-filled.
+              Anyone in the squad can write this week&apos;s recap. When the week ends, it&apos;s frozen.
             </p>
           </div>
           <Button
@@ -143,7 +143,7 @@ export default function SquadRecapsPage() {
             <Archive className="h-6 w-6" strokeWidth={1.5} aria-hidden />
           </span>
           <h3 className="text-[15px] font-medium text-text-primary">
-            Your first recap appears after your squad&apos;s first full week
+            No recaps yet
           </h3>
           <p className="max-w-sm text-[13px] leading-5 text-text-secondary">
             A recap summarises one week of what your squad logged. Generate one above, even a quiet
@@ -292,10 +292,17 @@ function LatestRecapCard({
               <CalendarDays className="h-[15px] w-[15px] text-text-tertiary" strokeWidth={1.5} aria-hidden />
               {formatRange(start, end, { long: true })}
             </span>
-            <span className="inline-flex h-6 items-center gap-1 rounded-xs border border-hairline bg-surface-raised px-2 font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-text-tertiary">
-              <Lock className="h-3 w-3" strokeWidth={1.5} aria-hidden />
-              Frozen
-            </span>
+            {/* This week's recap can still be rewritten; only a finished week is frozen. */}
+            {isThis ? (
+              <span className="inline-flex h-6 items-center rounded-xs border border-hairline bg-surface-raised px-2 font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-text-tertiary">
+                Updates until Sunday
+              </span>
+            ) : (
+              <span className="inline-flex h-6 items-center gap-1 rounded-xs border border-hairline bg-surface-raised px-2 font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-text-tertiary">
+                <Lock className="h-3 w-3" strokeWidth={1.5} aria-hidden />
+                Frozen
+              </span>
+            )}
           </div>
           <span className="hidden font-mono text-xs text-text-tertiary tnum sm:inline">
             Serial <span className="text-text-secondary">{serialOf(recap.id)}</span>
