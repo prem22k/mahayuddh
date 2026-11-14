@@ -113,6 +113,7 @@ import {
   globalPostBlockedBy,
   FEED_SCOPES,
   SCOPE_PURPOSE,
+  solveEvidence,
 } from "../lib/feedPolicy.ts";
 import {
   rememberSource,
@@ -338,6 +339,19 @@ describe("formatDuration", () => {
     assert.equal(formatDuration(null), null);
     assert.equal(formatDuration(-5), null);
     assert.equal(formatDuration(NaN), null);
+  });
+});
+
+describe("solveEvidence", () => {
+  it("reads every writer's key: dock and sync source, composer evidence, old verified", () => {
+    assert.equal(solveEvidence({ source: "leetcode" }), true);   // dock, verified; sync, verified handle
+    assert.equal(solveEvidence({ source: "self" }), false);      // sync, unverified handle
+    assert.equal(solveEvidence({ source: "none" }), null);       // dock, not verified (yet)
+    assert.equal(solveEvidence({ evidence: "leetcode", source: "composer" }), true);
+    assert.equal(solveEvidence({ evidence: "none", source: "composer" }), null);
+    assert.equal(solveEvidence({ verified: false }), false);
+    assert.equal(solveEvidence({}), null);
+    assert.equal(solveEvidence(null), null);
   });
 });
 
