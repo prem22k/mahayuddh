@@ -12,13 +12,13 @@ import { ChallengeLinkSkeleton } from "@/components/skeletons/ChallengeLinkSkele
 import { ChallengePass, type ProblemMeta } from "@/components/challenges/ChallengePass";
 import { ChainTrack, chainNames } from "@/components/challenges/ChainTrack";
 import { fmtClock, ticketOf } from "@/components/challenges/challengeFormat";
-import { getSuggestionById, getChallengeChain } from "@/lib/data/suggestions";
+import { getSuggestionById, getChallengeChain, acceptSuggestion } from "@/lib/data/suggestions";
 import { getCatalogBySlugs } from "@/lib/data/problems";
 import { chainState } from "@/lib/chains";
 import { cn } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { Suggestion } from "@/types/database";
-import { useCachedQuery } from "@/lib/cache/query";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
 const NO_SUGGESTIONS: Suggestion[] = [];
 
@@ -29,6 +29,7 @@ export default function ChallengeDeepLinkPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { startSolving } = useSolving();
+  const invalidate = useInvalidate();
   // Every read below goes through the client cache (lib/cache/query.tsx): a
   // revisit renders from cache at once and refreshes in the background; the
   // skeleton only shows on the very first load.
@@ -88,10 +89,24 @@ export default function ChallengeDeepLinkPage() {
   const isRecipient = user?.id === item.to_user;
   const showNote = !item.spoiler || isRecipient || item.status === "completed";
 
-  const handleAccept = () => {
+  const handleAccept = async () => {
     if (!user) {
       router.push(`/login?next=${encodeURIComponent(`/c/${item.id}`)}`);
       return;
+    }
+    // The recipient's accept is persisted and the battle carries the challenge
+    // id, so solving it completes the challenge and tells the sender. Anyone
+    // else just gets the problem as a fresh battle.
+    if (isRecipient) {
+      try {
+        const res = await acceptSuggestion(item.id, user.id);
+        if (res.ok) {
+          void itemQuery.refresh();
+          void invalidate("challenges-for-slug");
+        }
+      } catch {
+        // Not fatal: the battle still starts, accept state retries on next attempt.
+      }
     }
     track("challenge_accepted", { suggestion_id: item.id });
     startSolving({
@@ -100,6 +115,7 @@ export default function ChallengeDeepLinkPage() {
       slug: item.problem_slug,
       difficulty: item.difficulty,
       category: "Squad Challenge",
+      ...(isRecipient ? { challengeId: item.id } : {}),
     });
     router.push("/");
   };
