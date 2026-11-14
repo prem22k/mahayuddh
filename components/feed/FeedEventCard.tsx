@@ -104,6 +104,15 @@ function isSolve(ev: RankedFeedEvent) {
   return ev.event_type === "solve" || ev.event_type === "solved";
 }
 
+/** A LeetCode sync's summary row: older solves it found, counted, not listed. */
+function importCount(ev: RankedFeedEvent): number | null {
+  if (ev.object_type !== "import") return null;
+  const n = metaNumber(ev, "count");
+  return n != null && n > 0 ? n : null;
+}
+
+const solvesLabel = (n: number) => `${n} ${n === 1 ? "solve" : "solves"}`;
+
 /** Plain-text sentence for the row; the visible headline is the styled version of it. */
 export function describe(ev: RankedFeedEvent, meta?: ProblemMeta): string {
   const who = ev.actor?.username ? `@${ev.actor.username}` : "Someone";
@@ -111,6 +120,8 @@ export function describe(ev: RankedFeedEvent, meta?: ProblemMeta): string {
   switch (ev.event_type) {
     case "solve":
     case "solved": {
+      const imported = importCount(ev);
+      if (imported != null) return `${who} synced ${solvesLabel(imported)} from LeetCode`;
       const t = metaDuration(ev);
       return `${who} solved ${title || "a problem"}${t != null ? ` in ${fmtClock(t)}` : ""}`;
     }
@@ -351,7 +362,9 @@ export function FeedEventCard({
   switch (ev.event_type) {
     case "solve":
     case "solved":
-      verb = (
+      verb = importCount(ev) != null ? (
+        <>synced <span className="font-medium text-text-primary">{solvesLabel(importCount(ev) as number)}</span> from LeetCode</>
+      ) : (
         <>
           solved {object("a problem")}
           {t != null && (
