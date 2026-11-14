@@ -6,6 +6,7 @@ import { ArrowRight } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { PatternChip, SelfReportedBadge, VerifiedBadge } from "@/components/ui/Badge";
 import { formatDuration, shownSolveSec, titleFromSlug } from "@/lib/format";
+import { solveEvidence } from "@/lib/feedPolicy";
 import { cn } from "@/lib/utils";
 import type { FeedEvent } from "@/types/database";
 
@@ -27,13 +28,7 @@ function meta(e: FeedEvent) {
   const m = e.metadata ?? {};
   const dur = shownSolveSec(typeof m.duration_sec === "number" ? m.duration_sec : null);
   const pattern = typeof m.pattern === "string" && m.pattern.length > 0 ? m.pattern : null;
-  const v = m.verified ?? m.evidence;
-  const verified =
-    v === true || v === "leetcode" || v === "verified"
-      ? true
-      : v === false || v === "self" || v === "self-reported"
-        ? false
-        : null;
+  const verified = solveEvidence(m);
   const slug =
     e.problem_slug ?? (typeof m.problem_slug === "string" ? (m.problem_slug as string) : null);
   const problem = e.problem_title || (slug ? titleFromSlug(slug) : null);
