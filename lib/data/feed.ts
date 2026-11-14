@@ -92,6 +92,27 @@ export async function getRankedFeed(
   return rows.map((r) => ({ ...r, actor: byId.get(r.user_id) ?? null }));
 }
 
+/**
+ * Feed rows a squad produced since `weekStart` (a recap-style Monday date), for
+ * the rail's weekly counts. Read straight from feed_events, not from the ranked
+ * top-N, so a busy week is not capped. RLS already limits squad rows to members.
+ */
+export async function getSquadWeekFeedRows(
+  squadId: string,
+  weekStart: string
+): Promise<{ event_type: string; object_type: string | null }[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("feed_events")
+    .select("event_type,object_type")
+    .eq("squad_id", squadId)
+    .gte("created_at", `${weekStart}T00:00:00.000Z`)
+    .in("event_type", ["solve", "solved", "challenge", "complete", "completed", "teach", "stuck"])
+    .limit(5000);
+  if (error) throw new DataError("feed", "Couldn't load this week's activity. Retry.", { cause: error });
+  return (data ?? []) as { event_type: string; object_type: string | null }[];
+}
+
 export interface PlatformPost {
   id: string;
   kind: "contest" | "product" | "maintenance";

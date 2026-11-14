@@ -6,16 +6,11 @@ import { ArrowRight, ChartSpline, ChevronRight, Users } from "lucide-react";
 import { getMemberWeekGrid, getSquadName, getSquadStreak } from "@/lib/data/squadActivity";
 import { getActiveGoalPattern, getSquadMemberIds } from "@/lib/data/squads";
 import { getRecaps } from "@/lib/data/recap";
+import { recapRecency, type WeekCounts } from "@/lib/recap";
 import { useCachedQuery } from "@/lib/cache/query";
 
-/** Counts for the rail, derived from the squad feed the page already loaded. */
-export interface WeekStats {
-  solves: number;
-  challengesSent: number;
-  challengesDone: number;
-  approaches: number;
-  stuck: number;
-}
+/** Counts for the rail: the squad's activity this (recap) week; see countWeekFeedRows. */
+export type WeekStats = WeekCounts;
 
 /**
  * Squad facts the feed rail shows next to the stream. Every field starts (and
@@ -102,14 +97,19 @@ function shortDate(iso: string): string {
     : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
-/** Copy for the recap link. "Is ready" only when a recap for a recent week exists. */
+/** Copy for the recap link. "Last week's" only when the recap really is for last week. */
 function recapCopy(r: SquadPulse["latestRecap"]): { title: string; sub: string | null; short: string } {
   if (r === undefined) return { title: "Weekly recaps", sub: null, short: "Recaps" };
   if (r === null) return { title: "Weekly recap", sub: "Not generated yet", short: "Recaps" };
-  const ageDays = (Date.now() - new Date(`${r.weekEnd}T00:00:00`).getTime()) / 86_400_000;
-  return ageDays <= 10
-    ? { title: "Last week's recap is ready", sub: `Week of ${shortDate(r.weekStart)}`, short: "Last week's recap" }
-    : { title: "Latest recap", sub: `Week of ${shortDate(r.weekStart)}`, short: "Latest recap" };
+  const sub = `Week of ${shortDate(r.weekStart)}`;
+  switch (recapRecency(r.weekStart)) {
+    case "current":
+      return { title: "This week's recap", sub, short: "This week's recap" };
+    case "last":
+      return { title: "Last week's recap is ready", sub, short: "Last week's recap" };
+    default:
+      return { title: "Latest recap", sub, short: "Latest recap" };
+  }
 }
 
 function squadLabel(name: string | null) {
