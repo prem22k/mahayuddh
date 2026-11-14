@@ -26,7 +26,9 @@ export const LEADERBOARD_SEGMENTS: LeaderboardSegmentInfo[] = [
   { id: "rising", label: "Rising", ranks: "Solves in the last 30 days" },
   { id: "improved", label: "Most improved", ranks: "Problems that got measurably faster" },
   { id: "pattern", label: "By pattern", ranks: "Solves touching a pattern you pick" },
-  { id: "recent", label: "Recently active", ranks: "Who has been logging at all" },
+  // The database ranks this by 30-day solves too (it just keeps people with none
+  // and shows their last-active date), so it is named for what it ranks by.
+  { id: "recent", label: "Last 30 days", ranks: "Solves in the last 30 days, everyone listed, with each person's last active date" },
   { id: "most_solved", label: "Most solved", ranks: "Lifetime solves" },
 ];
 

@@ -48,6 +48,7 @@ import {
   recapShareText,
   activeMembers,
 } from "../lib/recap.ts";
+import { verifiedMetricUnit } from "../lib/leaderboardLabels.ts";
 import { RITUALS } from "../lib/rituals.ts";
 import { buildJourney, journeyWindow, median } from "../lib/journey.ts";
 import { withVia, viaSlug, artifactPath, shareTargets } from "../lib/share.ts";
@@ -2786,5 +2787,32 @@ describe("getChallengeChain", () => {
     assert.match(schema, /with recursive chain/i);
     assert.match(schema, /c\.depth \+ 1/i);
     assert.match(schema, /where c\.depth < 20/i);
+  });
+});
+
+// ── Leaderboard: "verified" is only said when it is true ────────────────────
+
+describe("verifiedMetricUnit", () => {
+  it("all time: a proven handle says verified", () => {
+    assert.equal(verifiedMetricUnit("all", true).long, "verified solves");
+  });
+  it("all time: an unverified handle is labelled plainly, not verified", () => {
+    const u = verifiedMetricUnit("all", false);
+    assert.equal(u.long, "solves on LeetCode");
+    assert.doesNotMatch(u.long, /verified/);
+  });
+  it("last 7 days counts server-vouched events, verified for anyone", () => {
+    assert.equal(verifiedMetricUnit("week", false).long, "verified this week");
+    assert.equal(verifiedMetricUnit("week", true).long, "verified this week");
+  });
+});
+
+describe("leaderboard segments", () => {
+  it("the 'recent' segment is named for what the database ranks it by (30-day solves)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("lib/data/leaderboard.ts", "utf8");
+    assert.doesNotMatch(src, /Recently active/);
+    const sql = readFileSync("supabase/migrations/20261003000021_fix_improved_ordering.sql", "utf8");
+    assert.match(sql, /when 'recent' then coalesce\(a\.solves_30d, 0\)/);
   });
 });

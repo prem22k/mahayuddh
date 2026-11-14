@@ -9,6 +9,11 @@ import { PUBLIC_PROFILE_COLUMNS } from "@/lib/data/profileColumns";
 // can import them without this browser module.
 export { PUBLIC_PROFILE_COLUMNS, OWN_PROFILE_COLUMNS } from "@/lib/data/profileColumns";
 
+/**
+ * Every public profile, not one squad's: despite the name there is no squad
+ * filter here. Callers that mean "my squad" must narrow by member ids
+ * (getSquadMemberIds) and treat an empty id list as "not known yet".
+ */
 export async function getSquadProfiles(opts?: {
   limit?: number;
   offset?: number;
