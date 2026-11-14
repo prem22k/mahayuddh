@@ -303,7 +303,7 @@ export default function SuggestionsPage() {
   };
 
   const filteredList = suggestions.filter((s) => {
-    if (activeTab === "for_you") return s.to_user === user?.id && s.status !== "completed";
+    if (activeTab === "for_you") return s.to_user === user?.id && s.status === "pending";
     if (activeTab === "sent") return s.from_user === user?.id;
     if (activeTab === "done") return s.status === "completed";
     return true;
