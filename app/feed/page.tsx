@@ -13,7 +13,6 @@ import {
   SquadWeekBanner,
   SquadWeekRail,
   useSquadPulse,
-  type WeekStats,
 } from "@/components/feed/SquadWeekRail";
 import { Avatar } from "@/components/ui/Avatar";
 import { EmptyState, ErrorCard } from "@/components/ui/States";
@@ -24,6 +23,7 @@ import {
   getPlatformPosts,
   getRankedFeed,
   getMyLoggedSolveCount,
+  getSquadWeekFeedRows,
   type Discussion,
   type PlatformPost,
   type RankedFeedEvent,
@@ -31,12 +31,12 @@ import {
 import { getCatalogBySlugs } from "@/lib/data/problems";
 import { dataErrorMessage } from "@/lib/data/errors";
 import { type FeedScope } from "@/lib/feedPolicy";
+import { countWeekFeedRows, weekOf } from "@/lib/recap";
 import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
 const PAGE_SIZE = 20;
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 const TAB_LABELS = ["Squad", "Following", "Global", "Updates"] as const;
 type TabLabel = (typeof TAB_LABELS)[number];
@@ -55,23 +55,10 @@ const SCOPE_TO_TAB: Record<FeedScope, TabLabel> = {
 
 // Stable empty values: a fresh [] per render would re-run every memo.
 const NO_EVENTS: RankedFeedEvent[] = [];
+const NO_WEEK_ROWS: Awaited<ReturnType<typeof getSquadWeekFeedRows>> = [];
 const NO_PLATFORM: PlatformPost[] = [];
 const NO_DISCUSSIONS: Discussion[] = [];
 const NO_CATALOG_ROWS: Awaited<ReturnType<typeof getCatalogBySlugs>> = [];
-
-/** Rail counts: the squad scope only, and only the last seven days of it. */
-function weekStats(rows: RankedFeedEvent[]): WeekStats {
-  const since = Date.now() - WEEK_MS;
-  const week = rows.filter((e) => new Date(e.created_at).getTime() >= since);
-  const count = (...types: string[]) => week.filter((e) => types.includes(e.event_type)).length;
-  return {
-    solves: count("solve", "solved"),
-    challengesSent: count("challenge"),
-    challengesDone: count("complete", "completed"),
-    approaches: count("teach"),
-    stuck: count("stuck"),
-  };
-}
 
 export default function FeedPage() {
   const { user, profile, loading: authLoading } = useAuth();
@@ -99,14 +86,15 @@ export default function FeedPage() {
   );
   const events = feedQuery.data ?? NO_EVENTS;
 
-  // The rail's week counts always describe the squad scope, even while another
-  // tab is open. Same key as the squad tab, so the two share one request.
-  const squadEventsQuery = useCachedQuery(
-    squadId ? ["ranked-feed", "squad", squadId, 40] : null,
-    () => getRankedFeed("squad", { squadId, limit: 40 }),
+  // The rail's week counts always describe the squad's current (recap) week,
+  // even while another tab is open. Counted from that week's rows, not from the
+  // 40 ranked ones above. Named "ranked-feed" so every feed write refreshes it.
+  const weekStart = weekOf(new Date()).weekStart;
+  const squadWeekQuery = useCachedQuery(
+    squadId ? ["ranked-feed", "squad-week", squadId, weekStart] : null,
+    () => getSquadWeekFeedRows(squadId as string, weekStart),
     { freshForMs: 10_000 }
   );
-  const squadEvents = squadEventsQuery.data ?? NO_EVENTS;
 
   const platformQuery = useCachedQuery(
     tab === "platform" ? ["platform-posts"] : null,
@@ -175,7 +163,7 @@ export default function FeedPage() {
 
   const handleRetry = () => {
     void feedQuery.refresh();
-    void squadEventsQuery.refresh();
+    void squadWeekQuery.refresh();
     void platformQuery.refresh();
     void discussionsQuery.refresh();
     void catalogQuery.refresh();
@@ -197,7 +185,7 @@ export default function FeedPage() {
   };
 
   const visibleEvents = events.slice(0, visibleCount);
-  const stats = useMemo(() => weekStats(squadEvents), [squadEvents]);
+  const stats = useMemo(() => countWeekFeedRows(squadWeekQuery.data ?? NO_WEEK_ROWS), [squadWeekQuery.data]);
   const squadLabel = pulse.name ?? "your squad";
 
   if (authLoading) return <FeedSkeleton />;
