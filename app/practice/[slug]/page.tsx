@@ -18,7 +18,7 @@ import { getPrimersForPatterns } from "@/lib/data/primers";
 import { setProblemStatus, getUserStatusesBySlugs, toStatusMap } from "@/lib/data/sheets";
 import { BattleCard } from "@/components/battle/BattleCard";
 import { getProblemTimeline, logProblemEvent } from "@/lib/data/problemEvents";
-import { getBattlesForSlug } from "@/lib/data/battles";
+import { getBattlesForSlug, getBattleSummaryForSlug } from "@/lib/data/battles";
 import { getChallengesForSlug } from "@/lib/data/suggestions";
 import { toggleBookmark, isBookmarked, getReviewForSlug } from "@/lib/data/review";
 import { getApproachesForProblem, createApproach, setApproachVisibility, deleteApproach } from "@/lib/data/approaches";
@@ -137,6 +137,12 @@ export default function ProblemPage() {
   const battlesQ = useCachedQuery(
     userId ? ["battles-for-slug", slug, 5] : null,
     () => getBattlesForSlug(slug, 5)
+  );
+
+  // The list above is capped at 5 rows, so attempts and best come from here.
+  const summaryQ = useCachedQuery(
+    userId ? ["battle-summary-for-slug", slug] : null,
+    () => getBattleSummaryForSlug(slug)
   );
 
   const challengesQ = useCachedQuery(
@@ -272,12 +278,14 @@ export default function ProblemPage() {
   }
 
   const title = problem?.title ?? slug.split("-").map((w) => w[0]?.toUpperCase() + w.slice(1)).join(" ");
+  // Whole-history numbers; until they load (or if the read fails) fall back to
+  // the newest-5 list so the page still shows something.
   const solvedBattles = battles.filter((b) => b.outcome === "solved" && b.duration_sec != null);
-  const bestSec = solvedBattles.length ? Math.min(...solvedBattles.map((b) => b.duration_sec as number)) : null;
-  const prevSec =
-    solvedBattles.length > 1
-      ? [...solvedBattles].sort((a, b) => (a.duration_sec as number) - (b.duration_sec as number))[1].duration_sec
-      : null;
+  const sortedSolved = solvedBattles.map((b) => b.duration_sec as number).sort((a, b) => a - b);
+  const summary = summaryQ.data;
+  const attemptCount = summary?.attempts ?? battles.length;
+  const bestSec = summary ? summary.bestSec : (sortedSolved[0] ?? null);
+  const prevSec = summary ? summary.prevSec : (sortedSolved[1] ?? null);
   const latest = battles[0] ?? null;
   // Verified only on real evidence: a LeetCode-matched battle or a synced solve
   // event. A hand-marked solve with no battles stays self-reported.
@@ -306,7 +314,7 @@ export default function ProblemPage() {
   };
 
   const stats = [
-    `${battles.length} ${battles.length === 1 ? "attempt" : "attempts"}`,
+    `${attemptCount} ${attemptCount === 1 ? "attempt" : "attempts"}`,
     revisits > 0 ? `${revisits} ${revisits === 1 ? "revisit" : "revisits"}` : null,
     challenges.length > 0
       ? `${challenges.length} open ${challenges.length === 1 ? "challenge" : "challenges"}`

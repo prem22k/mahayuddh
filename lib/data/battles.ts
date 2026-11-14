@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { Battle, BattleOutcome } from "@/types/database";
+import { DataError } from "@/lib/data/errors";
 
 /** Explicit projection: every Battle column, no `*` (keeps every field callers use). */
 const BATTLE_COLUMNS =
@@ -77,6 +78,35 @@ export async function getBattlesForSlug(problemSlug: string, limit = 10): Promis
     .order("started_at", { ascending: false })
     .limit(limit);
   return (data ?? []) as Battle[];
+}
+
+/** Whole-history numbers for one slug; the 5-row list above only feeds display. */
+export interface SlugBattleSummary {
+  attempts: number;
+  /** Fastest timed solve, and the second fastest (what a new best beat). */
+  bestSec: number | null;
+  prevSec: number | null;
+}
+
+/** Own attempt count and best times across ALL battles on a slug, not just the newest few. */
+export async function getBattleSummaryForSlug(problemSlug: string): Promise<SlugBattleSummary> {
+  const supabase = createClient();
+  const slug = problemSlug.toLowerCase();
+  const [count, fastest] = await Promise.all([
+    supabase.from("battles").select("id", { count: "exact", head: true }).eq("problem_slug", slug),
+    supabase
+      .from("battles")
+      .select("duration_sec")
+      .eq("problem_slug", slug)
+      .eq("outcome", "solved")
+      .not("duration_sec", "is", null)
+      .order("duration_sec", { ascending: true })
+      .limit(2),
+  ]);
+  if (count.error) throw new DataError("battles", "Couldn't load your attempts. Retry.", { cause: count.error });
+  if (fastest.error) throw new DataError("battles", "Couldn't load your attempts. Retry.", { cause: fastest.error });
+  const times = (fastest.data ?? []).map((r) => r.duration_sec as number);
+  return { attempts: count.count ?? 0, bestSec: times[0] ?? null, prevSec: times[1] ?? null };
 }
 
 export interface SolvedQuestion {

@@ -2827,6 +2827,28 @@ describe("getChallengeChain", () => {
   });
 });
 
+// ── Problem page: counts and timeline must not silently truncate ────────────
+
+describe("problem history reads", () => {
+  it("getProblemTimeline keeps the NEWEST events past the limit, then restores oldest-first", async () => {
+    // Ascending + limit(100) dropped the newest rows once a slug passed 100 events.
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("lib/data/problemEvents.ts", "utf8");
+    const fn = src.slice(src.indexOf("export async function getProblemTimeline"), src.indexOf("getOwnProblemTimeline"));
+    assert.match(fn, /ascending: false/, "must order newest first before limiting");
+    assert.match(fn, /\.reverse\(\)/, "must restore oldest-first for callers");
+    assert.doesNotMatch(fn, /ascending: true/);
+  });
+
+  it("attempt count and best time come from a whole-history read, not the 5-row list", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("lib/data/battles.ts", "utf8");
+    const fn = src.slice(src.indexOf("export async function getBattleSummaryForSlug"), src.indexOf("export interface SolvedQuestion"));
+    assert.match(fn, /count: "exact"/, "attempts must be an exact count");
+    assert.match(fn, /order\("duration_sec", \{ ascending: true \}\)/, "best is the fastest solve");
+  });
+});
+
 // ── Problem page: "Verified" needs real evidence ────────────────────────────
 
 describe("hasLeetcodeSolve", () => {
