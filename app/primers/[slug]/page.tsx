@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { PatternChip, DifficultyBadgeNew, SelfReportedBadge } from "@/components/ui/Badge";
 import { StatusGlyph, type ProblemStatus } from "@/components/ui/ProblemRow";
 import { CodeBlock } from "@/components/approach/CodeBlock";
+import { CodeTabs } from "@/components/primers/CodeTabs";
 import { InlineText } from "@/components/notebook/RichText";
 import { EmptyState, ErrorCard } from "@/components/ui/States";
 import { ErrorScreen } from "@/components/errors/ErrorScreen";
@@ -25,8 +26,19 @@ import { Primer, Problem, TriState } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
-/** A starter row; `inCatalog` false means the slug has no catalog row, so no number or difficulty is shown. */
-type Starter = Omit<Problem, "difficulty"> & { difficulty: Problem["difficulty"] | ""; inCatalog: boolean };
+/**
+ * A problem row: the ladder's when the primer has one, else the starter list.
+ * `inCatalog` false means the slug has no catalog row, so no number or
+ * difficulty is shown.
+ */
+type Starter = Omit<Problem, "difficulty"> & {
+  difficulty: Problem["difficulty"] | "";
+  inCatalog: boolean;
+  tier?: "warm-up" | "core" | "stretch";
+  note?: string;
+};
+
+const TIER_LABEL = { "warm-up": "Warm-up", core: "Core", stretch: "Stretch" } as const;
 
 function prettify(slug: string): string {
   return slug
@@ -37,11 +49,14 @@ function prettify(slug: string): string {
 
 const TOC = [
   { id: "recognize", label: "Recognize it when" },
-  { id: "mental-model", label: "Mental model" },
+  { id: "mental-model", label: "The idea" },
+  { id: "walkthrough", label: "Walkthrough" },
   { id: "template", label: "Template" },
+  { id: "variants", label: "Variants" },
   { id: "complexity", label: "Complexity" },
   { id: "mistakes", label: "Common mistakes" },
-  { id: "starters", label: "Starter problems" },
+  { id: "not-this", label: "When it's not this" },
+  { id: "starters", label: "Practice" },
 ] as const;
 
 function SectionHeading({
@@ -89,14 +104,18 @@ export default function PrimerPage() {
     async () => {
       const p = await getPrimer(slug);
       if (!p) return null;
-      const catalog = await getCatalogBySlugs(p.starter_slugs).catch(() => []);
+      const ladder = p.content?.ladder ?? p.starter_slugs.map((slug) => ({ slug, tier: undefined, note: undefined }));
+      const slugs = ladder.map((l) => l.slug);
+      const catalog = await getCatalogBySlugs(slugs).catch(() => []);
       const bySlug = new Map(catalog.map((c) => [c.title_slug, c]));
       // A slug missing from the catalog keeps its row (title from the slug)
       // but shows no number and no difficulty rather than a guessed one.
-      const starters: Starter[] = p.starter_slugs.map((s) => {
+      const starters: Starter[] = ladder.map(({ slug: s, tier, note }) => {
         const hit = bySlug.get(s);
-        if (hit) return { ...hit, inCatalog: true };
+        if (hit) return { ...hit, inCatalog: true, tier, note };
         return {
+          tier,
+          note,
           title_slug: s,
           title: prettify(s),
           difficulty: "",
@@ -191,13 +210,18 @@ export default function PrimerPage() {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  const content = primer.content ?? null;
+
   // Only sections with content are numbered and listed in the contents.
   const present: Record<(typeof TOC)[number]["id"], boolean> = {
     recognize: true,
     "mental-model": !!primer.mental_model,
+    walkthrough: !!content,
     template: !!primer.template_md,
+    variants: !!content && content.variants.length > 0,
     complexity: !!primer.complexity,
     mistakes: primer.mistakes.length > 0,
+    "not-this": !!content && content.notThis.length > 0,
     starters: true,
   };
   const toc = TOC.filter((t) => present[t.id]);
@@ -261,6 +285,9 @@ export default function PrimerPage() {
           <h1 className="font-display text-[32px] font-semibold leading-[1.1] tracking-[-0.02em] text-text-primary md:text-[44px] md:leading-[1.05] md:tracking-tight">
             {primer.title}
           </h1>
+          {content && (
+            <p className="text-[15px] leading-6 text-text-secondary md:text-[17px] md:leading-7">{content.summary}</p>
+          )}
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium leading-4 text-text-secondary">
               {readMinutes != null && (
@@ -272,7 +299,7 @@ export default function PrimerPage() {
               {readMinutes != null && <span aria-hidden className="text-text-tertiary">·</span>}
               <span className="inline-flex items-center gap-1">
                 <ListChecks className="h-4 w-4 text-text-tertiary" strokeWidth={1.5} aria-hidden />
-                {primer.starter_slugs.length} starter {primer.starter_slugs.length === 1 ? "problem" : "problems"}
+                {starters.length} {content ? "practice" : "starter"} {starters.length === 1 ? "problem" : "problems"}
               </span>
               {user && starters.length > 0 && (
                 <>
@@ -349,7 +376,7 @@ export default function PrimerPage() {
 
         {primer.mental_model && (
           <section id="mental-model" aria-label="Mental model" className="flex scroll-mt-24 flex-col gap-4">
-            <SectionHeading id="mental-model" label="Mental model" numberOf={numberOf} />
+            <SectionHeading id="mental-model" label="The idea" numberOf={numberOf} />
             <div className="flex flex-col gap-4 rounded-lg border border-hairline bg-surface p-4 md:border-0 md:bg-transparent md:p-0">
               {primer.mental_model
                 .split(/\n{2,}/)
@@ -363,10 +390,76 @@ export default function PrimerPage() {
           </section>
         )}
 
+        {content && (
+          <section id="walkthrough" aria-label="Walkthrough" className="flex scroll-mt-24 flex-col gap-3">
+            <SectionHeading id="walkthrough" label="Walkthrough" numberOf={numberOf} />
+            <p className="text-[15px] leading-6 text-text-secondary">
+              <Link
+                href={`/practice/${content.walkthrough.problemSlug}`}
+                className="font-medium text-text-primary underline-offset-[3px] hover:underline"
+              >
+                {prettify(content.walkthrough.problemSlug)}
+              </Link>{" "}
+              on <span className="whitespace-nowrap font-mono text-sm text-text-primary">{content.walkthrough.input}</span>, one
+              step per character.
+            </p>
+            <div className="overflow-x-auto rounded-lg border border-hairline">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-well text-xs font-medium text-text-tertiary">
+                  <tr>
+                    <th scope="col" className="px-3 py-2 font-medium">Window</th>
+                    <th scope="col" className="px-3 py-2 font-medium">What happened</th>
+                    <th scope="col" className="px-3 py-2 text-right font-medium">Best</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {content.walkthrough.steps.map((step, i) => (
+                    <tr key={i} className="border-t border-hairline">
+                      <td className="whitespace-nowrap px-3 py-2 font-mono text-text-primary">{step.window}</td>
+                      <td className="px-3 py-2 text-text-secondary">{step.action}</td>
+                      <td className="px-3 py-2 text-right font-mono text-text-primary tnum">{step.best}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[15px] leading-6 text-text-secondary">
+              Answer: <span className="font-medium text-text-primary">{content.walkthrough.result}</span>
+            </p>
+          </section>
+        )}
+
         {primer.template_md && (
           <section id="template" aria-label="Template" className="flex scroll-mt-24 flex-col gap-3">
             <SectionHeading id="template" label="Template" numberOf={numberOf} />
-            <CodeBlock code={primer.template_md} label="template" lineNumbers={false} />
+            {content ? (
+              <>
+                <CodeTabs code={content.template.code} label="template" />
+                <p className="text-[15px] leading-6 text-text-secondary">{content.template.note}</p>
+              </>
+            ) : (
+              <CodeBlock code={primer.template_md} label="template" lineNumbers={false} />
+            )}
+          </section>
+        )}
+
+        {content && content.variants.length > 0 && (
+          <section id="variants" aria-label="Variants" className="flex scroll-mt-24 flex-col gap-4">
+            <SectionHeading id="variants" label="Variants" numberOf={numberOf} />
+            {content.variants.map((v) => (
+              <div key={v.name} className="flex flex-col gap-3 rounded-lg border border-hairline bg-surface p-4">
+                <h3 className="text-[15px] font-semibold leading-6 text-text-primary">{v.name}</h3>
+                <p className="text-sm leading-[22px] text-text-secondary">
+                  <span className="font-medium text-text-primary">When: </span>
+                  {v.when}
+                </p>
+                <p className="text-sm leading-[22px] text-text-secondary">
+                  <span className="font-medium text-text-primary">The change: </span>
+                  {v.idea}
+                </p>
+                <CodeTabs code={v.code} label={prettify(v.problemSlug)} />
+              </div>
+            ))}
           </section>
         )}
 
@@ -379,6 +472,7 @@ export default function PrimerPage() {
               </span>
               <p className="font-mono text-sm leading-[22px] text-text-primary">{primer.complexity}</p>
             </div>
+            {content && <p className="text-[15px] leading-6 text-text-secondary">{content.complexity.why}</p>}
           </section>
         )}
 
@@ -403,10 +497,23 @@ export default function PrimerPage() {
           </section>
         )}
 
-        <section id="starters" aria-label="Starter problems" className="flex scroll-mt-24 flex-col gap-4">
+        {content && content.notThis.length > 0 && (
+          <section id="not-this" aria-label="When it's not this" className="flex scroll-mt-24 flex-col gap-3">
+            <SectionHeading id="not-this" label="When it's not this" numberOf={numberOf} />
+            <ul className="mt-1 flex flex-col gap-2.5">
+              {content.notThis.map((n, i) => (
+                <li key={i} className="rounded-lg border border-hairline bg-surface p-3.5 text-[15px] leading-6 text-text-primary">
+                  <InlineText text={n} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <section id="starters" aria-label="Practice" className="flex scroll-mt-24 flex-col gap-4">
           <SectionHeading
             id="starters"
-            label="Starter problems"
+            label={content ? "Practice ladder" : "Starter problems"}
             numberOf={numberOf}
             aside={
               user && starters.length > 0 ? (
@@ -420,8 +527,14 @@ export default function PrimerPage() {
             {starters.map((s, i) => {
               const st = statusOf(s.title_slug);
               const isNext = nextStarter?.title_slug === s.title_slug;
+              const newTier = s.tier && s.tier !== starters[i - 1]?.tier;
               return (
-                <li key={s.title_slug}>
+                <li key={s.title_slug} className="flex flex-col gap-2">
+                  {newTier && s.tier && (
+                    <span className={cn("px-1 font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-text-tertiary", i > 0 && "mt-2")}>
+                      {TIER_LABEL[s.tier]}
+                    </span>
+                  )}
                   <Link
                     href={`/practice/${s.title_slug}`}
                     className={cn(
@@ -449,6 +562,9 @@ export default function PrimerPage() {
                           <span className="mt-1 flex items-center gap-2">
                             <DifficultyBadgeNew difficulty={s.difficulty} size="sm" />
                           </span>
+                        )}
+                        {s.note && (
+                          <span className="mt-1 block text-xs leading-4 text-text-secondary">{s.note}</span>
                         )}
                       </span>
                     </span>
@@ -537,7 +653,7 @@ export default function PrimerPage() {
                   {t.label}
                   {t.id === "starters" && (
                     <span className="rounded-xs bg-surface-overlay px-1 font-mono text-[10px] leading-4 text-text-secondary tnum">
-                      {primer.starter_slugs.length}
+                      {starters.length}
                     </span>
                   )}
                 </button>

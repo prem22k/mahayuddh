@@ -3,7 +3,7 @@ import { Primer } from "@/types/database";
 import { DataError } from "@/lib/data/errors";
 
 const COLUMNS =
-  "id, slug, pattern, title, recognize_when, mental_model, template_md, complexity, mistakes, starter_slugs, author_id, visibility, squad_id, created_at";
+  "id, slug, pattern, title, recognize_when, mental_model, template_md, complexity, mistakes, starter_slugs, author_id, visibility, squad_id, created_at, roadmap_order, content";
 
 export async function listPrimers(): Promise<Primer[]> {
   const supabase = createClient();
