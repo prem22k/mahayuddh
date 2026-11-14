@@ -22,6 +22,7 @@ import {
   toStatusMap,
 } from "@/lib/data/sheets";
 import { parseProblemStatusEvent, applyStatusChange } from "@/lib/problemStatusEvent";
+import { categoryProgress, matchesCategory, type CategoryProgress } from "@/lib/statusMap";
 import { DifficultyBadgeNew, PatternChip } from "@/components/ui/Badge";
 import { ProblemLink } from "@/components/ui/ProblemLink";
 import { EmptyState, ErrorCard } from "@/components/ui/States";
@@ -47,6 +48,7 @@ const NO_STATUSES: Record<string, TriState> = {};
 const NO_SQUAD_SOLVERS: Record<string, number> = {};
 const NO_VIEWER_VERIFIED: Record<string, boolean> = {};
 const NO_SQUAD_VERIFIED: Record<string, number> = {};
+const NO_PROGRESS: CategoryProgress = { total: 0, solved: 0, verified: 0 };
 
 function SheetContent() {
   const params = useParams();
@@ -310,10 +312,7 @@ function SheetContent() {
     if (statusFilter === "Attempted" && status !== "attempted") return false;
     if (statusFilter === "To do" && status !== "unsolved") return false;
 
-    const matchesCat =
-      selectedCategory === "All" ||
-      problem.category.toLowerCase().includes(selectedCategory.toLowerCase()) ||
-      selectedCategory.toLowerCase().includes(problem.category.toLowerCase());
+    const matchesCat = matchesCategory(problem.category, selectedCategory);
 
     const matchesTopic =
       !selectedTopic ||
@@ -328,6 +327,8 @@ function SheetContent() {
     return matchesCat && matchesTopic && matchesSearch;
   });
 
+  // Category fractions describe the whole category, not the rows the filters leave.
+  const progressByCategory = categoryProgress(problems, statuses, isVerifiedSolve);
   const categories = ["All", ...Array.from(new Set(problems.map((p) => p.category)))];
   const categoryNames = categories.filter((c) => c !== "All");
 
@@ -463,8 +464,8 @@ function SheetContent() {
         ) : (
           <div className="flex flex-col gap-2.5 md:gap-3">
             {shownGroups.map((group) => {
-              const groupSolved = group.problems.filter((p) => statuses[p.title_slug] === "solved").length;
-              const complete = groupSolved === group.problems.length;
+              const { solved: groupSolved, total: groupTotal } = progressByCategory.get(group.category) ?? NO_PROGRESS;
+              const complete = groupTotal > 0 && groupSolved === groupTotal;
               const active = selectedCategory === group.category;
               return (
                 <div
@@ -490,7 +491,7 @@ function SheetContent() {
                         active ? "text-text-primary" : complete ? "text-text-primary" : "text-text-secondary"
                       )}
                     >
-                      {groupSolved}/{group.problems.length}
+                      {groupSolved}/{groupTotal}
                     </span>
                   </button>
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -629,9 +630,11 @@ function SheetContent() {
         ) : (
           problemsByCategory.map((group) => {
             const isCollapsed = Boolean(collapsedCategories[group.category]);
-            const groupSolved = group.problems.filter((p) => statuses[p.title_slug] === "solved").length;
-            const groupVerified = group.problems.filter((p) => isVerifiedSolve(p.title_slug)).length;
-            const groupTotal = group.problems.length;
+            const {
+              solved: groupSolved,
+              verified: groupVerified,
+              total: groupTotal,
+            } = progressByCategory.get(group.category) ?? NO_PROGRESS;
             const groupPct = groupTotal > 0 ? Math.round((groupSolved / groupTotal) * 100) : 0;
             const hubTopic = hubTopicFor(group.category, group.problems);
 
