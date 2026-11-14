@@ -375,6 +375,31 @@ export interface Primer {
   visibility: "squad" | "public";
   squad_id: string | null;
   created_at: string;
+  /** Position on the patterns roadmap; null for primers off the roadmap. */
+  roadmap_order?: number | null;
+  /** The full hand-written primer (content/primers/), or null for older and member-written ones. */
+  content?: PrimerContentDoc | null;
+}
+
+export type PrimerCodeLang = "cpp" | "java" | "python";
+export type PrimerCode = Record<PrimerCodeLang, string>;
+
+/** public.primers.content, as scripts/primers-to-sql.mjs writes it. */
+export interface PrimerContentDoc {
+  version: 1;
+  summary: string;
+  prerequisites: string[];
+  walkthrough: {
+    problemSlug: string;
+    input: string;
+    steps: { window: string; action: string; best: string }[];
+    result: string;
+  };
+  template: { note: string; code: PrimerCode };
+  variants: { name: string; when: string; idea: string; code: PrimerCode; problemSlug: string }[];
+  complexity: { time: string; space: string; why: string };
+  notThis: string[];
+  ladder: { slug: string; tier: "warm-up" | "core" | "stretch"; note: string }[];
 }
 
 export type ReviewReason = "failed" | "gap" | "weak_pattern" | "bookmark" | "low_confidence";

@@ -26,6 +26,8 @@
     "test:integration:security": "node tests/integration/securityAbuse.mjs",
     "test:integration:impact": "node --no-warnings tests/integration/impact.mjs",
     "test:integration:referral": "node --no-warnings tests/integration/referral.mjs",
+    "primers:check": "node scripts/check-primer-code.mjs",
+    "primers:sql": "node --no-warnings --experimental-strip-types scripts/primers-to-sql.mjs",
     "sync:contests": "node scripts/sync-contests.mjs",
     "sync:sheets": "node scripts/sync.mjs --sheets",
     "sync:catalog": "node scripts/sync.mjs --catalog",
