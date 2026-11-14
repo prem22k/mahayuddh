@@ -274,9 +274,12 @@ export default function SquadPage() {
   const handleLeave = async () => {
     if (!activeId || !user) return;
     if (!window.confirm("Leave this squad? Your solves and notes stay yours.")) return;
+    setShowSwitcher(false);
     try {
       await leaveSquad(activeId, user.id);
       setSelectedSquadId(null);
+      // The database moves active_squad_id off the squad you left (another one
+      // you're in, or none); the profile has to be re-read to see it.
       await refreshProfile();
       await invalidate("my-squads", "squad-detail", "home-squad", "active-squad-members");
     } catch (err) {
@@ -377,7 +380,7 @@ export default function SquadPage() {
               <h1 className="truncate font-display text-2xl font-semibold tracking-tight text-text-primary transition-colors group-hover:text-primary md:text-3xl">
                 {activeSquad?.name ?? "Squad"}
               </h1>
-              {squads.length > 1 && (
+              {squads.length > 0 && (
                 <ChevronDown
                   className="h-4 w-4 shrink-0 text-text-secondary transition-transform group-hover:translate-y-0.5 group-hover:text-primary md:h-5 md:w-5"
                   strokeWidth={2}
@@ -418,9 +421,10 @@ export default function SquadPage() {
               </button>
             </div>
           </div>
-          {showSwitcher && squads.length > 1 && (
+          {showSwitcher && squads.length > 0 && (
             <div className="popover-panel absolute left-0 top-full z-20 mt-2 w-64 p-2">
-              {squads.map((s) => (
+              {/* One squad has nothing to switch to; the menu is just Leave. */}
+              {squads.length > 1 && squads.map((s) => (
                 <button
                   key={s.id}
                   onClick={() => handleSwitch(s.id)}
