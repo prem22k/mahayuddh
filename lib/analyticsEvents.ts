@@ -18,6 +18,9 @@ export const ANALYTICS_EVENTS = [
   // Learning loop
   "approach_written",
   "primer_read",
+  // Read to the end (or "Mark as read"), and the first time a pattern is mastered.
+  "primer_completed",
+  "pattern_mastered",
   "note_copied",
   "revisit_done",
   // Social loop

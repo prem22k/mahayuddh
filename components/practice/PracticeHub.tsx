@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, BookMarked, BookOpen, ChevronRight, RotateCcw, Swords } from "lucide-react";
+import { ArrowRight, BookOpen, ChevronRight, RotateCcw, Swords } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSolving } from "@/components/providers/SolvingProvider";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { useCachedQuery } from "@/lib/cache/query";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/States";
 import { PracticeHubSkeleton } from "@/components/skeletons/PracticeSkeleton";
@@ -14,6 +14,10 @@ import { DifficultyBadgeNew, PatternChip } from "@/components/ui/Badge";
 import { ProblemRow, StatusGlyph, ProblemStatus } from "@/components/ui/ProblemRow";
 import { getCatalogBySlugs } from "@/lib/data/problems";
 import { listPrimers } from "@/lib/data/primers";
+import { getMyPrimerProgress, markPrimerMastered } from "@/lib/data/primerProgress";
+import { groupRoadmap, masteryOf, revisionNeed, type RoadmapEntry } from "@/lib/primerMastery";
+import { ROADMAP } from "@/content/primers/roadmap";
+import { PatternRoadmap } from "@/components/practice/PatternRoadmap";
 import { refreshReviewQueue, getSnapshot, computePatternStats, PatternStat } from "@/lib/data/review";
 import { buildRevengeOffer, RevengeOffer } from "@/lib/revenge";
 import { getOpenRevenges } from "@/lib/data/revenge";
@@ -157,6 +161,10 @@ export function PracticeHub() {
     freshForMs: 10 * 60_000,
   });
 
+  // Read and mastered state per primer, for the roadmap.
+  const progressQ = useCachedQuery(userId ? ["primer-progress"] : null, () => getMyPrimerProgress());
+  const invalidate = useInvalidate();
+
   const reviews = reviewsQ.data ?? NO_REVIEWS;
   const snap = snapshotQ.data ?? null;
   const primers = primersQ.data ?? NO_PRIMERS;
@@ -210,6 +218,43 @@ export function PracticeHub() {
   const revenges = revengesQ.data ?? NO_OFFERS;
   const sheetProgress = sheetProgressQ.data ?? NO_SHEET_PROGRESS;
   const patterns = useMemo(() => (snap ? computePatternStats(snap) : NO_PATTERNS), [snap]);
+  // Every roadmap pattern with the reader's state: written or coming, read,
+  // and mastered (stored, or earned just now from their solves).
+  const progress = progressQ.data;
+  const roadmap = useMemo(() => {
+    const bySlug = new Map(primers.map((p) => [p.slug, p]));
+    const statuses = snap?.statuses ?? [];
+    const events = snap?.events ?? [];
+    const entries: (RoadmapEntry & { earnedNow: boolean })[] = ROADMAP.map((r) => {
+      const primer = bySlug.get(r.slug);
+      const ladder = primer?.content?.ladder ?? null;
+      const mastery = ladder ? masteryOf(ladder, statuses, events) : null;
+      const stored = progress?.[r.slug];
+      const mastered = !!stored?.mastered_at || !!mastery?.mastered;
+      return {
+        slug: r.slug,
+        pattern: r.pattern,
+        blurb: r.blurb,
+        written: !!primer,
+        read: !!stored?.read_at,
+        mastered,
+        progress: mastery ? { solved: mastery.solved, total: mastery.total } : null,
+        revise: mastered && mastery ? revisionNeed(mastery) : null,
+        earnedNow: !!mastery?.mastered && !stored?.mastered_at,
+      };
+    });
+    return { entries, groups: groupRoadmap(entries) };
+  }, [primers, snap, progress]);
+
+  // Mastery is kept once earned: store the first time the rule holds.
+  const earned = roadmap.entries.filter((e) => e.earnedNow).map((e) => e.slug).join(",");
+  useEffect(() => {
+    if (!earned || !progress) return;
+    void Promise.all(earned.split(",").map((slug) => markPrimerMastered(slug).catch(() => false))).then((r) => {
+      if (r.some(Boolean)) void invalidate("primer-progress");
+    });
+  }, [earned, progress, invalidate]);
+
   const ownStatus = useMemo(
     () =>
       new Map(
@@ -225,6 +270,7 @@ export function PracticeHub() {
     reviewsQ.isLoading ||
     snapshotQ.isLoading ||
     primersQ.isLoading ||
+    progressQ.isLoading ||
     titlesQ.isLoading ||
     revengesQ.isLoading;
 
@@ -250,7 +296,6 @@ export function PracticeHub() {
   const weak = patterns.filter((p) => p.status === "Weak").slice(0, 6);
   const visible = reviews.filter((r) => !skipped.has(r.id)).slice(0, 12);
   const [featured, ...rest] = visible;
-  const shownPrimers = primers.slice(0, 4);
 
   const startRevision = (slug: string) => {
     const meta = titles.get(slug);
@@ -328,7 +373,7 @@ export function PracticeHub() {
         </section>
 
         {/* Rail */}
-        {(weak.length > 0 || shownPrimers.length > 0) && (
+        {(weak.length > 0 || primers.length > 0) && (
           <aside className="flex min-w-0 flex-col gap-6 lg:col-span-4 lg:gap-8">
             {weak.length > 0 && (
               <section aria-labelledby="weak-heading" className="space-y-3">
@@ -375,7 +420,7 @@ export function PracticeHub() {
               </section>
             )}
 
-            {shownPrimers.length > 0 && (
+            {primers.length > 0 && (
               <section aria-labelledby="primer-heading" className="space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -388,47 +433,14 @@ export function PracticeHub() {
                       id="primer-heading"
                       className="text-lg font-semibold leading-[26px] tracking-[-0.01em] text-text-primary"
                     >
-                      Learn a pattern first
+                      Learn a pattern
                     </h2>
                   </div>
-                  <span className="font-mono text-xs font-medium text-text-tertiary tnum md:hidden">
-                    {shownPrimers.length} {shownPrimers.length === 1 ? "primer" : "primers"} ready
+                  <span className="font-mono text-xs font-medium text-text-tertiary tnum">
+                    {roadmap.groups.mastered.length} of {roadmap.entries.length} mastered
                   </span>
                 </div>
-                <div className="space-y-2">
-                  {shownPrimers.map((p) => (
-                    <Link
-                      key={p.slug}
-                      href={`/primers/${p.slug}`}
-                      className="group flex min-h-[44px] items-center justify-between gap-3 rounded-lg border border-hairline bg-surface p-3.5 transition-colors hover:border-hairline-strong md:rounded-md md:p-3 md:hover:border-hairline md:hover:bg-surface-raised"
-                    >
-                      <span className="flex min-w-0 items-start gap-2.5">
-                        <BookMarked
-                          className="mt-0.5 h-[18px] w-[18px] shrink-0 text-pattern"
-                          strokeWidth={1.5}
-                          aria-hidden
-                        />
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-semibold leading-5 text-text-primary md:font-medium">
-                            {p.title}
-                          </span>
-                          <span className="mt-0.5 block font-mono text-xs font-medium leading-4 text-text-secondary tnum md:font-sans md:text-text-tertiary">
-                            {p.starter_slugs.length} starter{" "}
-                            {p.starter_slugs.length === 1 ? "problem" : "problems"}
-                          </span>
-                        </span>
-                      </span>
-                      <ChevronRight
-                        className="hidden h-[18px] w-[18px] shrink-0 text-text-tertiary transition-transform group-hover:translate-x-0.5 group-hover:text-text-primary md:block"
-                        strokeWidth={1.5}
-                      />
-                      <span className="inline-flex h-10 min-h-[44px] shrink-0 items-center gap-1.5 rounded-md border border-hairline bg-surface-raised px-3.5 text-xs font-medium text-text-primary md:hidden">
-                        Read
-                        <BookOpen className="h-4 w-4" strokeWidth={1.5} aria-hidden />
-                      </span>
-                    </Link>
-                  ))}
-                </div>
+                <PatternRoadmap groups={roadmap.groups} />
               </section>
             )}
           </aside>
