@@ -15,6 +15,7 @@
  *   - rate limits fire
  *   - a user cannot promote themselves to product admin (privilege escalation)
  *   - product admins are the only ones who can post platform notes
+ *   - leaving your active squad resets profiles.active_squad_id
  *
  * Run: npm run test:integration:feed
  */
@@ -362,6 +363,36 @@ try {
       ok("a platform note cannot be deleted", Boolean(delErr) || (stillThere ?? []).length === 1);
     }
   });
+
+  // ── Leaving the active squad resets profiles.active_squad_id ──────────────
+  // active_squad_id is only written server-side, so before the trigger Home and
+  // the feed kept using a squad the user had already left.
+  const founder = await makeUser(6);
+  const leaver = await makeUser(7);
+  const sqA = await makeSquad(founder.id, 10);
+  const sqB = await makeSquad(founder.id, 11);
+  const sqC = await makeSquad(founder.id, 12);
+  const joined = [[sqA, -3], [sqB, -2], [sqC, -1]];
+  for (const [sq, days] of joined) {
+    const { error: jErr } = await db.from("squad_members").insert({
+      squad_id: sq, user_id: leaver.id,
+      joined_at: new Date(Date.now() + days * 86_400_000).toISOString(),
+    });
+    if (jErr) throw new Error(`join ${sq}: ${jErr.message}`);
+  }
+  const activeOf = async () =>
+    (await db.from("profiles").select("active_squad_id").eq("id", leaver.id).single()).data?.active_squad_id ?? null;
+  await db.from("profiles").update({ active_squad_id: sqA }).eq("id", leaver.id);
+
+  // Leave as the user, through RLS, the way leaveSquad does.
+  const leave = (sq) => as(leaver.email, (c) => c.from("squad_members").delete().eq("squad_id", sq).eq("user_id", leaver.id));
+
+  await leave(sqA);
+  check("leaving the active squad moves to the most recently joined other squad", await activeOf(), sqC);
+  await leave(sqB);
+  check("leaving a squad that is not active leaves the active one alone", await activeOf(), sqC);
+  await leave(sqC);
+  check("leaving the last squad clears the active squad", await activeOf(), null);
 
   console.log(`\n${pass} passed, ${fail} failed`);
 } catch (err) {
