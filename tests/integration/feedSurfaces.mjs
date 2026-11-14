@@ -39,7 +39,7 @@ const db = createClient(url, serviceKey, { auth: { persistSession: false } });
 
 const stamp = Date.now();
 const tag = `feed${stamp}`;
-const made = { users: [], squads: [], events: [], discussions: [], replies: [], follows: [], blocks: [], reports: [], platform: [] };
+const made = { users: [], squads: [], events: [], discussions: [], replies: [], follows: [], blocks: [], reports: [], platform: [], problemEvents: [] };
 
 async function cleanup() {
   for (const r of made.reports) await db.from("feed_reports").delete().eq("id", r);
@@ -48,6 +48,7 @@ async function cleanup() {
   for (const f of made.follows) await db.from("follows").delete().eq("follower_id", f);
   for (const b of made.blocks) await db.from("user_blocks").delete().eq("blocker_id", b);
   for (const e of made.events) await db.from("feed_events").delete().eq("id", e);
+  for (const e of made.problemEvents) await db.from("problem_events").delete().eq("id", e);
   for (const p of made.platform) await db.from("platform_posts").delete().eq("id", p);
   for (const s of made.squads) await db.from("squads").delete().eq("id", s);
   for (const u of made.users) await db.from("profiles").delete().eq("id", u);
@@ -188,6 +189,40 @@ try {
       p_scope: "squad", p_squad_id: squad, p_viewer: alice.id, p_limit: 1,
     });
     ok("limit is respected", fnSrc.length === 1);
+
+    // Squad is newest first, whatever the scores.
+    const times = data.map((r) => new Date(r.created_at).getTime());
+    check("squad scope is newest first", times, [...times].sort((a, b) => b - a));
+  });
+
+  // ── Usefulness counts other people, never the author ─────────────────────
+  {
+    const slug = `${tag}-p`;
+    const logSolve = async (userId) => {
+      const { data, error } = await db.from("problem_events")
+        .insert({ user_id: userId, problem_slug: slug, kind: "solved" }).select("id").single();
+      if (error) throw new Error(`problem event: ${error.message}`);
+      made.problemEvents.push(data.id);
+    };
+    const usefulnessOf = async (c, id) => {
+      const { data } = await c.rpc("get_ranked_feed", {
+        p_scope: "squad", p_squad_id: squad, p_viewer: null, p_limit: 100,
+      });
+      return Number((data ?? []).find((r) => r.id === id)?.usefulness ?? NaN);
+    };
+    // Alice's own solve history on the problem is not a signal.
+    await logSolve(alice.id);
+    await as(alice.email, async (c) => {
+      check("the author's own solves don't make their post useful", await usefulnessOf(c, aliceEv.id), 0);
+    });
+    // Bob solving the same problem after Alice's post is.
+    await logSolve(bob.id);
+    await as(alice.email, async (c) => {
+      check("another member solving the problem afterwards counts", await usefulnessOf(c, aliceEv.id), 2);
+    });
+  }
+
+  await as(alice.email, async (c) => {
 
     // Following scope: alice follows bob, so alice sees bob but not herself.
     const { error: fErr } = await c.from("follows").insert({ follower_id: alice.id, followed_id: bob.id });

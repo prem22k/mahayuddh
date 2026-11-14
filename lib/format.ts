@@ -17,6 +17,17 @@ export function formatDuration(totalSeconds: number | null | undefined): string 
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/**
+ * A solve's time as it may be shown, or null. Under 30 seconds the timer was
+ * started and stopped (or the problem marked solved straight away); printing
+ * "solved Contains Duplicate in 0:03" reads as fake, so no time is shown.
+ */
+export const MIN_SHOWN_SOLVE_SEC = 30;
+export function shownSolveSec(totalSeconds: number | null | undefined): number | null {
+  if (totalSeconds == null || !Number.isFinite(totalSeconds)) return null;
+  return totalSeconds >= MIN_SHOWN_SOLVE_SEC ? totalSeconds : null;
+}
+
 /** Fallback display title when a slug is the only identifier we have. */
 export function titleFromSlug(slug: string): string {
   return slug

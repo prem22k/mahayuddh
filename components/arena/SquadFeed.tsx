@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { PatternChip, SelfReportedBadge, VerifiedBadge } from "@/components/ui/Badge";
-import { formatDuration, titleFromSlug } from "@/lib/format";
+import { formatDuration, shownSolveSec, titleFromSlug } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { FeedEvent } from "@/types/database";
 
@@ -25,7 +25,7 @@ function timeAgo(iso: string): string {
 
 function meta(e: FeedEvent) {
   const m = e.metadata ?? {};
-  const dur = typeof m.duration_sec === "number" && Number.isFinite(m.duration_sec) ? m.duration_sec : null;
+  const dur = shownSolveSec(typeof m.duration_sec === "number" ? m.duration_sec : null);
   const pattern = typeof m.pattern === "string" && m.pattern.length > 0 ? m.pattern : null;
   const v = m.verified ?? m.evidence;
   const verified =
@@ -51,7 +51,12 @@ function describe(e: FeedEvent): React.ReactNode {
   const p = problem ? <Strong>{problem}</Strong> : "a problem";
   switch (e.event_type) {
     case "solve":
-    case "solved":
+    case "solved": {
+      // A LeetCode sync's summary row: older solves, counted rather than listed.
+      const n = e.object_type === "import" ? e.metadata?.count : null;
+      if (typeof n === "number" && n > 0) {
+        return <>synced <Strong>{n} {n === 1 ? "solve" : "solves"}</Strong> from LeetCode</>;
+      }
       return (
         <>
           solved {p}
@@ -63,6 +68,7 @@ function describe(e: FeedEvent): React.ReactNode {
           )}
         </>
       );
+    }
     case "teach":
       return <>explained an approach to {problem ? p : "a problem"}</>;
     case "challenge":

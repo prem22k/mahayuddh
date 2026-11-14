@@ -34,6 +34,7 @@
     "test:ai:provider": "node --experimental-strip-types tests/ai/provider.mjs",
     "test:ai:e2e": "node tests/ai/endToEnd.mjs",
     "test:integration:battles": "node tests/integration/battles.mjs",
+    "test:integration:lcsync": "node tests/integration/leetcodeSyncFeed.mjs",
     "test:integration:streak": "node tests/integration/myStreak.mjs",
     "test:integration:lcverify": "node --no-warnings tests/integration/leetcodeVerify.mjs",
     "test:cache": "node --no-warnings --test tests/cache/keys.test.mjs",
