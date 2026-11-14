@@ -24,6 +24,7 @@ import {
   snapshotRanks,
   type SnapshotRow,
 } from "@/lib/data/leaderboard";
+import { verifiedMetricUnit } from "@/lib/leaderboardLabels";
 import { getSquadMemberIds } from "@/lib/data/squads";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ConnectLeetCodeModal } from "@/components/modals/ConnectLeetCodeModal";
@@ -74,12 +75,11 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 function metricLabel(m: Profile, key: MetricKey, value: number, period: PeriodKey): string {
   if (period === "week") {
-    if (key === "verified") return `${value} verified this week`;
     if (key === "streak") return `${value} solves this week`;
   }
   switch (key) {
     case "verified":
-      return `${value} verified solves`;
+      return `${value} ${verifiedMetricUnit(period, Boolean(m.leetcode_verified_at)).long}`;
     case "streak":
       return `${value} day streak`;
     case "hard":
@@ -90,12 +90,10 @@ function metricLabel(m: Profile, key: MetricKey, value: number, period: PeriodKe
 }
 
 /** Unit after the number: long on desktop, one word on phones. */
-function metricUnit(key: MetricKey, period: PeriodKey): { long: string; short: string } {
+function metricUnit(key: MetricKey, period: PeriodKey, ownerVerified: boolean): { long: string; short: string } {
   switch (key) {
     case "verified":
-      return period === "week"
-        ? { long: "verified this week", short: "solves" }
-        : { long: "verified solves", short: "solves" };
+      return verifiedMetricUnit(period, ownerVerified);
     case "streak":
       return period === "week"
         ? { long: "solves this week", short: "solves" }
@@ -144,16 +142,17 @@ export default function LeaderboardPage() {
 
   const profilesQuery = useCachedQuery(["squad-profiles"], () => getSquadProfiles());
   const profiles = profilesQuery.data ?? NO_PROFILES;
-  const loading = profilesQuery.isLoading;
-  const loadError =
-    profilesQuery.error && profilesQuery.data === undefined
-      ? "Couldn't load leaderboard. Check your connection and retry."
-      : null;
-
   const squadMemberIdsQuery = useCachedQuery(
     squadId ? ["squad-member-ids", squadId] : null,
     () => getSquadMemberIds(squadId as string)
   );
+  // Only the squad tab waits on (or fails with) the member ids.
+  const loading = profilesQuery.isLoading || (tab === "squad" && squadMemberIdsQuery.isLoading);
+  const loadError =
+    (profilesQuery.error && profilesQuery.data === undefined) ||
+    (tab === "squad" && squadMemberIdsQuery.error && squadMemberIdsQuery.data === undefined)
+      ? "Couldn't load leaderboard. Check your connection and retry."
+      : null;
   const squadIds = useMemo(
     () => new Set(squadMemberIdsQuery.data ?? NO_STRINGS),
     [squadMemberIdsQuery.data]
@@ -271,7 +270,9 @@ export default function LeaderboardPage() {
   );
 
   const visibleMembers = useMemo(() => {
-    const scoped = tab === "squad" && squadIds.size > 0 ? profiles.filter((m) => squadIds.has(m.id)) : profiles;
+    // The squad tab is only ever the squad: while the member ids are still
+    // loading (or failed) it is empty, never everyone.
+    const scoped = tab === "squad" ? profiles.filter((m) => squadIds.has(m.id)) : profiles;
     const filtered = scoped.filter((m) => {
       if (hideUnconnected && !m.leetcode_username) return false;
       return true;
@@ -350,7 +351,6 @@ export default function LeaderboardPage() {
   const selfEntry = user ? visibleMembers.find((m) => m.id === user.id) ?? null : null;
   const selfRank = user ? rankMap.get(user.id) ?? null : null;
 
-  const unit = metricUnit(metricKey, period);
 
   // Each metric's glyph shows on phones (Stitch mobile chips); on desktop only
   // the selected chip carries its glyph.
@@ -440,7 +440,7 @@ export default function LeaderboardPage() {
         ) : visibleMembers.length === 0 ? (
           tab === "global" ? (
             <GlobalLeaderboard />
-          ) : (
+          ) : loadError ? null : ( // the error card above already says why the board is empty
             <EmptyState
               heading="No squad members here yet"
               body="Join or create a squad, this tab ranks people you practice with."
@@ -464,6 +464,7 @@ export default function LeaderboardPage() {
                 const rank = rankMap.get(member.id) ?? 0;
                 const noValue = metricKey === "rating" && member.contest_rating == null;
                 const delta = rankChangeLabel(prevRanks.get(member.id), rank, prevReadOk);
+                const unit = metricUnit(metricKey, period, Boolean(member.leetcode_verified_at));
                 return (
                   <li
                     key={member.id}
