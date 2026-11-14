@@ -193,7 +193,7 @@ export function SquadStreakPass({
                         return (
                           <span
                             key={d.key}
-                            title={`${m.full} · ${isToday ? "Today" : d.label} · ${filled ? "solved" : "not yet"}`}
+                            title={`${m.full} · ${isToday ? "Today" : d.label} · ${filled ? "solved" : isToday ? "not yet" : "no solve"}`}
                             className={cn(
                               "h-2 w-2 rounded-full md:h-2.5 md:w-2.5",
                               filled
