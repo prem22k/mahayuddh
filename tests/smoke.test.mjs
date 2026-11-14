@@ -47,6 +47,8 @@ import {
   inWindow,
   recapShareText,
   activeMembers,
+  recapRecency,
+  countWeekFeedRows,
 } from "../lib/recap.ts";
 import { RITUALS } from "../lib/rituals.ts";
 import { buildJourney, journeyWindow, median } from "../lib/journey.ts";
@@ -2824,6 +2826,64 @@ describe("getChallengeChain", () => {
     assert.match(schema, /with recursive chain/i);
     assert.match(schema, /c\.depth \+ 1/i);
     assert.match(schema, /where c\.depth < 20/i);
+  });
+});
+
+// ── Feed rail: weekly counts and recap wording ──────────────────────────────
+
+describe("recapRecency", () => {
+  // Wed 2026-11-11 sits in the week of Mon 2026-11-09.
+  const now = new Date("2026-11-11T10:00:00Z");
+  it("calls the in-progress week current, not last (its end is still in the future)", () => {
+    assert.equal(recapRecency("2026-11-09", now), "current");
+  });
+  it("calls the week before last", () => {
+    assert.equal(recapRecency("2026-11-02", now), "last");
+  });
+  it("calls anything earlier older, including a week ending ~8 days ago", () => {
+    assert.equal(recapRecency("2026-10-26", now), "older");
+    assert.equal(recapRecency("2026-09-01", now), "older");
+  });
+  it("on a Monday, last week is the Monday before", () => {
+    assert.equal(recapRecency("2026-11-02", new Date("2026-11-09T00:30:00Z")), "last");
+  });
+});
+
+describe("countWeekFeedRows", () => {
+  it("counts only approach teaches as approaches (a shared primer is not one)", () => {
+    const c = countWeekFeedRows([
+      { event_type: "teach", object_type: "approach" },
+      { event_type: "teach", object_type: "approach" },
+      { event_type: "teach", object_type: "primer" },
+      { event_type: "teach", object_type: null },
+    ]);
+    assert.equal(c.approaches, 2);
+  });
+  it("maps legacy and current event names, and is not capped", () => {
+    const rows = [
+      ...Array.from({ length: 60 }, (_, i) => ({ event_type: i % 2 ? "solve" : "solved", object_type: null })),
+      { event_type: "challenge", object_type: "suggestion" },
+      { event_type: "complete", object_type: null },
+      { event_type: "completed", object_type: null },
+      { event_type: "stuck", object_type: null },
+      { event_type: "discuss", object_type: null },
+    ];
+    assert.deepEqual(countWeekFeedRows(rows), {
+      solves: 60,
+      challengesSent: 1,
+      challengesDone: 2,
+      approaches: 0,
+      stuck: 1,
+    });
+  });
+  it("is all zeros for an empty week", () => {
+    assert.deepEqual(countWeekFeedRows([]), {
+      solves: 0,
+      challengesSent: 0,
+      challengesDone: 0,
+      approaches: 0,
+      stuck: 0,
+    });
   });
 });
 
