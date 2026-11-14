@@ -212,7 +212,7 @@ export async function shareSolvedBattle(
   // trusted from the picker, because the id arrives from the client.
   const { data: row } = await supabase
     .from("battles")
-    .select("id,user_id,outcome,squad_id,problem_slug")
+    .select("id,user_id,outcome,squad_id,problem_slug,ended_at")
     .eq("id", battle.id)
     .maybeSingle();
   if (!row || row.user_id !== user.id || row.outcome !== "solved") {
@@ -232,6 +232,22 @@ export async function shareSolvedBattle(
     ),
   });
   if (error) return { ok: false, error: error.message };
+
+  // The dock already posted this solve when the battle ended (a bare 'solve'
+  // row, no object). The share, with its caption, replaces that row instead
+  // of sitting next to it as a second copy of the same solve.
+  if (row.ended_at) {
+    const ended = new Date(row.ended_at).getTime();
+    await supabase
+      .from("feed_events")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("event_type", "solve")
+      .eq("problem_slug", row.problem_slug)
+      .is("object_type", null)
+      .gte("created_at", new Date(ended - 10 * 60_000).toISOString())
+      .lte("created_at", new Date(ended + 10 * 60_000).toISOString());
+  }
   return { ok: true };
 }
 
