@@ -96,15 +96,18 @@ export function PatternChip({
 export function StreakChip({
   count,
   alive,
+  title,
   className,
 }: {
   count: number;
   alive: boolean;
+  /** Tooltip; defaults to the squad streak wording. */
+  title?: string;
   className?: string;
 }) {
   return (
     <span
-      title={`${count}-day squad streak`}
+      title={title ?? `${count}-day squad streak`}
       className={cn(
         "inline-flex h-6 shrink-0 items-center gap-1 rounded-full border border-primary/30 bg-primary-tint px-2 font-mono text-xs font-medium leading-none text-primary tnum",
         className

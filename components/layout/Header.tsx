@@ -10,6 +10,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { syncUserProfileStats } from "@/lib/data/profiles";
 import { StreakChip } from "@/components/ui/Badge";
 import { NotificationBell } from "./NotificationBell";
+import { useShellCounts } from "./useShellCounts";
 
 interface HeaderProps {
   onMenuToggle?: () => void;
@@ -68,6 +69,7 @@ function syncLabel(iso: string | null): string {
 export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
   const pathname = usePathname();
   const { profile, user, refreshProfile } = useAuth();
+  const { streak } = useShellCounts();
   const [isSyncing, setIsSyncing] = useState(false);
 
   const handleSync = async () => {
@@ -102,7 +104,14 @@ export function Header({ onMenuToggle, onSearchOpen }: HeaderProps) {
       </nav>
 
       <div className="flex shrink-0 items-center gap-1 md:gap-3">
-        <StreakChip count={profile?.streak ?? 0} alive={false} className="mr-1 md:hidden" />
+        {streak && (
+          <StreakChip
+            count={streak.current}
+            alive={streak.solvedToday}
+            title={`${streak.current}-day streak · best ${streak.best}`}
+            className="mr-1 md:hidden"
+          />
+        )}
         <button
           type="button"
           onClick={onSearchOpen}

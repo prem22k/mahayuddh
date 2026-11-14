@@ -48,7 +48,7 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { profile, user, signOut } = useAuth();
-  const { incomingChallenges, squadName, sheets } = useShellCounts();
+  const { incomingChallenges, squadName, sheets, streak } = useShellCounts();
   const [isCreateListOpen, setIsCreateListOpen] = useState(false);
   const [isDossierOpen, setIsDossierOpen] = useState(false);
 
@@ -57,7 +57,6 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
   const displayHandle = (profile?.username || displayName)
     .toLowerCase()
     .replace(/[^a-z0-9_]/g, "");
-  const streak = profile?.streak ?? 0;
 
   return (
     <>
@@ -184,12 +183,27 @@ export function Sidebar({ onSearchOpen }: SidebarProps) {
                   </span>
                 </span>
               </span>
-              <StreakChip count={streak} alive={false} className="sidebar-user-meta" />
+              {streak && (
+                <StreakChip
+                  count={streak.current}
+                  alive={streak.solvedToday}
+                  title={`${streak.current}-day streak · best ${streak.best}`}
+                  className="sidebar-user-meta"
+                />
+              )}
             </span>
-            {streak > 0 && (
+            {streak && (streak.solvedToday || streak.current > 0) && (
               <span className="sidebar-user-meta flex items-center gap-1.5 border-t border-hairline px-0.5 pt-1.5 text-[11px] text-text-tertiary">
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-primary/70" aria-hidden />
-                <span className="truncate">Solve today to keep {streak}</span>
+                <span
+                  className={cn(
+                    "h-1.5 w-1.5 shrink-0 rounded-full border border-primary/70",
+                    streak.solvedToday && "bg-primary"
+                  )}
+                  aria-hidden
+                />
+                <span className="truncate">
+                  {streak.solvedToday ? "Solved today" : `Solve today to keep ${streak.current}`}
+                </span>
               </span>
             )}
           </button>

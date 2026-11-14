@@ -6,6 +6,7 @@ import { useCachedQuery } from "@/lib/cache/query";
 import { getIncomingSuggestionCount } from "@/lib/data/suggestions";
 import { getMySquads, getSquadMemberIds } from "@/lib/data/squads";
 import { getPinnedSheetProgress, PINNED_SHEETS, type SheetProgress } from "@/lib/data/sheetProgress";
+import { getMyStreak, type MyStreak } from "@/lib/data/streak";
 
 export interface ShellCounts {
   /** Challenges addressed to you and still pending. 0 when unknown. */
@@ -13,6 +14,8 @@ export interface ShellCounts {
   squadName: string | null;
   squadMemberCount: number | null;
   sheets: { slug: string; title: string; progress: SheetProgress | null }[];
+  /** Your own solve streak. Null until it loads, or when it can't be read. */
+  streak: MyStreak | null;
 }
 
 const NO_PROGRESS: Record<string, SheetProgress | null> = {};
@@ -25,7 +28,8 @@ const NO_PROGRESS: Record<string, SheetProgress | null> = {};
  * Reads through the client cache with the same keys and fetchers the pages
  * use, so the sidebar and the drawer share one request per value, and a page
  * that invalidates "incoming-suggestion-count" or "my-squads" updates the
- * shell too. Sheet progress refreshes when any problem's status changes.
+ * shell too. Sheet progress and the streak refresh when any problem's status
+ * changes.
  */
 export function useShellCounts(): ShellCounts {
   const { user, profile } = useAuth();
@@ -48,12 +52,18 @@ export function useShellCounts(): ShellCounts {
     getSquadMemberIds(activeSquadId as string)
   );
 
+  const streak = useCachedQuery(userId ? ["my-streak"] : null, getMyStreak);
+
   const refreshProgress = progress.refresh;
+  const refreshStreak = streak.refresh;
   useEffect(() => {
-    const onStatus = () => void refreshProgress();
+    const onStatus = () => {
+      void refreshProgress();
+      void refreshStreak();
+    };
     window.addEventListener("problem-status-changed", onStatus);
     return () => window.removeEventListener("problem-status-changed", onStatus);
-  }, [refreshProgress]);
+  }, [refreshProgress, refreshStreak]);
 
   const progressBySlug = progress.data ?? NO_PROGRESS;
   return {
@@ -63,5 +73,6 @@ export function useShellCounts(): ShellCounts {
       : null,
     squadMemberCount: activeSquadId ? (memberIds.data?.length ?? null) : null,
     sheets: PINNED_SHEETS.map((s) => ({ ...s, progress: progressBySlug[s.slug] ?? null })),
+    streak: streak.data ?? null,
   };
 }
