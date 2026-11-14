@@ -345,36 +345,28 @@ export async function unblockUser(blockedId: string): Promise<void> {
   if (error) throw new DataError("feed", "Couldn't unblock that person.", { cause: error });
 }
 
-// ── Legacy readers kept for callers that want plain chronological rows ───────
-// §20 ranks usefulness, but the Home panel wants "what just happened", and
-// re-deriving that from a usefulness sort would bury the last two minutes.
-
-async function fetchFeed(filter: { squadId?: string; limit?: number }): Promise<FeedEvent[]> {
-  const supabase = createClient();
-  let query = supabase
-    .from("feed_events")
-    .select(
-      "id,user_id,event_type,problem_title,problem_slug,difficulty,squad_id,object_type,object_id,metadata,created_at,actor:user_id (id, username, avatar_url)"
-    )
-    .order("created_at", { ascending: false })
-    .limit(filter.limit ?? 30);
-  if (filter.squadId) query = query.eq("squad_id", filter.squadId);
-  const { data, error } = await query;
-  if (error) throw new DataError("feed", "Couldn't load feed. Retry.", { cause: error });
-  // Embedded `actor:user_id (...)` widens to an array under the generated
-  // PostgREST types; the runtime shape is a single object (see FeedEvent).
-  return (data ?? []) as unknown as FeedEvent[];
-}
-
-export function getSquadFeed(squadId: string, limit = 30): Promise<FeedEvent[]> {
-  return fetchFeed({ squadId, limit });
-}
-
-/** Recent squad activity for the Home panel (small N, newest first). */
-export function getRecentFeed(opts: { squadId: string; limit?: number }): Promise<FeedEvent[]> {
-  return fetchFeed({ squadId: opts.squadId, limit: opts.limit ?? 4 });
-}
-
-export function getGlobalFeed(limit = 30): Promise<FeedEvent[]> {
-  return fetchFeed({ limit });
+/**
+ * Recent squad activity for the Home panel (small N, newest first).
+ *
+ * Read through get_ranked_feed, whose Squad scope is chronological, rather than
+ * from feed_events directly: the RPC is where blocks, your own reports and
+ * milestone rows are filtered. Reading the table here showed blocked people on
+ * Home after "Hide this person's activity from your feeds".
+ */
+export async function getRecentFeed(opts: { squadId: string; limit?: number }): Promise<FeedEvent[]> {
+  const rows = await getRankedFeed("squad", { squadId: opts.squadId, limit: opts.limit ?? 4 });
+  return rows.map((r) => ({
+    id: r.id,
+    user_id: r.user_id,
+    event_type: r.event_type,
+    problem_title: r.problem_title,
+    problem_slug: r.problem_slug,
+    difficulty: r.difficulty,
+    squad_id: r.squad_id,
+    object_type: r.object_type,
+    object_id: r.object_id,
+    metadata: r.metadata,
+    created_at: r.created_at,
+    actor: (r.actor ?? undefined) as FeedEvent["actor"],
+  }));
 }

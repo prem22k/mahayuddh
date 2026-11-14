@@ -12,6 +12,7 @@
  *   - getSquadProblemStatuses(): only the member ids it was given
  *   - getDiscussions(): each feed tab gets its own threads, and another
  *     squad's squad-only thread is never readable
+ *   - getRecentFeed() (Home): a blocked person's activity is hidden
  *
  * Run: npm run test:integration:privacy
  */
@@ -36,12 +37,14 @@ const db = createClient(url, serviceKey, { auth: { persistSession: false } });
 
 const { getSuggestions } = await import("@/lib/data/suggestions");
 const { getSquadProblemStatuses } = await import("@/lib/data/sheets");
-const { getDiscussions } = await import("@/lib/data/feed");
+const { getDiscussions, getRecentFeed } = await import("@/lib/data/feed");
 
 const tag = `priv${Date.now()}`;
-const made = { users: [], squads: [], suggestions: [], statuses: [], discussions: [], follows: [] };
+const made = { users: [], squads: [], suggestions: [], statuses: [], discussions: [], follows: [], events: [], blocks: [] };
 
 async function cleanup() {
+  for (const b of made.blocks) await db.from("user_blocks").delete().eq("blocker_id", b);
+  for (const e of made.events) await db.from("feed_events").delete().eq("id", e);
   for (const f of made.follows) await db.from("follows").delete().eq("follower_id", f);
   for (const d of made.discussions) await db.from("discussions").delete().eq("id", d);
   for (const s of made.statuses) await db.from("user_problem_status").delete().eq("id", s);
@@ -165,6 +168,24 @@ try {
 
     const peek = ours(await getDiscussions({ scope: "squad", squadId: squadCD, limit: 100 }));
     check("another squad's squad-only thread is not readable, even by asking for that squad", peek.includes(cdSquadThread), false);
+  });
+
+  // ── getRecentFeed (Home): blocks apply here too ──────────────────────────
+  const solveRow = (u) => ({
+    user_id: u.id, event_type: "solve", problem_slug: `${tag}-p`, problem_title: "Probe", squad_id: squadAB,
+  });
+  const aliceSolve = await insert("feed_events", solveRow(alice), "events");
+  const bobSolve = await insert("feed_events", solveRow(bob), "events");
+  await as(alice, async () => {
+    const before = (await getRecentFeed({ squadId: squadAB, limit: 20 })).map((e) => e.id);
+    check("Home shows squad mates' solves", sorted(before.filter((id) => made.events.includes(id))), sorted([aliceSolve, bobSolve]));
+  });
+  await db.from("user_blocks").insert({ blocker_id: alice.id, blocked_id: bob.id });
+  made.blocks.push(alice.id);
+  await as(alice, async () => {
+    const after = (await getRecentFeed({ squadId: squadAB, limit: 20 })).map((e) => e.id);
+    check("Home hides a blocked person's activity", after.includes(bobSolve), false);
+    check("Home still shows your own", after.includes(aliceSolve), true);
   });
 } catch (e) {
   console.error("probe error:", e.message);
