@@ -3,8 +3,17 @@ import { normalizeSlug } from "@/lib/slug";
 import { Suggestion, Difficulty } from "@/types/database";
 import { DataError } from "@/lib/data/errors";
 
+/**
+ * Challenges you sent or received. The table is readable platform-wide (share
+ * pages and season results read it), so the caller filter lives here: without
+ * it the All and Done tabs listed everyone's challenges.
+ */
 export async function getSuggestions(): Promise<Suggestion[]> {
   const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
   const { data, error } = await supabase
     .from("suggestions")
     .select(`
@@ -12,6 +21,7 @@ export async function getSuggestions(): Promise<Suggestion[]> {
       from_profile:from_user (id, username, leetcode_username, avatar_url),
       to_profile:to_user (id, username, leetcode_username, avatar_url)
     `)
+    .or(`from_user.eq.${user.id},to_user.eq.${user.id}`)
     .order("created_at", { ascending: false });
 
   if (error) {
