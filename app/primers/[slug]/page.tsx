@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, Suspense } from "react";
+import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowRight, Check, Clock, Copy, Gauge, ListChecks, Swords, TriangleAlert } from "lucide-react";
@@ -21,6 +21,7 @@ import { getPrimer, primerReadMinutes } from "@/lib/data/primers";
 import { getCatalogBySlugs } from "@/lib/data/problems";
 import { getUserStatusesBySlugs, toStatusMap } from "@/lib/data/sheets";
 import { copyPrimerToNotebook } from "@/lib/data/notebook";
+import { getMyPrimerProgress, markPrimerRead } from "@/lib/data/primerProgress";
 import { track } from "@/lib/analytics";
 import { Primer, Problem, TriState } from "@/types/database";
 import { cn } from "@/lib/utils";
@@ -131,6 +132,16 @@ export default function PrimerPage() {
     { freshForMs: 10 * 60_000 }
   );
 
+  // Read state: set when the closing card has been on screen for a moment (you
+  // got to the end), or from the button. Opening the page isn't reading it.
+  const progressQ = useCachedQuery(userId ? ["primer-progress"] : null, () => getMyPrimerProgress());
+  const isRead = !!progressQ.data?.get(slug)?.read_at;
+  const endRef = useRef<HTMLElement | null>(null);
+  const markRead = React.useCallback(async () => {
+    if (!userId) return;
+    if (await markPrimerRead(slug).catch(() => false)) void invalidate("primer-progress");
+  }, [slug, userId, invalidate]);
+
   const myStatuses = useCachedQuery(
     userId ? ["my-statuses"] : null,
     async () => toStatusMap(await getUserStatusesBySlugs(userId as string))
@@ -145,6 +156,21 @@ export default function PrimerPage() {
       track("primer_read", { primer_slug: slug });
     }
   }, [primer, slug]);
+
+  useEffect(() => {
+    const el = endRef.current;
+    if (!el || !userId || isRead || !progressQ.data) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) timer = setTimeout(() => void markRead(), 1500);
+      else if (timer) clearTimeout(timer);
+    }, { threshold: 0.6 });
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      if (timer) clearTimeout(timer);
+    };
+  }, [userId, isRead, progressQ.data, markRead, primerQuery.data]);
 
   // Reading pages keep the solve dock out of the way: it is hidden while
   // this page is mounted and restored on unmount.
@@ -594,8 +620,35 @@ export default function PrimerPage() {
           </ol>
         </section>
 
-        <footer className="relative flex flex-col items-center gap-4 overflow-hidden rounded-xl border border-hairline bg-surface p-6 text-center md:p-8">
+        <footer
+          ref={endRef}
+          className="relative flex flex-col items-center gap-4 overflow-hidden rounded-xl border border-hairline bg-surface p-6 text-center md:p-8"
+        >
           <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-edge-highlight" />
+          {user ? (
+            isRead ? (
+              <p className="inline-flex items-center gap-1.5 text-xs font-medium text-verified">
+                <Check className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+                Read. It moves down your list in Practice.
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void markRead()}
+                className="inline-flex min-h-[44px] items-center gap-1.5 text-xs font-medium text-text-secondary underline-offset-[3px] hover:text-text-primary hover:underline md:min-h-0"
+              >
+                <Check className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+                Mark as read
+              </button>
+            )
+          ) : (
+            <p className="text-xs text-text-tertiary">
+              <Link href={`/login?next=${encodeURIComponent(`/primers/${primer.slug}`)}`} className="underline-offset-[3px] hover:underline">
+                Log in
+              </Link>{" "}
+              to track which patterns you&apos;ve read and mastered.
+            </p>
+          )}
           <h2 className="type-title text-text-primary">
             Ready? Start with {nextStarter?.title ?? "the first starter"}.
           </h2>

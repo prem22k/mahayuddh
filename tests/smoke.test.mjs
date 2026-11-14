@@ -2992,3 +2992,75 @@ describe("hasLeetcodeSolve", () => {
     assert.equal(hasLeetcodeSolve([{ kind: "revisited", metadata: { source: "leetcode" } }]), false);
   });
 });
+
+// ── Pattern mastery and the Practice roadmap ────────────────────────────────
+
+describe("masteryOf", async () => {
+  const { masteryOf, groupRoadmap, revisionNeed } = await import("../lib/primerMastery.ts");
+  const NOW = new Date("2026-11-15T12:00:00Z");
+  const day = (n) => new Date(NOW.getTime() - n * 86_400_000).toISOString();
+  // 10 problems: 7 core, 3 stretch. 80% → 8 needed.
+  const ladder = [
+    ...Array.from({ length: 7 }, (_, i) => ({ slug: `c${i}`, tier: "core" })),
+    ...Array.from({ length: 3 }, (_, i) => ({ slug: `s${i}`, tier: "stretch" })),
+  ];
+  const solved = (slugs, at = day(20)) => slugs.map((s) => ({ problem_slug: s, status: "solved", solved_at: at }));
+  const eight = ["c0", "c1", "c2", "c3", "c4", "c5", "c6", "s0"];
+  const revisit = [{ problem_slug: "c0", kind: "revisited", created_at: day(5) }];
+
+  it("needs 80% rounded up", () => {
+    const m = masteryOf(ladder, solved(eight.slice(0, 7)), revisit, NOW);
+    assert.equal(m.need, 8);
+    assert.equal(m.mastered, false);
+    assert.ok(m.missing.includes("coverage"));
+  });
+
+  it("needs a stretch problem, so all-core 80% isn't mastery", () => {
+    // 12 core + 3 stretch: 80% is 12, reachable with core problems alone.
+    const wide = [
+      ...Array.from({ length: 12 }, (_, i) => ({ slug: `k${i}`, tier: "core" })),
+      ...Array.from({ length: 3 }, (_, i) => ({ slug: `t${i}`, tier: "stretch" })),
+    ];
+    const allCore = wide.slice(0, 12).map((l) => l.slug);
+    const m = masteryOf(wide, solved(allCore), [{ problem_slug: "k0", kind: "revisited", created_at: day(5) }], NOW);
+    assert.equal(m.solved >= m.need, true);
+    assert.deepEqual(m.missing, ["stretch"]);
+  });
+
+  it("is blocked by a failure in the last 30 days, not by an old one", () => {
+    const fresh = masteryOf(ladder, solved(eight), [...revisit, { problem_slug: "s1", kind: "failed", created_at: day(3) }], NOW);
+    assert.ok(fresh.missing.includes("recent-failure"));
+    const old = masteryOf(ladder, solved(eight), [...revisit, { problem_slug: "s1", kind: "failed", created_at: day(40) }], NOW);
+    assert.equal(old.mastered, true);
+  });
+
+  it("needs one problem solved again a week after its first solve", () => {
+    assert.ok(masteryOf(ladder, solved(eight), [], NOW).missing.includes("retention"));
+    const sameWeek = [{ problem_slug: "c0", kind: "revisited", created_at: day(17) }];
+    assert.ok(masteryOf(ladder, solved(eight), sameWeek, NOW).missing.includes("retention"));
+    assert.equal(masteryOf(ladder, solved(eight), revisit, NOW).mastered, true);
+  });
+
+  it("asks for a revision after 45 quiet days, or after a fresh failure", () => {
+    assert.equal(revisionNeed(masteryOf(ladder, solved(eight), revisit, NOW), NOW), null);
+    const quiet = masteryOf(ladder, solved(eight, day(90)), [{ problem_slug: "c0", kind: "revisited", created_at: day(60) }], NOW);
+    assert.equal(revisionNeed(quiet, NOW), "stale");
+    const failed = masteryOf(ladder, solved(eight), [...revisit, { problem_slug: "c1", kind: "failed", created_at: day(1) }], NOW);
+    assert.equal(revisionNeed(failed, NOW), "failure");
+  });
+
+  it("groups unread first, then read, then mastered; a fresh failure moves back to read", () => {
+    const e = (slug, over) => ({ slug, pattern: slug, blurb: "", written: true, read: false, mastered: false, progress: null, revise: null, ...over });
+    const g = groupRoadmap([
+      e("a", { mastered: true, read: true }),
+      e("b", { read: true }),
+      e("c"),
+      e("d", { written: false }),
+      e("f", { mastered: true, revise: "failure" }),
+      e("g", { mastered: true, revise: "stale" }),
+    ]);
+    assert.deepEqual(g.upNext.map((x) => x.slug), ["c", "d"]);
+    assert.deepEqual(g.read.map((x) => x.slug), ["b", "f"]);
+    assert.deepEqual(g.mastered.map((x) => x.slug), ["g", "a"]);
+  });
+});
