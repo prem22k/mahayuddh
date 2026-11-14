@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { DataError } from "@/lib/data/errors";
 import { track } from "@/lib/analytics";
-import { buildRecap, weekOf, RecapBody, RecapWindow } from "@/lib/recap";
+import { buildRecap, weekBoundsUtc, weekOf, type RecapBody, type RecapWindow } from "@/lib/recap";
 import type {
   Approach,
   Battle,
@@ -15,8 +15,9 @@ import type {
  * Recap reads and generation (Step 20).
  *
  * Generation reads the real rows for the window and freezes the projection into
- * `squad_recaps.body_json`. Regenerating a week replaces it — one recap per
- * squad per week, enforced by a unique index.
+ * `squad_recaps.body_json`. Any member can rewrite the current week's recap,
+ * which replaces it (one per squad per week, by a unique index); once the week
+ * is over, the database refuses edits, so a past recap stays as written.
  */
 
 async function loadMembers(squadId: string): Promise<SquadMember[]> {
@@ -41,10 +42,9 @@ export async function generateRecap(squadId: string, squadName: string): Promise
     throw new DataError("recap", "A squad needs members before it can have a week.");
   }
 
-  const from = `${window.weekStart}T00:00:00.000Z`;
-  const to = `${window.weekEnd}T23:59:59.999Z`;
+  const { from, to } = weekBoundsUtc(window);
 
-  const [eventsRes, battlesRes, approachesRes, challengesRes, profilesRes, primersRes, notesRes, squadRes] =
+  const [eventsRes, battlesRes, approachesRes, challengesRes, profilesRes, primersRes, notesRes, squadRes, stuckRes] =
     await Promise.all([
       supabase
         .from("problem_events")
@@ -81,6 +81,13 @@ export async function generateRecap(squadId: string, squadName: string): Promise
         .gte("created_at", from)
         .limit(500),
       supabase.from("squads").select("id,name").eq("id", squadId).maybeSingle(),
+      supabase
+        .from("stuck_requests")
+        .select("id,user_id,status,created_at")
+        .in("user_id", memberIds)
+        .gte("created_at", from)
+        .lte("created_at", to)
+        .limit(500),
     ]);
 
   const problems = eventsRes.data ?? [];
@@ -90,6 +97,26 @@ export async function generateRecap(squadId: string, squadName: string): Promise
   const profiles = profilesRes.data ?? [];
   const primers = primersRes.data ?? [];
   const notes = notesRes.data ?? [];
+
+  // An ask is answered when it was marked helped or resolved, or when someone
+  // other than the asker replied to it.
+  const asks = (stuckRes.data ?? []) as { id: string; user_id: string; status: string; created_at: string }[];
+  const repliedByOther = new Set<string>();
+  if (asks.length > 0) {
+    const { data: replies } = await supabase
+      .from("stuck_replies")
+      .select("request_id,author_id")
+      .in("request_id", asks.map((a) => a.id));
+    const askerOf = new Map(asks.map((a) => [a.id, a.user_id]));
+    for (const r of (replies ?? []) as { request_id: string; author_id: string }[]) {
+      if (r.author_id !== askerOf.get(r.request_id)) repliedByOther.add(r.request_id);
+    }
+  }
+  const stuckAsks = asks.map((a) => ({
+    user_id: a.user_id,
+    created_at: a.created_at,
+    answered: a.status === "helped" || a.status === "resolved" || repliedByOther.has(a.id),
+  }));
 
   const usernames = new Map<string, string>(
     (profiles as { id: string; username: string }[]).map((p) => [p.id, p.username])
@@ -119,6 +146,7 @@ export async function generateRecap(squadId: string, squadName: string): Promise
     challenges: challenges as Suggestion[],
     primerTitles,
     primerCopies,
+    stuckAsks,
   });
 
   const userId = (await supabase.auth.getUser()).data.user?.id ?? null;

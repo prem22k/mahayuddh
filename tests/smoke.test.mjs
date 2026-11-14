@@ -1260,6 +1260,7 @@ const baseRecap = {
   challenges: [],
   primerTitles: new Map(),
   primerCopies: new Map(),
+  stuckAsks: [],
   now: new Date("2026-10-11T12:00:00Z"),
 };
 
@@ -1271,15 +1272,38 @@ describe("weekOf", () => {
     assert.equal(w.weekEnd, "2026-10-11");
   });
 
-  it("is inclusive at both ends", () => {
-    assert.equal(inWindow("2026-10-05T00:00:00Z", W), true);
-    assert.equal(inWindow("2026-10-11T23:59:59Z", W), true);
-    assert.equal(inWindow("2026-10-04T23:59:59Z", W), false);
-    assert.equal(inWindow("2026-10-12T00:00:00Z", W), false);
+  it("is inclusive at both ends, in IST days", () => {
+    // Monday 00:00 IST is Sunday 18:30 UTC.
+    assert.equal(inWindow("2026-10-04T18:30:00Z", W), true);
+    assert.equal(inWindow("2026-10-11T18:29:59Z", W), true);
+    assert.equal(inWindow("2026-10-04T18:29:59Z", W), false);
+    assert.equal(inWindow("2026-10-11T18:30:00Z", W), false);
+  });
+
+  it("puts a Sunday-night IST solve in Sunday's week", () => {
+    // 2026-10-11 23:30 IST, still Sunday there; Sunday 18:00 UTC.
+    assert.deepEqual(weekOf(new Date("2026-10-11T18:00:00Z")), W);
+    // 2026-10-12 00:30 IST is Monday: the next week.
+    assert.equal(weekOf(new Date("2026-10-11T19:00:00Z")).weekStart, "2026-10-12");
   });
 });
 
 describe("buildRecap", () => {
+  it("counts stuck asks and the ones someone answered", () => {
+    const body = buildRecap({
+      ...baseRecap,
+      stuckAsks: [
+        { user_id: "u1", created_at: "2026-10-06T10:00:00Z", answered: true },
+        { user_id: "u2", created_at: "2026-10-07T10:00:00Z", answered: false },
+        { user_id: "outsider", created_at: "2026-10-07T10:00:00Z", answered: true },
+      ],
+      // A completed challenge is not an answered ask.
+      events: [ev("challenge_completed", "two-sum", "u1", "2026-10-06")],
+    });
+    assert.equal(body.stuckRequests, 2);
+    assert.equal(body.stuckHelped, 1);
+  });
+
   it("calls a quiet week quiet instead of padding it", () => {
     const body = buildRecap(baseRecap);
     assert.equal(body.solves, 0);
