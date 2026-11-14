@@ -22,6 +22,7 @@ import { getApproachesForSlugs } from "@/lib/data/approaches";
 import { getSharedResources } from "@/lib/data/vault";
 import { getStuckRequestsForPattern } from "@/lib/data/stuck";
 import { getSquadProblemStatuses } from "@/lib/data/sheets";
+import { getActiveSquadId, getSquadMemberIds } from "@/lib/data/squads";
 import { getVerifiedSolvers } from "@/lib/data/squadActivity";
 import { copyVaultToNotebook } from "@/lib/data/notebook";
 import { TeacherList } from "@/components/profile/TeacherList";
@@ -114,12 +115,17 @@ export default function PatternPage() {
   // Honest progress over the starter list: your own marks plus the
   // squad total, both from shared statuses.
   const squadStatusesQ = useCachedQuery(
-    topic && starters.length > 0 ? ["pattern-squad-statuses", topic] : null,
-    () => getSquadProblemStatuses(starters.map((s) => s.title_slug))
+    user && topic && starters.length > 0 ? ["pattern-squad-statuses", topic] : null,
+    async () => {
+      const squadId = await getActiveSquadId(user!.id);
+      const memberIds = squadId ? await getSquadMemberIds(squadId) : [user!.id];
+      const rows = await getSquadProblemStatuses(starters.map((s) => s.title_slug), memberIds);
+      return { rows, inSquad: squadId !== null };
+    }
   );
 
   const { ownStatus, squadSolves } = useMemo(() => {
-    const rows = squadStatusesQ.data;
+    const rows = squadStatusesQ.data?.rows;
     if (!rows) return { ownStatus: NO_STATUS_REC, squadSolves: null };
     const mine: Record<string, "solved" | "attempted"> = {};
     const pairs = new Set<string>();
@@ -129,7 +135,7 @@ export default function PatternPage() {
       }
       if (r.status === "solved") pairs.add(`${r.user_id}:${r.problem_slug}`);
     }
-    return { ownStatus: mine, squadSolves: pairs.size };
+    return { ownStatus: mine, squadSolves: squadStatusesQ.data?.inSquad ? pairs.size : null };
   }, [squadStatusesQ.data, user]);
 
   // Verified overlay: LeetCode-sourced solve events for the viewer.
