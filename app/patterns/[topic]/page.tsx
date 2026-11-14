@@ -296,7 +296,8 @@ export default function PatternPage() {
                     {primer.title}
                   </Link>
                   <p className="text-xs font-medium leading-4 text-text-tertiary">
-                    Primer · {primer.starter_slugs.length} starter problems
+                    {/* The listed (and counted) starters, which are capped; not the primer's raw slug count. */}
+                    Primer · {starters.length} starter {starters.length === 1 ? "problem" : "problems"}
                   </p>
                 </div>
               </div>

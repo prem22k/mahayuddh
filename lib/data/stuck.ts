@@ -86,6 +86,9 @@ export async function createStuckRequest(params: {
   visibility?: StuckVisibility;
   battleId?: string | null;
   squadId?: string | null;
+  /** For the feed row this writes: the problem's title and the asker's note. */
+  problemTitle?: string | null;
+  caption?: string | null;
 }): Promise<{ ok: true; request: StuckRequest } | { ok: false; error: string }> {
   const supabase = createClient();
   const visibility = params.visibility ?? "squad";
@@ -134,13 +137,17 @@ export async function createStuckRequest(params: {
     const userId = (await supabase.auth.getUser()).data.user?.id ?? null;
     const squadId = params.squadId ?? (userId ? await getActiveSquadId(userId) : null);
     if (squadId) {
+      // The only feed row for this ask; callers pass title and caption here
+      // rather than logging a second one.
+      const caption = (params.caption ?? "").trim().slice(0, 280);
       logFeedEvent({
         eventType: "stuck",
         squadId,
         problemSlug: params.problemSlug,
+        problemTitle: params.problemTitle ?? null,
         objectType: "stuck_request",
         objectId: request.id,
-        metadata: { level: params.level },
+        metadata: caption ? { level: params.level, caption } : { level: params.level },
       }).catch(() => {});
     }
   }

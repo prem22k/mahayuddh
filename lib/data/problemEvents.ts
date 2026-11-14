@@ -43,7 +43,8 @@ export async function getProblemTimeline(
     .from("problem_events")
     .select(EVENT_COLUMNS)
     .eq("problem_slug", problemSlug.toLowerCase())
-    .order("created_at", { ascending: true })
+    // Newest first so the limit drops the OLDEST rows once a slug passes it.
+    .order("created_at", { ascending: false })
     .limit(limit);
   // Own full history + squad/public activity; strangers see only non-private?
   // v0: events carry no private content (kind + duration only), so scope by user when asked.
@@ -51,7 +52,8 @@ export async function getProblemTimeline(
   const { data, error } = await query;
   if (error) throw new DataError("history", "Couldn't load problem history. Retry.", { cause: error });
   if (!data) throw new DataError("history", "Couldn't load problem history. Retry.");
-  return data as ProblemEvent[];
+  // Callers read oldest first.
+  return (data as ProblemEvent[]).reverse();
 }
 
 /** Caller's own history for a slug, newest first (matrix hover preview). */

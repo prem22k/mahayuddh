@@ -27,3 +27,15 @@ export function applyStatusChange(
   else next[slug] = status;
   return next;
 }
+
+/**
+ * True when the history holds a solve that LeetCode vouched for. A hand-marked
+ * solve logs `metadata.source = 'self'`; the server's evidence-label guard
+ * downgrades any client claim of 'leetcode' it cannot match to a verified
+ * battle, so this reads as real evidence even without a battle row.
+ */
+export function hasLeetcodeSolve(
+  events: ReadonlyArray<{ kind: string; metadata?: Record<string, unknown> | null }>
+): boolean {
+  return events.some((ev) => ev.kind === "solved" && ev.metadata?.source === "leetcode");
+}

@@ -124,3 +124,20 @@ export function actionabilityLabel(usefulness: number, ageHours: number): string
   if (decay > 0.5) return "Proven useful.";
   return "Proven useful, recently.";
 }
+
+/**
+ * Whether a solve row is LeetCode-verified (true), self-reported (false) or
+ * not known (null), from whatever its writer recorded. The writers disagree on
+ * the key: the dock writes source "leetcode" | "none", the LeetCode sync
+ * source "leetcode" | "self", the composer evidence "leetcode" | "none", and
+ * older rows verified true/false. "none" means not verified yet (a battle can
+ * be verified after the row is written), so it gets no badge rather than a
+ * self-reported one.
+ */
+export function solveEvidence(metadata: Record<string, unknown> | null | undefined): boolean | null {
+  const m = metadata ?? {};
+  const v = m.verified ?? m.evidence ?? m.source;
+  if (v === true || v === "leetcode" || v === "verified") return true;
+  if (v === false || v === "self" || v === "self-reported") return false;
+  return null;
+}

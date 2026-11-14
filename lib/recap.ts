@@ -1,4 +1,5 @@
 import { formatDuration } from "./format.ts";
+import { SQUAD_TZ_OFFSET_MS, squadDayKeyFromISO } from "./squadDays.ts";
 import type { Approach, Battle, ProblemEvent, Suggestion } from "@/types/database";
 
 /**
@@ -64,23 +65,75 @@ export interface RecapInput {
   primerTitles: Map<string, string>;
   /** primer_id -> copies this week, from notebook_notes forks. */
   primerCopies: Map<string, number>;
+  /** Members' requests for help this week, and whether someone answered. */
+  stuckAsks: { user_id: string; created_at: string; answered: boolean }[];
   now?: Date;
 }
 
+/** Whether a timestamp falls in the week, by its squad-local (IST) day. */
 export function inWindow(iso: string, w: RecapWindow): boolean {
-  const day = iso.slice(0, 10);
-  return day >= w.weekStart && day <= w.weekEnd;
+  const day = squadDayKeyFromISO(iso);
+  return day !== "" && day >= w.weekStart && day <= w.weekEnd;
 }
 
-/** Monday-anchored week containing `date`. */
+/**
+ * Monday-anchored week containing `date`, in squad-local (IST) days like the
+ * rest of the app, so a Sunday-night solve lands in Sunday's week.
+ */
 export function weekOf(date: Date): RecapWindow {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const ist = new Date(date.getTime() + SQUAD_TZ_OFFSET_MS);
+  const d = new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()));
   const dow = (d.getUTCDay() + 6) % 7; // Monday = 0
   const start = new Date(d);
   start.setUTCDate(d.getUTCDate() - dow);
   const end = new Date(start);
   end.setUTCDate(start.getUTCDate() + 6);
   return { weekStart: start.toISOString().slice(0, 10), weekEnd: end.toISOString().slice(0, 10) };
+}
+
+/** The week's first and last instants in UTC, for querying timestamps. */
+export function weekBoundsUtc(w: RecapWindow): { from: string; to: string } {
+  const start = Date.parse(`${w.weekStart}T00:00:00.000Z`) - SQUAD_TZ_OFFSET_MS;
+  const end = Date.parse(`${w.weekEnd}T00:00:00.000Z`) + 86_400_000 - SQUAD_TZ_OFFSET_MS - 1;
+  return { from: new Date(start).toISOString(), to: new Date(end).toISOString() };
+}
+
+/**
+ * How a recap's week relates to now: the week in progress, the one just ended,
+ * or older. Compared by Monday-anchored week, not by days elapsed, so a recap of
+ * the CURRENT week (whose end is still in the future) is never called "last".
+ */
+export function recapRecency(weekStart: string, now: Date = new Date()): "current" | "last" | "older" {
+  if (weekStart === weekOf(now).weekStart) return "current";
+  const lastWeek = new Date(now.getTime() - 7 * 86_400_000);
+  return weekStart === weekOf(lastWeek).weekStart ? "last" : "older";
+}
+
+/** The feed rail's "This week in X" numbers. */
+export interface WeekCounts {
+  solves: number;
+  challengesSent: number;
+  challengesDone: number;
+  approaches: number;
+  stuck: number;
+}
+
+/**
+ * Count feed rows (already limited to one squad and one week) into rail numbers.
+ * "Approaches" counts teach rows that point at an approach; a shared primer is
+ * also a `teach` row but is not an approach someone wrote.
+ */
+export function countWeekFeedRows(
+  rows: ReadonlyArray<{ event_type: string; object_type: string | null }>
+): WeekCounts {
+  const count = (...types: string[]) => rows.filter((r) => types.includes(r.event_type)).length;
+  return {
+    solves: count("solve", "solved"),
+    challengesSent: count("challenge"),
+    challengesDone: count("complete", "completed"),
+    approaches: rows.filter((r) => r.event_type === "teach" && r.object_type === "approach").length,
+    stuck: count("stuck"),
+  };
 }
 
 /**
@@ -134,8 +187,9 @@ export function buildRecap(input: RecapInput): RecapBody {
     (e) => inMember(e.user_id) && inWindow(e.created_at, w)
   );
   const solves = events.filter((e) => e.kind === "solved" || e.kind === "revisited").length;
-  const stuckRequests = events.filter((e) => e.kind === "stuck").length;
-  const stuckHelped = events.filter((e) => e.kind === "challenge_completed").length;
+  const asks = input.stuckAsks.filter((a) => inMember(a.user_id) && inWindow(a.created_at, w));
+  const stuckRequests = asks.length;
+  const stuckHelped = asks.filter((a) => a.answered).length;
 
   const challenges = input.challenges.filter(
     (c) => inMember(c.from_user) && inWindow(c.created_at, w)
