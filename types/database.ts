@@ -392,6 +392,9 @@ export interface PrimerContentDoc {
   walkthrough: {
     problemSlug: string;
     input: string;
+    /** Older content has neither; the page falls back to Sliding Window's wording. */
+    intro?: string;
+    columns?: [string, string, string];
     steps: { window: string; action: string; best: string }[];
     result: string;
   };
