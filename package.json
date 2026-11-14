@@ -19,6 +19,7 @@
     "test:integration:recaps": "node --no-warnings --experimental-strip-types --import ./tests/integration/_libRegister.mjs tests/integration/recapRewrite.mjs",
     "test:integration:dupes": "node --no-warnings --experimental-strip-types --import ./tests/integration/_libRegister.mjs tests/integration/feedDuplicates.mjs",
     "test:integration:primers": "node --no-warnings --experimental-strip-types --import ./tests/integration/_libRegister.mjs tests/integration/primerProgress.mjs",
+    "test:integration:review": "node --no-warnings --experimental-strip-types --import ./tests/integration/_libRegister.mjs tests/integration/reviewQueue.mjs",
     "test:integration:privacy": "node --no-warnings --experimental-strip-types --import ./tests/integration/_libRegister.mjs tests/integration/privacyScopes.mjs",
     "test:integration:teacher": "node tests/integration/teacherStats.mjs",
     "test:integration:notify": "node tests/integration/notifications.mjs",
