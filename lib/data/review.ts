@@ -157,8 +157,19 @@ export async function refreshReviewQueue(): Promise<ReviewItem[]> {
       }
     }
   }
+  // Plain insert: toInsert already skips rows that are open. An upsert can't be
+  // used here, because the uniqueness is a PARTIAL index (open rows only) and
+  // ON CONFLICT can't target one; that upsert failed with 42P10 every time, so
+  // no automatic review row was ever saved. A row another tab added meanwhile
+  // fails the whole batch with 23505, so retry one by one and skip just those.
   if (toInsert.length > 0) {
-    await supabase.from("review_queue").upsert(toInsert, { onConflict: "user_id,problem_slug,reason", ignoreDuplicates: true });
+    const { error } = await supabase.from("review_queue").insert(toInsert);
+    if (error && (error as { code?: string }).code === "23505") {
+      await Promise.all(toInsert.map((row) => supabase.from("review_queue").insert(row)));
+    } else if (error) {
+      // Not fatal: the queue below still lists what's already open.
+      console.error("review_queue insert failed:", error);
+    }
   }
 
   // Resolve: bookmark rows survive (manual); solved clears auto reasons.
