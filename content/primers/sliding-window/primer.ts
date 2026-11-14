@@ -27,6 +27,8 @@ Fixed-size windows are the simple case: the window is always k long, so each ste
   walkthrough: {
     problemSlug: "longest-substring-without-repeating-characters",
     input: 's = "pwwkew"',
+    intro: "one step per character.",
+    columns: ["Window", "What happened", "Best"],
     steps: [
       { window: "[p]", action: "take p", best: "1" },
       { window: "[p w]", action: "take w", best: "2" },

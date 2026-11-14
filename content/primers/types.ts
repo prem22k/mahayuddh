@@ -12,11 +12,11 @@ export type PrimerLang = "cpp" | "java" | "python";
 export type CodeRef = string;
 
 export interface PrimerStep {
-  /** The window (or state) after this step, as the reader would draw it. */
+  /** The state after this step, as the reader would draw it (columns[0]). */
   window: string;
-  /** What the code just did. */
+  /** What the code just did (columns[1]). */
   action: string;
-  /** The answer so far. */
+  /** The answer so far (columns[2]). */
   best: string;
 }
 
@@ -56,6 +56,10 @@ export interface PrimerContent {
   walkthrough: {
     problemSlug: string;
     input: string;
+    /** How the steps go, after the input: "one step per character." */
+    intro: string;
+    /** Headings for the three columns, e.g. ["Window", "What happened", "Best"]. */
+    columns: [string, string, string];
     steps: PrimerStep[];
     result: string;
   };

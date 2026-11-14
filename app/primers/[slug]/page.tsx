@@ -237,6 +237,7 @@ export default function PrimerPage() {
   };
 
   const content = primer.content ?? null;
+  const walkCols = content?.walkthrough.columns ?? ["Window", "What happened", "Best"];
 
   // Only sections with content are numbered and listed in the contents.
   const present: Record<(typeof TOC)[number]["id"], boolean> = {
@@ -426,16 +427,16 @@ export default function PrimerPage() {
               >
                 {prettify(content.walkthrough.problemSlug)}
               </Link>{" "}
-              on <span className="whitespace-nowrap font-mono text-sm text-text-primary">{content.walkthrough.input}</span>, one
-              step per character.
+              on <span className="whitespace-nowrap font-mono text-sm text-text-primary">{content.walkthrough.input}</span>,{" "}
+              {content.walkthrough.intro ?? "one step per character."}
             </p>
             <div className="overflow-x-auto rounded-lg border border-hairline">
               <table className="w-full text-left text-sm">
                 <thead className="bg-well text-xs font-medium text-text-tertiary">
                   <tr>
-                    <th scope="col" className="px-3 py-2 font-medium">Window</th>
-                    <th scope="col" className="px-3 py-2 font-medium">What happened</th>
-                    <th scope="col" className="px-3 py-2 text-right font-medium">Best</th>
+                    <th scope="col" className="px-3 py-2 font-medium">{walkCols[0]}</th>
+                    <th scope="col" className="px-3 py-2 font-medium">{walkCols[1]}</th>
+                    <th scope="col" className="px-3 py-2 text-right font-medium">{walkCols[2]}</th>
                   </tr>
                 </thead>
                 <tbody>
