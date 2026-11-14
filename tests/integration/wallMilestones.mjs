@@ -156,7 +156,7 @@ try {
   check(
     "50 solves: events before the battle update records the milestone",
     await probeMilestones(squad),
-    ["first_member:Squad formed", "first_solve:First battle won", "milestone_solves:50 solves"]
+    ["first_member:Squad formed", "first_solve:First battle won", "milestone_solves:50 squad solves"]
   );
 
   // ── Case 2: the race that used to lose the milestone. Both writes are
@@ -173,7 +173,7 @@ try {
   check(
     "50th solve: recorded even when the battle update won the race",
     await probeMilestones(squad),
-    ["first_member:Squad formed", "first_solve:First battle won", "milestone_solves:50 solves"]
+    ["first_member:Squad formed", "first_solve:First battle won", "milestone_solves:50 squad solves"]
   );
 
   // ── Case 3: the 100-solve milestone has its own kind and must not collide.
@@ -184,7 +184,7 @@ try {
   check(
     "100 solves: both kinds present, 100 does not overwrite 50",
     await probeMilestones(squad),
-    ["first_member:Squad formed", "first_solve:First battle won", "milestone_solves:50 solves", "milestone_solves_100:100 solves"]
+    ["first_member:Squad formed", "first_solve:First battle won", "milestone_solves:50 squad solves", "milestone_solves_100:100 squad solves"]
   );
 
   // ── Case 4: solves that never had a battle session. A solve logged from the
@@ -197,7 +197,7 @@ try {
   check(
     "50 solves with NO battle session still reaches the wall",
     await probeMilestones(squad2),
-    ["first_member:Squad formed", "milestone_solves:50 solves"]
+    ["first_member:Squad formed", "milestone_solves:50 squad solves"]
   );
 
   // ── Case 5: a non-solve event must not move the count.
@@ -208,6 +208,42 @@ try {
   check(
     "60 failures are not 50 solves",
     await probeMilestones(squad3),
+    ["first_member:Squad formed"]
+  );
+
+  // ── Case 6: the count is the squad's. Solves logged before joining don't
+  //    count, and two members' solves add up.
+  const owner4 = await makeProfile(4);
+  await makeEvents(owner4, 60, "solved"); // a history, before any squad
+  const squad4 = await makeSquad(owner4, 4);
+  await makeEvents(owner4, 1, "solved");
+  check(
+    "60 solves from before joining don't make a squad milestone",
+    await probeMilestones(squad4),
+    ["first_member:Squad formed"]
+  );
+  const member5 = await makeProfile(5);
+  await db.from("squad_members").insert({ squad_id: squad4, user_id: member5 });
+  await makeEvents(owner4, 24, "solved");
+  await makeEvents(member5, 25, "solved");
+  check(
+    "two members' 25 + 25 solves after joining make the squad's 50",
+    await probeMilestones(squad4),
+    ["first_member:Squad formed", "milestone_solves:50 squad solves"]
+  );
+
+  // ── Case 7: an undated LeetCode import isn't a solve logged with the squad.
+  const owner6 = await makeProfile(6);
+  const squad6 = await makeSquad(owner6, 6);
+  const imported = Array.from({ length: 50 }, (_, i) => ({
+    user_id: owner6, problem_slug: `${tag}-i${i}`, kind: "solved", metadata: { source: "self", imported: true },
+  }));
+  const { data: imp, error: impErr } = await db.from("problem_events").insert(imported).select("id");
+  if (impErr) throw new Error(`imported events: ${impErr.message}`);
+  created.events.push(...imp.map((d) => d.id));
+  check(
+    "50 imported solves don't make a squad milestone",
+    await probeMilestones(squad6),
     ["first_member:Squad formed"]
   );
 

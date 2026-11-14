@@ -171,8 +171,8 @@ export default function SquadWallPage() {
                   Nothing on the wall yet
                 </h2>
                 <p className="text-xs leading-relaxed text-text-secondary md:text-sm md:leading-5">
-                  Milestones show up here as your squad hits them, like a first hard solve, a 7-day squad streak, or a
-                  finished goal.
+                  Milestones show up here as your squad hits them, like a first solve, a first challenge, 50 squad
+                  solves, or a finished goal.
                 </p>
               </div>
             </div>

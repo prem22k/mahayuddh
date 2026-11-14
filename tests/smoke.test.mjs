@@ -10,7 +10,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseProblemStatusEvent, applyStatusChange } from "../lib/problemStatusEvent.ts";
+import { parseProblemStatusEvent, applyStatusChange, hasLeetcodeSolve } from "../lib/problemStatusEvent.ts";
 import { toStatusMap, countByStatus } from "../lib/statusMap.ts";
 import { safeNext } from "../lib/safeNext.ts";
 import {
@@ -113,6 +113,7 @@ import {
   globalPostBlockedBy,
   FEED_SCOPES,
   SCOPE_PURPOSE,
+  solveEvidence,
 } from "../lib/feedPolicy.ts";
 import {
   rememberSource,
@@ -338,6 +339,19 @@ describe("formatDuration", () => {
     assert.equal(formatDuration(null), null);
     assert.equal(formatDuration(-5), null);
     assert.equal(formatDuration(NaN), null);
+  });
+});
+
+describe("solveEvidence", () => {
+  it("reads every writer's key: dock and sync source, composer evidence, old verified", () => {
+    assert.equal(solveEvidence({ source: "leetcode" }), true);   // dock, verified; sync, verified handle
+    assert.equal(solveEvidence({ source: "self" }), false);      // sync, unverified handle
+    assert.equal(solveEvidence({ source: "none" }), null);       // dock, not verified (yet)
+    assert.equal(solveEvidence({ evidence: "leetcode", source: "composer" }), true);
+    assert.equal(solveEvidence({ evidence: "none", source: "composer" }), null);
+    assert.equal(solveEvidence({ verified: false }), false);
+    assert.equal(solveEvidence({}), null);
+    assert.equal(solveEvidence(null), null);
   });
 });
 
@@ -1246,6 +1260,7 @@ const baseRecap = {
   challenges: [],
   primerTitles: new Map(),
   primerCopies: new Map(),
+  stuckAsks: [],
   now: new Date("2026-10-11T12:00:00Z"),
 };
 
@@ -1257,15 +1272,38 @@ describe("weekOf", () => {
     assert.equal(w.weekEnd, "2026-10-11");
   });
 
-  it("is inclusive at both ends", () => {
-    assert.equal(inWindow("2026-10-05T00:00:00Z", W), true);
-    assert.equal(inWindow("2026-10-11T23:59:59Z", W), true);
-    assert.equal(inWindow("2026-10-04T23:59:59Z", W), false);
-    assert.equal(inWindow("2026-10-12T00:00:00Z", W), false);
+  it("is inclusive at both ends, in IST days", () => {
+    // Monday 00:00 IST is Sunday 18:30 UTC.
+    assert.equal(inWindow("2026-10-04T18:30:00Z", W), true);
+    assert.equal(inWindow("2026-10-11T18:29:59Z", W), true);
+    assert.equal(inWindow("2026-10-04T18:29:59Z", W), false);
+    assert.equal(inWindow("2026-10-11T18:30:00Z", W), false);
+  });
+
+  it("puts a Sunday-night IST solve in Sunday's week", () => {
+    // 2026-10-11 23:30 IST, still Sunday there; Sunday 18:00 UTC.
+    assert.deepEqual(weekOf(new Date("2026-10-11T18:00:00Z")), W);
+    // 2026-10-12 00:30 IST is Monday: the next week.
+    assert.equal(weekOf(new Date("2026-10-11T19:00:00Z")).weekStart, "2026-10-12");
   });
 });
 
 describe("buildRecap", () => {
+  it("counts stuck asks and the ones someone answered", () => {
+    const body = buildRecap({
+      ...baseRecap,
+      stuckAsks: [
+        { user_id: "u1", created_at: "2026-10-06T10:00:00Z", answered: true },
+        { user_id: "u2", created_at: "2026-10-07T10:00:00Z", answered: false },
+        { user_id: "outsider", created_at: "2026-10-07T10:00:00Z", answered: true },
+      ],
+      // A completed challenge is not an answered ask.
+      events: [ev("challenge_completed", "two-sum", "u1", "2026-10-06")],
+    });
+    assert.equal(body.stuckRequests, 2);
+    assert.equal(body.stuckHelped, 1);
+  });
+
   it("calls a quiet week quiet instead of padding it", () => {
     const body = buildRecap(baseRecap);
     assert.equal(body.solves, 0);
@@ -2808,5 +2846,29 @@ describe("problem history reads", () => {
     const fn = src.slice(src.indexOf("export async function getBattleSummaryForSlug"), src.indexOf("export interface SolvedQuestion"));
     assert.match(fn, /count: "exact"/, "attempts must be an exact count");
     assert.match(fn, /order\("duration_sec", \{ ascending: true \}\)/, "best is the fastest solve");
+  });
+});
+
+// ── Problem page: "Verified" needs real evidence ────────────────────────────
+
+describe("hasLeetcodeSolve", () => {
+  it("is false for a hand-marked solve", () => {
+    assert.equal(hasLeetcodeSolve([{ kind: "solved", metadata: { source: "self" } }]), false);
+  });
+  it("is false for an empty history or missing metadata", () => {
+    assert.equal(hasLeetcodeSolve([]), false);
+    assert.equal(hasLeetcodeSolve([{ kind: "solved", metadata: null }]), false);
+  });
+  it("is true for a solve synced from LeetCode", () => {
+    assert.equal(
+      hasLeetcodeSolve([
+        { kind: "attempted", metadata: { source: "self" } },
+        { kind: "solved", metadata: { source: "leetcode" } },
+      ]),
+      true
+    );
+  });
+  it("ignores non-solve events even when sourced from leetcode", () => {
+    assert.equal(hasLeetcodeSolve([{ kind: "revisited", metadata: { source: "leetcode" } }]), false);
   });
 });
