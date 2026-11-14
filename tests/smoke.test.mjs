@@ -11,7 +11,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { parseProblemStatusEvent, applyStatusChange } from "../lib/problemStatusEvent.ts";
-import { toStatusMap, countByStatus } from "../lib/statusMap.ts";
+import { toStatusMap, countByStatus, matchesCategory, categoryProgress } from "../lib/statusMap.ts";
 import { safeNext } from "../lib/safeNext.ts";
 import {
   pickDailyBattle,
@@ -2786,5 +2786,37 @@ describe("getChallengeChain", () => {
     assert.match(schema, /with recursive chain/i);
     assert.match(schema, /c\.depth \+ 1/i);
     assert.match(schema, /where c\.depth < 20/i);
+  });
+});
+
+// ── Sheet page: exact category filter, fractions over the whole category ────
+
+describe("matchesCategory", () => {
+  it("All matches everything", () => {
+    assert.equal(matchesCategory("Graphs", "All"), true);
+  });
+  it("selecting Graphs does not also match Advanced Graphs, in either direction", () => {
+    assert.equal(matchesCategory("Advanced Graphs", "Graphs"), false);
+    assert.equal(matchesCategory("Graphs", "Advanced Graphs"), false);
+    assert.equal(matchesCategory("Graphs", "Graphs"), true);
+  });
+});
+
+describe("categoryProgress", () => {
+  const problems = [
+    { category: "Graphs", title_slug: "a" },
+    { category: "Graphs", title_slug: "b" },
+    { category: "Graphs", title_slug: "c" },
+    { category: "Advanced Graphs", title_slug: "d" },
+  ];
+  const statuses = { a: "solved", b: "attempted", d: "solved" };
+  it("divides by the whole category, so a Solved filter does not read n/n", () => {
+    const p = categoryProgress(problems, statuses, (s) => s === "a");
+    assert.deepEqual(p.get("Graphs"), { total: 3, solved: 1, verified: 1 });
+    assert.deepEqual(p.get("Advanced Graphs"), { total: 1, solved: 1, verified: 0 });
+  });
+  it("only counts a verified solve that is actually solved", () => {
+    const p = categoryProgress(problems, statuses, () => true);
+    assert.equal(p.get("Graphs").verified, 1);
   });
 });
