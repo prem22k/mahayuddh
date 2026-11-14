@@ -86,7 +86,9 @@ export async function POST(request: Request) {
     .eq("user_id", user.id)
     .maybeSingle();
   if (!existing) {
-    const { data: count } = await supabase
+    // A head request has no rows: the total is the top-level `count`, `data`
+    // is always null, which is how this cap never applied.
+    const { count } = await supabase
       .from("squad_members")
       .select("squad_id", { count: "exact", head: true })
       .eq("squad_id", squad.id);
