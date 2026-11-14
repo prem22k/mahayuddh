@@ -10,7 +10,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseProblemStatusEvent, applyStatusChange } from "../lib/problemStatusEvent.ts";
+import { parseProblemStatusEvent, applyStatusChange, hasLeetcodeSolve } from "../lib/problemStatusEvent.ts";
 import { toStatusMap, countByStatus } from "../lib/statusMap.ts";
 import { safeNext } from "../lib/safeNext.ts";
 import {
@@ -2824,5 +2824,29 @@ describe("getChallengeChain", () => {
     assert.match(schema, /with recursive chain/i);
     assert.match(schema, /c\.depth \+ 1/i);
     assert.match(schema, /where c\.depth < 20/i);
+  });
+});
+
+// ── Problem page: "Verified" needs real evidence ────────────────────────────
+
+describe("hasLeetcodeSolve", () => {
+  it("is false for a hand-marked solve", () => {
+    assert.equal(hasLeetcodeSolve([{ kind: "solved", metadata: { source: "self" } }]), false);
+  });
+  it("is false for an empty history or missing metadata", () => {
+    assert.equal(hasLeetcodeSolve([]), false);
+    assert.equal(hasLeetcodeSolve([{ kind: "solved", metadata: null }]), false);
+  });
+  it("is true for a solve synced from LeetCode", () => {
+    assert.equal(
+      hasLeetcodeSolve([
+        { kind: "attempted", metadata: { source: "self" } },
+        { kind: "solved", metadata: { source: "leetcode" } },
+      ]),
+      true
+    );
+  });
+  it("ignores non-solve events even when sourced from leetcode", () => {
+    assert.equal(hasLeetcodeSolve([{ kind: "revisited", metadata: { source: "leetcode" } }]), false);
   });
 });

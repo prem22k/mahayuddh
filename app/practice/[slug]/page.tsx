@@ -43,7 +43,7 @@ import { BattleTimeline } from "@/components/practice/BattleTimeline";
 import { SquadOnProblem } from "@/components/practice/SquadOnProblem";
 import { OpenChallenges, LearnFirst } from "@/components/practice/ProblemRail";
 import { ProblemEvent, Approach, ApproachVisibility, Primer, Battle, Suggestion, TriState } from "@/types/database";
-import { applyStatusChange } from "@/lib/problemStatusEvent";
+import { applyStatusChange, hasLeetcodeSolve } from "@/lib/problemStatusEvent";
 
 function fmtDur(sec: number | null): string {
   return formatDuration(sec) ?? "";
@@ -279,7 +279,9 @@ export default function ProblemPage() {
       ? [...solvedBattles].sort((a, b) => (a.duration_sec as number) - (b.duration_sec as number))[1].duration_sec
       : null;
   const latest = battles[0] ?? null;
-  const verified = latest ? latest.evidence === "leetcode" : status === "solved";
+  // Verified only on real evidence: a LeetCode-matched battle or a synced solve
+  // event. A hand-marked solve with no battles stays self-reported.
+  const verified = latest?.evidence === "leetcode" || hasLeetcodeSolve(timeline);
   const squadApproaches = approaches.filter((a) => a.user_id !== user?.id);
   const revisits = timeline.filter((ev) => ev.kind === "revisited").length;
   // Timeline entries the battles list doesn't already cover (BattleTimeline merges both).
