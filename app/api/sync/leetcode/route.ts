@@ -220,7 +220,7 @@ async function persistStats(
 // problem appears in the user's recent accepted submissions.
 async function verifySuggestions(
   leetcodeUsername: string,
-  recentSubmissions: { titleSlug: string }[]
+  recentSubmissions: { titleSlug: string; timestamp?: string }[]
 ): Promise<number> {
   const supabase = getServiceClient();
   if (!supabase) return 0;
@@ -295,7 +295,7 @@ async function verifySuggestions(
 // a manual "attempted" flag (uses the SECURITY DEFINER RPC).
 async function inferSolvedFromLeetcode(
   leetcodeUsername: string,
-  recentSubmissions: { titleSlug: string }[]
+  recentSubmissions: { titleSlug: string; timestamp?: string }[]
 ): Promise<number> {
   const supabase = getServiceClient();
   if (!supabase || recentSubmissions.length === 0) return 0;
@@ -307,13 +307,25 @@ async function inferSolvedFromLeetcode(
     .maybeSingle();
   if (!profile) return 0;
 
-  const slugs = Array.from(
-    new Set(recentSubmissions.map((s) => s.titleSlug.toLowerCase()))
-  );
+  // Earliest accepted time per slug, so the history and feed say when each
+  // problem was solved rather than when this sync ran.
+  const earliest = new Map<string, number | null>();
+  for (const s of recentSubmissions) {
+    const slug = s.titleSlug.toLowerCase();
+    const ts = Number(s.timestamp);
+    const at = Number.isFinite(ts) && ts > 0 ? ts : null;
+    const prev = earliest.get(slug);
+    if (prev === undefined || (at !== null && (prev === null || at < prev))) earliest.set(slug, at);
+  }
+  const slugs = Array.from(earliest.keys());
 
   const { data, error } = await supabase.rpc("mark_solved_from_leetcode", {
     p_user_id: profile.id,
     p_slugs: slugs,
+    p_solved_at: slugs.map((slug) => {
+      const at = earliest.get(slug);
+      return at == null ? null : new Date(at * 1000).toISOString();
+    }),
   });
 
   if (error) {

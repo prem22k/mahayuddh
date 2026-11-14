@@ -152,26 +152,27 @@ export async function POST(request: Request) {
   }
 
   // 5. Mark OTHER solved questions for caller
-  const otherSlugs = solved
-    .filter((s) => s.slug !== targetSlug)
-    .map((s) => s.slug);
+  const others = solved.filter((s) => s.slug !== targetSlug);
 
-  if (otherSlugs.length > 0) {
+  if (others.length > 0) {
     try {
+      // The accepted times go along so the history and feed say when these
+      // were solved, not when this verify ran.
       const { error: rpcErr } = await supabase.rpc("mark_solved_from_leetcode", {
         p_user_id: user.id,
-        p_slugs: otherSlugs,
+        p_slugs: others.map((s) => s.slug),
+        p_solved_at: others.map((s) => new Date(s.accepted_at * 1000).toISOString()),
       });
       if (rpcErr) {
         console.warn(
           "mark_solved_from_leetcode error:",
-          redactForLog({ error: rpcErr.message, count: otherSlugs.length })
+          redactForLog({ error: rpcErr.message, count: others.length })
         );
       }
     } catch (err) {
       console.warn(
         "mark_solved_from_leetcode exception:",
-        redactForLog({ error: String(err), count: otherSlugs.length })
+        redactForLog({ error: String(err), count: others.length })
       );
     }
   }

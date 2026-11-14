@@ -51,7 +51,12 @@ function describe(e: FeedEvent): React.ReactNode {
   const p = problem ? <Strong>{problem}</Strong> : "a problem";
   switch (e.event_type) {
     case "solve":
-    case "solved":
+    case "solved": {
+      // A LeetCode sync's summary row: older solves, counted rather than listed.
+      const n = e.object_type === "import" ? e.metadata?.count : null;
+      if (typeof n === "number" && n > 0) {
+        return <>synced <Strong>{n} {n === 1 ? "solve" : "solves"}</Strong> from LeetCode</>;
+      }
       return (
         <>
           solved {p}
@@ -63,6 +68,7 @@ function describe(e: FeedEvent): React.ReactNode {
           )}
         </>
       );
+    }
     case "teach":
       return <>explained an approach to {problem ? p : "a problem"}</>;
     case "challenge":
