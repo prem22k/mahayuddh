@@ -237,7 +237,7 @@ async function verifySuggestions(
 
   const { data: pending } = await supabase
     .from("suggestions")
-    .select("id, problem_slug, from_user")
+    .select("id, problem_slug")
     .eq("to_user", profile.id)
     .eq("status", "pending")
     .in("problem_slug", Array.from(recentSlugs));
@@ -286,22 +286,8 @@ async function verifySuggestions(
     );
   }
 
-  // The sender is owed an answer.
-  for (const s of pending) {
-    try {
-      await supabase.from("notifications").insert({
-        user_id: s.from_user,
-        kind: "challenge_completed",
-        title: "Challenge completed",
-        body: `Verified on LeetCode.`,
-        deep_link: `/c/${s.id}`,
-        actor_id: profile.id,
-      });
-    } catch {
-      // Best-effort: never block the verification pass.
-    }
-  }
-
+  // The sender is notified by the notify_challenge_completed trigger on the
+  // status update above, so there is no insert here to duplicate it.
   return pending.length;
 }
 
