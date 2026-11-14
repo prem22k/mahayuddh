@@ -8,6 +8,7 @@
  * What it pins:
  *   - a challenge insert produces exactly one notification (the §37 good case)
  *   - completing a challenge notifies the sender, not the recipient
+ *   - a solved battle completing a challenge notifies the sender exactly once
  *   - the goal nudge cannot stack, which is §37's low-noise default
  *   - contest reminders are idempotent so the cron can re-run them
  *   - leaderboard segments actually segment, and 'rising' is the default for a
@@ -26,10 +27,12 @@ const db = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SECRET_KEY, {
 
 const stamp = Date.now();
 const tag = `note${stamp}`;
-const made = { users: [], squads: [], suggestions: [], goals: [], problems: [], events: [], notifications: [], contests: [], members: [] };
+const made = { users: [], squads: [], suggestions: [], goals: [], problems: [], events: [], notifications: [], contests: [], members: [], battles: [], feed: [] };
 
 async function cleanup() {
   for (const n of made.notifications) await db.from("notifications").delete().eq("id", n);
+  for (const f of made.feed) await db.from("feed_events").delete().eq("object_id", f);
+  for (const b of made.battles) await db.from("battles").delete().eq("id", b);
   for (const s of made.suggestions) await db.from("suggestions").delete().eq("id", s);
   for (const g of made.goals) await db.from("squad_goals").delete().eq("id", g);
   for (const e of made.events) await db.from("problem_events").delete().eq("id", e);
@@ -127,6 +130,38 @@ try {
   // Re-saving the same status must not notify again.
   await db.from("suggestions").update({ status: "completed", note: "again" }).eq("id", sug.id);
   check("re-saving the same status does not re-notify", (await notificationsFor(alice, "challenge_completed")).length, 1);
+
+  // ── A solved battle completes the challenge: one notice, one feed event ────
+  // The trigger is the only writer of the sender's notice. A second insert from
+  // the client or the LeetCode sync used to double it up.
+  await clearNotifications(alice);
+  const { data: sug2, error: sug2Err } = await db.from("suggestions").insert({
+    from_user: alice, to_user: bob, problem_slug: `${tag}-y`,
+    problem_title: "Probe Battle Problem", difficulty: "Medium", sender_time_sec: 600,
+  }).select("id").single();
+  if (sug2Err) throw new Error(`suggestion 2: ${sug2Err.message}`);
+  made.suggestions.push(sug2.id);
+  made.feed.push(sug2.id);
+
+  const { data: battle, error: battleErr } = await db.from("battles")
+    .insert({ user_id: bob, problem_slug: `${tag}-y`, challenge_id: sug2.id })
+    .select("id").single();
+  if (battleErr) throw new Error(`battle: ${battleErr.message}`);
+  made.battles.push(battle.id);
+  const { error: solveErr } = await db.from("battles")
+    .update({ outcome: "solved", ended_at: new Date().toISOString(), duration_sec: 420 })
+    .eq("id", battle.id);
+  if (solveErr) throw new Error(`solve battle: ${solveErr.message}`);
+
+  const { data: sug2Row } = await db.from("suggestions").select("status").eq("id", sug2.id).single();
+  check("a solved battle completes its challenge", sug2Row?.status, "completed");
+  const battleNotes = await notificationsFor(alice, "challenge_completed");
+  check("completing via a battle notifies the sender exactly once", battleNotes.length, 1);
+  ok("the notice names the solver by username", (battleNotes[0]?.body ?? "").includes(`${tag}_2`));
+  for (const n of battleNotes) made.notifications.push(n.id);
+  const { data: completeEvents } = await db.from("feed_events")
+    .select("id").eq("object_id", sug2.id).eq("event_type", "complete");
+  check("completing via a battle logs one 'complete' feed event", (completeEvents ?? []).length, 1);
 
   // ── Goal nudge cannot stack (§37 low-noise default) ────────────────────────
   await clearNotifications(bob);

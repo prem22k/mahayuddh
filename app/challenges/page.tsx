@@ -219,15 +219,19 @@ export default function SuggestionsPage() {
     setCompleteError(null);
     const res = await markSuggestionCompleted(item.id, user.id);
     if (res.ok) {
-      track("challenge_completed", { suggestion_id: item.id });
-      logFeedEvent({
-        eventType: "complete",
-        squadId: profile?.active_squad_id ?? null,
-        problemTitle: item.problem_title,
-        problemSlug: item.problem_slug,
-        difficulty: item.difficulty,
-        objectId: item.id,
-      }).catch(() => {});
+      // Already completed (a solved battle got there first): that path logged
+      // the feed event, so don't log a second one.
+      if (!res.alreadyCompleted) {
+        track("challenge_completed", { suggestion_id: item.id });
+        logFeedEvent({
+          eventType: "complete",
+          squadId: profile?.active_squad_id ?? null,
+          problemTitle: item.problem_title,
+          problemSlug: item.problem_slug,
+          difficulty: item.difficulty,
+          objectId: item.id,
+        }).catch(() => {});
+      }
       await suggestionsQuery.setData((current) =>
         (current ?? []).map((s) =>
           s.id === item.id ? { ...s, status: "completed", completed_at: new Date().toISOString() } : s

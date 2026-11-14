@@ -310,18 +310,20 @@ export async function remindSuggestion(
 export async function markSuggestionCompleted(
   suggestionId: string,
   callerUserId: string
-): Promise<{ ok: boolean; reason?: "not_assignee" | "not_solved" }> {
+): Promise<{ ok: boolean; alreadyCompleted?: boolean; reason?: "not_assignee" | "not_solved" }> {
   const supabase = createClient();
   const { data: suggestion } = await supabase
     .from("suggestions")
-    .select("id, from_user, to_user, problem_slug, problem_title, status")
+    .select("id, from_user, to_user, problem_slug, status")
     .eq("id", suggestionId)
     .maybeSingle();
 
   if (!suggestion || suggestion.to_user !== callerUserId) {
     return { ok: false, reason: "not_assignee" };
   }
-  if (suggestion.status === "completed") return { ok: true };
+  // Already completed (a solved battle does this): a no-op, so the caller logs
+  // no second feed event for the same challenge.
+  if (suggestion.status === "completed") return { ok: true, alreadyCompleted: true };
 
   const { data: solved } = await supabase
     .from("user_problem_status")
@@ -352,26 +354,15 @@ export async function markSuggestionCompleted(
       .select("status")
       .eq("id", suggestionId)
       .maybeSingle();
-    if ((reread as { status?: string } | null)?.status === "completed") return { ok: true };
+    if ((reread as { status?: string } | null)?.status === "completed") {
+      return { ok: true, alreadyCompleted: true };
+    }
     return { ok: false, reason: "not_assignee" };
   }
   const { logProblemEvent } = await import("@/lib/data/problemEvents");
   await logProblemEvent({ problemSlug: suggestion.problem_slug, kind: "challenge_completed" }).catch(() => {});
 
-  // The sender is owed an answer: this is the return reason for the ritual (§10).
-  try {
-    const { notify } = await import("@/lib/data/notifications");
-    await notify({
-      userId: suggestion.from_user,
-      kind: "challenge_completed",
-      title: "Challenge completed",
-      body: `@${callerUserId.slice(0, 8)} solved ${suggestion.problem_title}.`,
-      deepLink: `/c/${suggestionId}`,
-      actorId: callerUserId,
-    });
-  } catch {
-    // Best-effort: never block the completion itself.
-  }
-
+  // The sender is notified by the notify_challenge_completed trigger on the
+  // status change above; a second insert here would duplicate it.
   return { ok: true };
 }
