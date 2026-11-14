@@ -258,7 +258,14 @@ export default function PrimerPage() {
     "inline-flex h-9 min-h-[44px] items-center gap-1.5 rounded-md border border-hairline bg-surface px-3 text-sm font-medium leading-5 text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary md:min-h-0";
 
   return (
-    <div className="mx-auto max-w-[960px] lg:grid lg:grid-cols-[minmax(0,680px)_224px] lg:justify-center lg:gap-12">
+    // Signed out there's no app shell, so no gutter: frame the page the way
+    // the other public pages (/c/[id]) do, or text runs to the phone's edge.
+    <div
+      className={cn(
+        "mx-auto max-w-[960px] lg:grid lg:grid-cols-[minmax(0,680px)_224px] lg:justify-center lg:gap-12",
+        !user && "px-4 pb-12 pt-6 md:px-6 md:pt-10"
+      )}
+    >
       <article className="flex max-w-reading flex-col gap-8 md:gap-10">
         <Suspense fallback={null}>
           <TrackVisit artifact={`primer:${primer.slug}`} />
