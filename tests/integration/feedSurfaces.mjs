@@ -143,13 +143,39 @@ try {
   const aliceEv = await makeEvent(alice.id, squad);
   const bobEv = await makeEvent(bob.id, squad);
 
+  // ── Privacy: another squad's private rows stay in that squad ──────────────
+  // Carol is in no squad with Alice. Alice's stuck ask is squad-only; her
+  // solve is meant for everyone.
+  const carol = await makeUser(4);
+  const aliceStuck = await makeEvent(alice.id, squad, { event_type: "stuck" });
+  await as(carol.email, async (c) => {
+    const { data: sq } = await c.rpc("get_ranked_feed", {
+      p_scope: "squad", p_squad_id: squad, p_viewer: alice.id, p_limit: 100,
+    });
+    check("squad scope returns nothing to a non-member, whatever p_viewer says", (sq ?? []).length, 0);
+
+    const { data: gl } = await c.rpc("get_ranked_feed", {
+      p_scope: "global", p_squad_id: null, p_viewer: null, p_limit: 100,
+    });
+    const glIds = (gl ?? []).map((r) => r.id);
+    ok("global shows another squad's solve", glIds.includes(aliceEv.id));
+    ok("global hides another squad's stuck ask", !glIds.includes(aliceStuck.id));
+
+    const { data: raw } = await c.from("feed_events").select("id").eq("id", aliceStuck.id);
+    check("a non-member cannot read a squad's stuck ask from the table", (raw ?? []).length, 0);
+  });
+  await as(bob.email, async (c) => {
+    const { data: raw } = await c.from("feed_events").select("id").eq("id", aliceStuck.id);
+    check("a squad member can read the squad's stuck ask", (raw ?? []).length, 1);
+  });
+
   // ── Ranking (§20) ─────────────────────────────────────────────────────────
   await as(alice.email, async (c) => {
     const { data, error } = await c.rpc("get_ranked_feed", {
       p_scope: "squad", p_squad_id: squad, p_viewer: alice.id, p_limit: 30,
     });
     if (error) throw new Error(`get_ranked_feed: ${error.message}`);
-    ok("ranking returns both squad events", data.length === 2);
+    ok("ranking returns all three squad events", data.length === 3);
     ok("every row carries a numeric usefulness score", data.every((r) => typeof r.usefulness === "number"));
     ok("every row carries a recency-weighted score", data.every((r) => typeof r.score === "number"));
 
