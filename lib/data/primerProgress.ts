@@ -8,19 +8,25 @@ export interface PrimerProgress {
   mastered_at: string | null;
 }
 
-/** Your read and mastered state for every primer you've touched. */
-export async function getMyPrimerProgress(): Promise<Map<string, PrimerProgress>> {
+/**
+ * Your read and mastered state for every primer you've touched, by slug.
+ *
+ * A plain object, not a Map: the query cache compares results by hashing
+ * them, every Map hashes alike, and a refetch after "Mark as read" was
+ * treated as unchanged, so the page never re-rendered.
+ */
+export async function getMyPrimerProgress(): Promise<Record<string, PrimerProgress>> {
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return new Map();
+  if (!user) return {};
   const { data, error } = await supabase
     .from("primer_progress")
     .select("primer_slug,read_at,mastered_at")
     .eq("user_id", user.id);
   if (error) throw new DataError("primers", "Couldn't load your primer progress. Retry.", { cause: error });
-  return new Map(((data ?? []) as PrimerProgress[]).map((p) => [p.primer_slug, p]));
+  return Object.fromEntries(((data ?? []) as PrimerProgress[]).map((p) => [p.primer_slug, p]));
 }
 
 async function stamp(slug: string, column: "read_at" | "mastered_at"): Promise<boolean> {

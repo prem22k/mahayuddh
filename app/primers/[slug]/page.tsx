@@ -135,7 +135,7 @@ export default function PrimerPage() {
   // Read state: set when the closing card has been on screen for a moment (you
   // got to the end), or from the button. Opening the page isn't reading it.
   const progressQ = useCachedQuery(userId ? ["primer-progress"] : null, () => getMyPrimerProgress());
-  const isRead = !!progressQ.data?.get(slug)?.read_at;
+  const isRead = !!progressQ.data?.[slug]?.read_at;
   const endRef = useRef<HTMLElement | null>(null);
   const markRead = React.useCallback(async () => {
     if (!userId) return;

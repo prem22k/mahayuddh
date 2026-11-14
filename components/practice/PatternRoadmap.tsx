@@ -74,7 +74,7 @@ function Row({ entry: e }: { entry: RoadmapEntry }) {
   const sub = !e.written
     ? "Primer coming"
     : e.progress
-      ? `${e.progress.solved} of ${e.progress.total} solved${e.read ? "" : " · not read yet"}`
+      ? `${e.progress.solved} of ${e.progress.total} solved${e.read || e.mastered ? "" : " · not read yet"}`
       : e.read
         ? "Read"
         : e.blurb;

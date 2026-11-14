@@ -68,18 +68,18 @@ try {
 
   await as(a, async () => {
     check("first read is stored", await markPrimerRead("sliding-window"), true);
-    const first = (await getMyPrimerProgress()).get("sliding-window")?.read_at;
+    const first = (await getMyPrimerProgress())["sliding-window"]?.read_at;
     await new Promise((r) => setTimeout(r, 1100));
     check("reading again doesn't count as a new read", await markPrimerRead("sliding-window"), false);
-    const again = (await getMyPrimerProgress()).get("sliding-window")?.read_at;
+    const again = (await getMyPrimerProgress())["sliding-window"]?.read_at;
     check("read_at keeps the first time", again, first);
     check("mastery is stored once", [await markPrimerMastered("sliding-window"), await markPrimerMastered("sliding-window")], [true, false]);
     const mine = await getMyPrimerProgress();
-    check("your progress lists what you touched", [...mine.keys()], ["sliding-window"]);
+    check("your progress lists what you touched", Object.keys(mine), ["sliding-window"]);
   });
 
   await as(b, async (c) => {
-    check("someone else sees none of your progress", (await getMyPrimerProgress()).size, 0);
+    check("someone else sees none of your progress", Object.keys(await getMyPrimerProgress()).length, 0);
     const { data } = await c.from("primer_progress").select("user_id").eq("user_id", a.id);
     check("RLS hides another user's rows", (data ?? []).length, 0);
     await c.from("primer_progress").update({ read_at: null }).eq("user_id", a.id);

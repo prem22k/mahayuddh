@@ -229,7 +229,7 @@ export function PracticeHub() {
       const primer = bySlug.get(r.slug);
       const ladder = primer?.content?.ladder ?? null;
       const mastery = ladder ? masteryOf(ladder, statuses, events) : null;
-      const stored = progress?.get(r.slug);
+      const stored = progress?.[r.slug];
       const mastered = !!stored?.mastered_at || !!mastery?.mastered;
       return {
         slug: r.slug,
