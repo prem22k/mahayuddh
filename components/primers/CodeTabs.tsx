@@ -69,7 +69,7 @@ export function CodeTabs({ code, label }: { code: PrimerCode; label?: string }) 
           </button>
         ))}
       </div>
-      <CodeBlock code={code[lang]} label={label} lineNumbers={false} />
+      <CodeBlock code={code[lang]} label={label} lineNumbers={false} language={lang} />
     </div>
   );
 }
