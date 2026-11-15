@@ -42,6 +42,14 @@
   --color-error: #f26d78;
   --color-error-tint: #2a1e22;
 
+  /* Syntax colours. Soft pastels kept clear of gold (action), emerald (proof)
+     and indigo (knowledge), so code never borrows those meanings. */
+  --color-code-keyword: #c4a7e7;
+  --color-code-string: #9ccfd8;
+  --color-code-number: #ebbcba;
+  --color-code-type: #a4b9ef;
+  --color-code-comment: #84868f;
+
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
@@ -771,3 +779,23 @@
     }
   }
 }
+
+/* Highlighted code (components/approach/CodeBlock.tsx, highlight.js classes). */
+.code-hl .hljs-keyword,
+.code-hl .hljs-meta .hljs-keyword,
+.code-hl .hljs-literal { color: var(--color-code-keyword); }
+.code-hl .hljs-string,
+.code-hl .hljs-char,
+.code-hl .hljs-regexp { color: var(--color-code-string); }
+.code-hl .hljs-number { color: var(--color-code-number); }
+.code-hl .hljs-type,
+.code-hl .hljs-built_in,
+.code-hl .hljs-title.class_ { color: var(--color-code-type); }
+.code-hl .hljs-title.function_,
+.code-hl .hljs-function > .hljs-title { color: var(--color-text-primary); font-weight: 600; }
+.code-hl .hljs-comment { color: var(--color-code-comment); font-style: italic; }
+.code-hl .hljs-meta,
+.code-hl .hljs-meta .hljs-string { color: var(--color-code-comment); }
+.code-hl .hljs-params,
+.code-hl .hljs-variable,
+.code-hl .hljs-attr { color: var(--color-text-secondary); }
