@@ -434,7 +434,7 @@ export default function PrimerPage() {
               >
                 {prettify(content.walkthrough.problemSlug)}
               </Link>{" "}
-              on <span className="whitespace-nowrap font-mono text-sm text-text-primary">{content.walkthrough.input}</span>,{" "}
+              on <span className="font-mono text-sm text-text-primary [overflow-wrap:anywhere]">{content.walkthrough.input}</span>,{" "}
               {content.walkthrough.intro ?? "one step per character."}
             </p>
             <div className="overflow-x-auto rounded-lg border border-hairline">
@@ -449,7 +449,7 @@ export default function PrimerPage() {
                 <tbody>
                   {content.walkthrough.steps.map((step, i) => (
                     <tr key={i} className="border-t border-hairline">
-                      <td className="whitespace-nowrap px-3 py-2 font-mono text-text-primary">{step.window}</td>
+                      <td className="px-3 py-2 font-mono text-text-primary [overflow-wrap:anywhere]">{step.window}</td>
                       <td className="px-3 py-2 text-text-secondary">{step.action}</td>
                       <td className="px-3 py-2 text-right font-mono text-text-primary tnum">{step.best}</td>
                     </tr>
