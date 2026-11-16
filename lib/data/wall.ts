@@ -11,7 +11,7 @@ import type { SquadMilestone } from "@/types/database";
 export async function getWall(
   squadId: string,
   limit = 50
-): Promise<{ milestones: SquadMilestone[]; name: string }> {
+): Promise<{ milestones: SquadMilestone[]; name: string; hidden: boolean }> {
   const supabase = createClient();
 
   const [milestonesRes, squadRes] = await Promise.all([
@@ -31,8 +31,11 @@ export async function getWall(
     throw new DataError("wall", "Couldn't load this squad. Retry.", { cause: squadRes.error });
   }
 
+  // No row back means the squad is private and the viewer is not in it (or it
+  // is gone): say so, rather than drawing an empty wall.
   return {
     milestones: (milestonesRes.data ?? []) as SquadMilestone[],
     name: (squadRes.data as { name: string } | null)?.name ?? "Squad",
+    hidden: !squadRes.data,
   };
 }

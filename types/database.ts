@@ -175,6 +175,8 @@ export interface Problem {
   updated_at: string;
 }
 
+export type SquadVisibility = "private" | "public";
+
 export interface Squad {
   id: string;
   name: string;
@@ -183,6 +185,8 @@ export interface Squad {
   created_by: string | null;
   /** Members only: null when the viewer is not in the squad. */
   invite_code: string | null;
+  /** Private: outsiders see the name and leaderboard rank only. */
+  visibility: SquadVisibility;
   created_at: string;
   member_count?: number;
 }

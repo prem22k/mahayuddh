@@ -1,4 +1,5 @@
 import { getServiceClient } from "@/lib/supabase/service";
+import { viewerCanSeeSquad } from "@/lib/data/squadAccess";
 import { formatDuration } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -64,6 +65,8 @@ export async function getSeasonResult(
 ): Promise<SeasonResult | null> {
   const supabase = getServiceClient();
   if (!supabase) return null;
+  // Service role skips policies: a private squad's season is for its members.
+  if (!(await viewerCanSeeSquad(squadId))) return null;
 
   const { data: season } = await supabase
     .from("squad_seasons")

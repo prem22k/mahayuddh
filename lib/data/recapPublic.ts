@@ -1,4 +1,5 @@
 import { getServiceClient } from "@/lib/supabase/service";
+import { viewerCanSeeSquad } from "@/lib/data/squadAccess";
 import type { SquadRecap } from "@/types/database";
 
 /**
@@ -17,6 +18,8 @@ export async function getPublicRecap(
 ): Promise<{ recap: SquadRecap; squadName: string } | null> {
   const supabase = getServiceClient();
   if (!supabase) return null;
+  // Service role skips policies: a private squad's recap is for its members.
+  if (!(await viewerCanSeeSquad(squadId))) return null;
 
   const { data, error } = await supabase
     .from("squad_recaps")

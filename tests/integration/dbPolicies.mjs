@@ -123,8 +123,9 @@ try {
   // ── 3. Invite codes are for members only ──────────────────────────────────
   const { error: anonCode } = await anon.from("squads").select("id, invite_code").eq("id", s1.id);
   ok("a signed-out visitor cannot read invite codes", !!anonCode);
-  const { data: anonName, error: anonNameErr } = await anon.from("squads").select("id, name").eq("id", s1.id);
-  ok("but can still read a squad's name", !anonNameErr && anonName?.length === 1, anonNameErr?.message);
+  await db.from("squads").update({ visibility: "public" }).eq("id", s2.id);
+  const { data: anonName, error: anonNameErr } = await anon.from("squads").select("id, name").eq("id", s2.id);
+  ok("but can still read a public squad's name", !anonNameErr && anonName?.length === 1, anonNameErr?.message);
   const { error: aCode } = await a.cli.from("squads").select("invite_code").eq("id", s2.id);
   ok("a signed-in non-member cannot read a squad's code", !!aCode);
   const { data: myCodes, error: myCodesErr } = await a.cli.rpc("my_squad_invite_codes");
@@ -187,6 +188,54 @@ try {
   ok("a cannot start a discussion inside another squad", !!d2);
   const { error: d1 } = await a.cli.from("discussions").insert({ ...post, squad_id: s1.id });
   ok("a can still start one in their own squad", !d1, d1?.message);
+
+  // ── 7. Private squads show outsiders their name and rank, nothing else ────
+  // s1 (a's) is private by default; s2 (b's) was made public above.
+  const priv = s1.id, pub = s2.id;
+  const outsider = b; // a member of s2 only
+  for (const [table, col] of [["squads", "id"], ["squad_members", "squad_id"], ["squad_goals", "squad_id"], ["squad_seasons", "squad_id"], ["squad_recaps", "squad_id"]]) {
+    const { data: asAnon } = await anon.from(table).select(col).eq(col, priv);
+    const { data: asOutsider } = await outsider.cli.from(table).select(col).eq(col, priv);
+    const { data: asMember } = await a.cli.from(table).select(col).eq(col, priv);
+    ok(`private squad: ${table} hidden from signed-out visitors and outsiders, shown to members`,
+      (asAnon ?? []).length === 0 && (asOutsider ?? []).length === 0 && (asMember ?? []).length > 0,
+      `anon ${(asAnon ?? []).length}, outsider ${(asOutsider ?? []).length}, member ${(asMember ?? []).length}`);
+  }
+  const { data: pubMembers } = await anon.from("squad_members").select("user_id").eq("squad_id", pub);
+  ok("public squad: anyone can see who is in it", (pubMembers ?? []).length === 1);
+
+  // Squad leaderboard: verified solves per member. s1: a + c, 3 verified solves -> 1.5.
+  const c = await withProfile("c");
+  await db.from("squad_members").insert({ squad_id: priv, user_id: c.id, role: "member" });
+  const verified = (uid, slug) => ({ user_id: uid, problem_slug: slug, kind: "solved", metadata: { source: "leetcode" } });
+  await db.from("problem_events").insert([verified(a.id, "two-sum"), verified(a.id, "valid-anagram"), verified(c.id, "two-sum"), verified(b.id, "two-sum")]);
+  const { data: boardAnon } = await anon.rpc("squad_leaderboard", { p_window: "week", p_limit: 100, p_offset: 0 });
+  const privRow = (boardAnon ?? []).find((r) => r.squad_id === priv);
+  const pubRow = (boardAnon ?? []).find((r) => r.squad_id === pub);
+  ok("a private squad still appears on the squad board by name", privRow?.name === `${tag} squad 1`);
+  ok("ranked by verified solves per member (3 solves / 2 members = 1.5)", Number(privRow?.value) === 1.5, String(privRow?.value));
+  ok("but outsiders do not learn its size", privRow?.member_count === null && privRow?.is_public === false);
+  ok("a public squad shows its size", pubRow?.member_count === 1 && Number(pubRow?.value) === 1);
+  ok("ranked higher average first", privRow && pubRow && privRow.rank < pubRow.rank);
+  const { data: boardMember } = await a.cli.rpc("squad_leaderboard", { p_window: "week", p_limit: 100, p_offset: 0 });
+  const mine = (boardMember ?? []).find((r) => r.squad_id === priv);
+  ok("members see their own private squad's size and that it is theirs", mine?.is_mine === true && mine?.member_count === 2);
+
+  // Only an admin changes who can see the squad.
+  const { error: memberFlip } = await c.cli.rpc("set_squad_visibility", { p_squad: priv, p_visibility: "public" });
+  ok("a squad member who is not an admin cannot make it public", !!memberFlip);
+  const { error: outsiderFlip } = await outsider.cli.rpc("set_squad_visibility", { p_squad: priv, p_visibility: "public" });
+  ok("an outsider cannot make it public", !!outsiderFlip);
+  const { error: anonFlip } = await anon.rpc("set_squad_visibility", { p_squad: priv, p_visibility: "public" });
+  ok("a signed-out visitor cannot make it public", !!anonFlip);
+  const { error: directFlip } = await c.cli.from("squads").update({ visibility: "public" }).eq("id", priv);
+  const { data: stillPrivate } = await db.from("squads").select("visibility").eq("id", priv).single();
+  ok("nor by writing the column directly", stillPrivate?.visibility === "private", directFlip?.message);
+  const { error: adminFlip } = await a.cli.rpc("set_squad_visibility", { p_squad: priv, p_visibility: "public" });
+  const { data: nowPublic } = await anon.from("squad_members").select("user_id").eq("squad_id", priv);
+  ok("the admin can make it public, and then anyone sees its members", !adminFlip && (nowPublic ?? []).length === 2, adminFlip?.message);
+  await a.cli.rpc("set_squad_visibility", { p_squad: priv, p_visibility: "private" });
+  await db.from("problem_events").delete().in("user_id", [a.id, b.id, c.id]);
 
   // ── 6. content_impact no longer lists forks inside private notes ──────────
   const { data: appr } = await db.from("approaches")

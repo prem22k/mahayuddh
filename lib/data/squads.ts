@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import { Squad, SquadMember, SquadGoal } from "@/types/database";
+import { Squad, SquadMember, SquadGoal, SquadVisibility } from "@/types/database";
 import { DataError } from "@/lib/data/errors";
 
 function authedHeaders(token?: string | null): Record<string, string> {
@@ -25,7 +25,7 @@ export interface MySquads {
  * invite_code is not readable from the browser; members get it from
  * my_squad_invite_codes() (see withInviteCodes).
  */
-const SQUAD_COLUMNS = "id,name,avatar_url,description,created_by,created_at";
+const SQUAD_COLUMNS = "id,name,avatar_url,description,created_by,visibility,created_at";
 const SQUAD_MEMBER_COLUMNS =
   "squad_id,user_id,role,joined_at,last_active_at,profile:user_id (id, username, leetcode_username, leetcode_verified_at, avatar_url, streak, total_easy, total_medium, total_hard, contest_rating)";
 const SQUAD_GOAL_COLUMNS =
@@ -170,6 +170,16 @@ export async function leaveSquad(squadId: string, userId: string): Promise<void>
     .eq("squad_id", squadId)
     .eq("user_id", userId);
   if (error) throw new DataError("squads", "Couldn't leave squad. Try again.", { cause: error });
+}
+
+/**
+ * Make a squad public or private. Admins only: the database refuses anyone
+ * else (set_squad_visibility), so a non-admin gets the error message back.
+ */
+export async function setSquadVisibility(squadId: string, visibility: SquadVisibility): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("set_squad_visibility", { p_squad: squadId, p_visibility: visibility });
+  if (error) throw new DataError("squads", error.message || "Couldn't change who sees the squad. Try again.", { cause: error });
 }
 
 export async function createSquadGoal(params: {

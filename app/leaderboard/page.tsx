@@ -9,6 +9,7 @@ import {
   ExternalLink,
   Flame,
   Gauge,
+  Lock,
   RefreshCw,
   Shapes,
   ShieldCheck,
@@ -20,10 +21,12 @@ import { syncErrorMessage } from "@/lib/syncError";
 import { getPublicProfile, syncUserProfileStats } from "@/lib/data/profiles";
 import {
   getLeaderboard,
+  getSquadLeaderboard,
   getPreviousSnapshotRanks,
   rankChangeLabel,
   snapshotRanks,
   type BoardRow,
+  type SquadBoardRow,
 } from "@/lib/data/leaderboard";
 import {
   isWindowed,
@@ -94,11 +97,14 @@ function deltaTone(label: string): string {
   return "text-text-disabled md:text-text-tertiary";
 }
 
-const parseTab = oneOf(["squad", "global"] as const);
+export type LeaderboardTab = "squad" | "global" | "squads";
+
+const parseTab = oneOf<LeaderboardTab>(["squad", "global", "squads"]);
 const parseMetric = oneOf(METRIC_IDS);
 const parseWindow = oneOf<LeaderboardWindow>(["week", "month", "all"]);
 
 const NO_ROWS: BoardRow[] = [];
+const NO_SQUAD_ROWS: SquadBoardRow[] = [];
 const NO_COUNTS = new Map<string, number>();
 
 export default function LeaderboardPage() {
@@ -107,7 +113,7 @@ export default function LeaderboardPage() {
 
   // The board opens the way it was left: tab, metric, window and filters are
   // remembered in this browser.
-  const [chosenTab, storeTab] = useStoredState<"squad" | "global">("mahayuddh_lb_tab", "squad", parseTab);
+  const [chosenTab, storeTab] = useStoredState<LeaderboardTab>("mahayuddh_lb_tab", "squad", parseTab);
   const [pickedTab, setPickedTab] = useState(false);
   const [metric, storeMetric] = useStoredState<LeaderboardMetric>("mahayuddh_lb_metric", "verified", parseMetric);
   const [timeWindow, storeWindow] = useStoredState<LeaderboardWindow>("mahayuddh_lb_window", "week", parseWindow);
@@ -130,24 +136,25 @@ export default function LeaderboardPage() {
   // A squadless visitor gets Global as soon as the profile is known, not after
   // the board loads, so the Squad tab never flips under a loaded board. Their
   // saved choice is kept for when they join one, and tapping Squad still shows
-  // the "join a squad" prompt.
-  const tab = !authLoading && !squadId && !pickedTab ? "global" : chosenTab;
+  // the "join a squad" prompt. A visitor who chose Squads stays on Squads.
+  const tab = !authLoading && !squadId && !pickedTab && chosenTab === "squad" ? "global" : chosenTab;
   // The page is kept for this browser tab only: back from a profile lands on
   // the same page, a new visit starts at the top. Any change of board (tab or
   // filter) starts at the top too.
   const [page, setPage] = useStoredState("mahayuddh_lb_page", 0, parseNonNegativeInt, "session");
-  const setTab = (next: "squad" | "global") => {
+  const setTab = (next: LeaderboardTab) => {
     setPickedTab(true);
     if (next !== tab) setPage(0);
     storeTab(next);
   };
 
+  const isSquadsTab = tab === "squads";
   const patternInput = patternDraft ?? appliedPattern;
   const pattern = metric === "pattern" && appliedPattern.trim() ? appliedPattern.trim() : null;
   // "By pattern" with nothing entered yet asks for a pattern rather than
   // reporting that nobody has solved one.
   const awaitingPattern = metric === "pattern" && !appliedPattern.trim();
-  const boardReady = !awaitingPattern && (tab !== "squad" || !!squadId);
+  const boardReady = !isSquadsTab && !awaitingPattern && (tab !== "squad" || !!squadId);
 
   // Both tabs read the same SQL board, so every visible filter actually ranks.
   const boardQuery = useCachedQuery(
@@ -156,7 +163,7 @@ export default function LeaderboardPage() {
       : null,
     () =>
       getLeaderboard({
-        scope: tab,
+        scope: tab as "squad" | "global",
         metric,
         window: timeWindow,
         pattern,
@@ -166,25 +173,41 @@ export default function LeaderboardPage() {
       })
   );
 
+  // Squads ranked against each other by LeetCode-verified solves per member.
+  const squadBoardQuery = useCachedQuery(
+    isSquadsTab ? ["squad-leaderboard", timeWindow, page] : null,
+    () =>
+      getSquadLeaderboard({
+        window: timeWindow,
+        limit: PAGE,
+        offset: page * PAGE,
+      })
+  );
+
   const rows = boardQuery.data?.rows ?? NO_ROWS;
-  const total = boardQuery.data?.total ?? 0;
+  const squadRows = squadBoardQuery.data?.rows ?? NO_SQUAD_ROWS;
+  const total = (isSquadsTab ? squadBoardQuery.data?.total : boardQuery.data?.total) ?? 0;
   const hasNext = (page + 1) * PAGE < total;
-  const loading = boardQuery.isLoading;
+  const loading = isSquadsTab ? squadBoardQuery.isLoading : boardQuery.isLoading;
+  const activeQuery = isSquadsTab ? squadBoardQuery : boardQuery;
   const error =
-    boardQuery.error && boardQuery.data === undefined
-      ? dataErrorMessage(boardQuery.error, "Couldn't load the leaderboard.")
+    activeQuery.error && activeQuery.data === undefined
+      ? dataErrorMessage(
+          activeQuery.error,
+          isSquadsTab ? "Couldn't load the squad board." : "Couldn't load the leaderboard."
+        )
       : null;
 
   // The viewer's own row comes from the same board, so the sticky bar can say
   // their rank even when they are pages away from it.
-  const selfReady = !!user && !awaitingPattern && (tab !== "squad" || !!squadId);
+  const selfReady = !isSquadsTab && !!user && !awaitingPattern && (tab !== "squad" || !!squadId);
   const selfQuery = useCachedQuery(
     selfReady
       ? ["leaderboard-self", tab, tab === "squad" ? squadId : null, metric, timeWindow, pattern, hideUnconnected]
       : null,
     () =>
       getLeaderboard({
-        scope: tab,
+        scope: tab as "squad" | "global",
         metric,
         window: timeWindow,
         pattern,
@@ -197,9 +220,10 @@ export default function LeaderboardPage() {
 
   // A remembered page past the end (people left the board since) steps back to
   // the first page instead of showing an empty board with no way out.
+  const currentCount = isSquadsTab ? squadRows.length : rows.length;
   useEffect(() => {
-    if (page > 0 && boardQuery.data && rows.length === 0) setPage(0);
-  }, [page, boardQuery.data, rows.length, setPage]);
+    if (page > 0 && activeQuery.data && currentCount === 0) setPage(0);
+  }, [page, activeQuery.data, currentCount, setPage]);
 
   const squadNameQuery = useCachedQuery(
     squadId ? ["squad-name", squadId] : null,
@@ -227,7 +251,7 @@ export default function LeaderboardPage() {
       }
       await refreshProfile();
       // Either tab, plus the viewer's own row, can move after a sync.
-      await invalidate("leaderboard", "leaderboard-self", "my-statuses");
+      await invalidate("leaderboard", "leaderboard-self", "my-statuses", "squad-leaderboard");
       setSyncSuccess(true);
       setTimeout(() => setSyncSuccess(false), 3000);
     } catch (e) {
@@ -252,7 +276,7 @@ export default function LeaderboardPage() {
       const updated = await syncUserProfileStats(user.id, inputHandle.trim());
       if (updated) {
         await refreshProfile();
-        await invalidate("leaderboard", "leaderboard-self", "my-statuses");
+        await invalidate("leaderboard", "leaderboard-self", "my-statuses", "squad-leaderboard");
         setInputHandle("");
       } else {
         setConnectError("Could not find LeetCode account. Check username spelling.");
@@ -357,77 +381,104 @@ export default function LeaderboardPage() {
           options={[
             { value: "squad", label: "Squad", title: "Your active squad" },
             { value: "global", label: "Global", title: "Everyone" },
+            { value: "squads", label: "Squads", title: "Squads ranked against each other" },
           ]}
         />
       </div>
 
       {/* The same controls rank both boards now: the server applies them all. */}
       <div className="flex flex-col gap-3 border-b border-hairline pb-4 md:pb-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <FilterChips
-            options={METRIC_OPTIONS}
-            value={METRIC_LABELS[metric]}
-            onChange={(label) => {
-              const next = METRIC_BY_LABEL[label];
-              if (next) changeMetric(next);
-            }}
-            leading={leading}
-            scroll
-            label="Rank by"
-          />
-          {isWindowed(metric) && (
-            <div className="flex items-center justify-between gap-3 md:shrink-0">
-              <span className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary md:hidden">
-                <Clock className="h-4 w-4" strokeWidth={1.5} aria-hidden />
-                Time window
-              </span>
-              <SegmentedControl
-                label="Time window"
-                value={timeWindow}
-                onChange={changeWindow}
-                className="max-md:h-auto [&>button]:whitespace-nowrap"
-                options={[
-                  { value: "week", label: "Last 7 days" },
-                  { value: "month", label: "Last 30 days" },
-                  { value: "all", label: "All time" },
-                ]}
-              />
-            </div>
-          )}
-        </div>
-
-        {metric === "pattern" && (
-          <div className="flex items-center gap-2">
-            <input
-              value={patternInput}
-              onChange={(e) => {
-                setPatternDraft(e.target.value);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") applyPattern();
-              }}
-              aria-label="Pattern to rank by, for example Graphs"
-              placeholder="Pattern, e.g. Graphs"
-              className="h-10 min-h-[44px] min-w-0 flex-1 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-hidden md:min-h-0 md:max-w-xs"
+        {isSquadsTab ? (
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary">
+              <Clock className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+              Time window
+            </span>
+            <SegmentedControl
+              label="Time window"
+              value={timeWindow}
+              onChange={changeWindow}
+              className="max-md:h-auto [&>button]:whitespace-nowrap"
+              options={[
+                { value: "week", label: "Last 7 days" },
+                { value: "month", label: "Last 30 days" },
+                { value: "all", label: "All time" },
+              ]}
             />
-            <Button
-              variant="secondary"
-              onClick={applyPattern}
-              className="min-h-[44px] md:min-h-0"
-            >
-              Apply
-            </Button>
           </div>
+        ) : (
+          <>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <FilterChips
+                options={METRIC_OPTIONS}
+                value={METRIC_LABELS[metric]}
+                onChange={(label) => {
+                  const next = METRIC_BY_LABEL[label];
+                  if (next) changeMetric(next);
+                }}
+                leading={leading}
+                scroll
+                label="Rank by"
+              />
+              {isWindowed(metric) && (
+                <div className="flex items-center justify-between gap-3 md:shrink-0">
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary md:hidden">
+                    <Clock className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+                    Time window
+                  </span>
+                  <SegmentedControl
+                    label="Time window"
+                    value={timeWindow}
+                    onChange={changeWindow}
+                    className="max-md:h-auto [&>button]:whitespace-nowrap"
+                    options={[
+                      { value: "week", label: "Last 7 days" },
+                      { value: "month", label: "Last 30 days" },
+                      { value: "all", label: "All time" },
+                    ]}
+                  />
+                </div>
+              )}
+            </div>
+
+            {metric === "pattern" && (
+              <div className="flex items-center gap-2">
+                <input
+                  value={patternInput}
+                  onChange={(e) => {
+                    setPatternDraft(e.target.value);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") applyPattern();
+                  }}
+                  aria-label="Pattern to rank by, for example Graphs"
+                  placeholder="Pattern, e.g. Graphs"
+                  className="h-10 min-h-[44px] min-w-0 flex-1 rounded-md border border-hairline bg-well px-3 text-sm text-text-primary placeholder:text-text-disabled focus:border-hairline-strong focus:outline-hidden md:min-h-0 md:max-w-xs"
+                />
+                <Button
+                  variant="secondary"
+                  onClick={applyPattern}
+                  className="min-h-[44px] md:min-h-0"
+                >
+                  Apply
+                </Button>
+              </div>
+            )}
+          </>
         )}
 
         {/* The ranking basis is stated, always. */}
         <p className="text-xs leading-5 text-text-tertiary">
-          {rankingBasis(metric, timeWindow, appliedPattern)}
+          {isSquadsTab
+            ? `Ranked by LeetCode-verified solves per member${timeWindow === "week" ? " in the last 7 days" : timeWindow === "month" ? " in the last 30 days" : ""}. Private squads show only their name and rank.`
+            : rankingBasis(metric, timeWindow, appliedPattern)}
         </p>
       </div>
 
       <div aria-live="polite" className="sr-only">
-        Ranked by {METRIC_LABELS[metric]}; {total} {tab === "squad" ? "squad members" : "people"}.
+        {isSquadsTab
+          ? `Ranked by verified solves per member; ${total} squads.`
+          : `Ranked by ${METRIC_LABELS[metric]}; ${total} ${tab === "squad" ? "squad members" : "people"}.`}
       </div>
 
       <div className="mt-4 md:mt-6">
@@ -453,7 +504,86 @@ export default function LeaderboardPage() {
         ) : loading ? (
           <BoardRowsSkeleton />
         ) : error ? (
-          <ErrorCard message={error} onRetry={() => void boardQuery.refresh()} />
+          <ErrorCard message={error} onRetry={() => void (isSquadsTab ? squadBoardQuery.refresh() : boardQuery.refresh())} />
+        ) : isSquadsTab ? (
+          squadRows.length === 0 ? (
+            <div className="rounded-lg border border-hairline bg-surface p-10 text-center">
+              <p className="text-sm leading-6 text-text-secondary">
+                No squad has verified solves in this window yet.
+                {timeWindow !== "all" && " Try a longer time window."}
+              </p>
+            </div>
+          ) : (
+            <ol className={boardListCls}>
+              {squadRows.map((row) => (
+                <li
+                  key={row.squad_id}
+                  aria-label={`${row.name}, rank ${row.rank}`}
+                  className={boardRowCls(row.is_mine)}
+                >
+                  <span
+                    className={cn(
+                      boardRankCls(row.rank),
+                      row.is_mine && "max-md:font-semibold max-md:text-text-primary"
+                    )}
+                  >
+                    {row.rank}
+                  </span>
+                  <div className="flex min-w-0 flex-1 items-center gap-3 md:gap-4">
+                    <Avatar name={row.name} src={row.avatar_url} size="md" />
+                    <div className="flex min-w-0 flex-col md:flex-row md:items-center md:gap-2">
+                      <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                        {row.is_public || row.is_mine ? (
+                          <Link
+                            href={`/squad/${row.squad_id}/wall`}
+                            className="truncate text-sm font-semibold text-text-primary hover:underline"
+                          >
+                            {row.name}
+                          </Link>
+                        ) : (
+                          <span className="truncate text-sm font-semibold text-text-primary">
+                            {row.name}
+                          </span>
+                        )}
+                        {row.is_mine && (
+                          <span className="shrink-0 rounded-xs border border-hairline bg-primary-tint px-1.5 text-[10px] font-medium uppercase leading-4 text-primary">
+                            Your squad
+                          </span>
+                        )}
+                      </div>
+                      {(!row.is_public || row.member_count != null) && (
+                        <div className="flex min-w-0 items-center gap-2">
+                          {!row.is_public && (
+                            <span className="inline-flex shrink-0 items-center gap-1 text-xs text-text-tertiary">
+                              <Lock className="h-3 w-3" strokeWidth={1.5} aria-hidden />
+                              <span>Private</span>
+                            </span>
+                          )}
+                          {row.member_count != null && (
+                            <span className="shrink-0 font-mono text-xs text-text-tertiary">
+                              {row.member_count} {row.member_count === 1 ? "member" : "members"}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center">
+                    <span className="flex items-baseline gap-1.5">
+                      <span className="font-mono text-sm font-medium text-text-primary tnum md:text-lg md:font-semibold">
+                        {row.value}
+                      </span>
+                      <span className="font-mono text-sm text-text-primary md:hidden">avg</span>
+                      <span className="hidden font-mono text-xs font-medium tracking-[0.06em] text-text-tertiary md:inline">
+                        per member
+                      </span>
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )
         ) : rows.length === 0 ? (
           <div className="rounded-lg border border-hairline bg-surface p-10 text-center">
             <p className="text-sm leading-6 text-text-secondary">
@@ -649,7 +779,7 @@ export default function LeaderboardPage() {
         )}
       </div>
 
-      {!error && boardReady && (page > 0 || hasNext) && (
+      {!error && (boardReady || isSquadsTab) && (page > 0 || hasNext) && (
         <div className="flex items-center justify-between gap-2 pt-3">
           <Button
             variant="ghost"
@@ -673,17 +803,20 @@ export default function LeaderboardPage() {
 
       {/* LeetCode-linked controls: the filter and the sync actions travel together. */}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <button
-          aria-pressed={hideUnconnected}
-          onClick={() => {
-            setHideUnconnected(!hideUnconnected);
-            setPage(0);
-          }}
-          className="flex min-h-[44px] items-center rounded-md border border-hairline bg-surface px-3 text-xs font-medium text-text-secondary transition-colors hover:border-hairline-strong hover:text-text-primary aria-pressed:border-hairline-strong aria-pressed:bg-surface-overlay aria-pressed:text-text-primary md:h-9 md:min-h-0"
-          title="Hide members without a linked LeetCode handle"
-        >
-          Linked only
-        </button>
+        {/* Ranks people, so it has nothing to filter on the squad board. */}
+        {!isSquadsTab && (
+          <button
+            aria-pressed={hideUnconnected}
+            onClick={() => {
+              setHideUnconnected(!hideUnconnected);
+              setPage(0);
+            }}
+            className="flex min-h-[44px] items-center rounded-md border border-hairline bg-surface px-3 text-xs font-medium text-text-secondary transition-colors hover:border-hairline-strong hover:text-text-primary aria-pressed:border-hairline-strong aria-pressed:bg-surface-overlay aria-pressed:text-text-primary md:h-9 md:min-h-0"
+            title="Hide members without a linked LeetCode handle"
+          >
+            Linked only
+          </button>
+        )}
         {profile?.leetcode_username && (
           <div className="flex items-center gap-2">
             <button
@@ -745,7 +878,8 @@ export default function LeaderboardPage() {
       <div className="mt-6 flex items-start gap-2.5 rounded-md border border-hairline bg-well p-3 md:mt-8 md:justify-center md:border-0 md:bg-transparent md:p-0 md:text-center">
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary md:hidden" strokeWidth={1.5} aria-hidden />
         <p className="text-xs font-medium leading-5 text-text-tertiary">
-          Verified solves come from LeetCode sync. Streak, hard solved and contest rating are current values, so the time window applies only to the others.
+          Verified solves come from LeetCode sync.
+          {!isSquadsTab && " Streak, hard solved and contest rating are current values, so the time window applies only to the others."}
         </p>
       </div>
 

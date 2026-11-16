@@ -57,6 +57,41 @@ export async function getLeaderboard(q: LeaderboardQuery): Promise<{ rows: Board
   return { rows, total: rows[0]?.total_count ?? 0 };
 }
 
+/**
+ * Squads against squads (public.squad_leaderboard): LeetCode-verified solves
+ * per member over the window, so squad size is not the score. A private squad
+ * arrives with its name and rank only: member_count is null unless it is
+ * public or the viewer's own.
+ */
+export interface SquadBoardRow {
+  squad_id: string;
+  name: string;
+  avatar_url: string | null;
+  is_public: boolean;
+  is_mine: boolean;
+  member_count: number | null;
+  /** Verified solves per member, one decimal. */
+  value: number;
+  rank: number;
+  total_count: number;
+}
+
+export async function getSquadLeaderboard(q: {
+  window: LeaderboardWindow;
+  limit?: number;
+  offset?: number;
+}): Promise<{ rows: SquadBoardRow[]; total: number }> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("squad_leaderboard", {
+    p_window: q.window,
+    p_limit: Math.min(q.limit ?? 25, 100),
+    p_offset: q.offset ?? 0,
+  });
+  if (error) throw new DataError("leaderboard", "Couldn't load the squad board. Retry.", { cause: error });
+  const rows = ((data ?? []) as SquadBoardRow[]).map((r) => ({ ...r, value: Number(r.value) }));
+  return { rows, total: rows[0]?.total_count ?? 0 };
+}
+
 // ── Rank snapshots (change indicators) ──────────────────────────────────────
 // There is no rank-history source in the schema, so the board freezes one
 // snapshot per (scope, metric, day) in leaderboard_snapshots and compares the
