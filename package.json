@@ -43,6 +43,7 @@
     "test:integration:lcsync": "node tests/integration/leetcodeSyncFeed.mjs",
     "test:integration:streak": "node tests/integration/myStreak.mjs",
     "test:integration:lcverify": "node --no-warnings tests/integration/leetcodeVerify.mjs",
+    "test:integration:policies": "node --no-warnings tests/integration/dbPolicies.mjs",
     "test:cache": "node --no-warnings --test tests/cache/keys.test.mjs",
     "test:routes": "node --no-warnings --test tests/routes/appRoutes.test.mjs",
     "test:auth": "node --no-warnings --test tests/auth/emailLinkSession.test.mjs",
