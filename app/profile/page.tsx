@@ -880,11 +880,6 @@ export default function ProfilePage() {
                               </span>
                             )}
                           </div>
-                          {s.season_name && (
-                            <p className="mt-0.5 truncate text-[11px] leading-4 text-text-tertiary">
-                              {s.season_name}
-                            </p>
-                          )}
                         </div>
                       </div>
                       <Link

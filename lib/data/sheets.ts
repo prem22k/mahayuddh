@@ -9,7 +9,7 @@ import { DataError } from "@/lib/data/errors";
 const CUSTOM_LIST_COLUMNS = "id,slug,title,emoji,description,is_curated,created_by,created_at";
 // list_problems has no created_at column in the schema.
 const LIST_PROBLEM_COLUMNS = "id,list_id,title,title_slug,difficulty,category,order_index";
-const STATUS_COLUMNS = "id,user_id,problem_slug,status,notes,solved_at";
+const STATUS_COLUMNS = "id,user_id,problem_slug,status,solved_at";
 
 export async function getAllLists(): Promise<CustomList[]> {
   const supabase = createClient();
@@ -268,7 +268,7 @@ export async function getUserStatusesBySlugs(userId: string): Promise<UserProble
   const supabase = createClient();
   const { data, error } = await supabase
     .from("user_problem_status")
-    .select("problem_slug, status, solved_at, notes")
+    .select("problem_slug, status, solved_at")
     .eq("user_id", userId);
 
   // This feeds the Arena progress strip. Returning [] on failure rendered a

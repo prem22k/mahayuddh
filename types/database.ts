@@ -67,7 +67,6 @@ export interface UserProblemStatus {
   user_id: string;
   problem_slug: string;
   status: "solved" | "attempted";
-  notes: string | null;
   solved_at: string;
 }
 
@@ -184,8 +183,6 @@ export interface Squad {
   created_by: string | null;
   /** Members only: null when the viewer is not in the squad. */
   invite_code: string | null;
-  shared_goal_text: string | null;
-  season_name: string | null;
   created_at: string;
   member_count?: number;
 }
@@ -194,8 +191,6 @@ export interface SquadMember {
   squad_id: string;
   user_id: string;
   role: "admin" | "member";
-  /** Membership flag, independent of the row existing. */
-  active: boolean;
   joined_at: string;
   last_active_at: string;
   profile?: Profile;
