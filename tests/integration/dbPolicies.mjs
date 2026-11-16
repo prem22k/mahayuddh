@@ -299,6 +299,51 @@ try {
     console.log("SKIP  snapshot route checks (no server at BASE_URL)");
   }
 
+  // ── 9. Challenges, AI budget, squad columns ───────────────────────────────
+  // a (s1, with c) challenges b (s2). lone shares no squad with either.
+  const { data: dm } = await db.from("suggestions").insert({
+    from_user: a.id, to_user: b.id, problem_slug: "contains-duplicate", problem_title: "Contains Duplicate",
+    difficulty: "Easy", message: "private words",
+  }).select("id").single();
+  const seen = async (cli) => ((await cli.from("suggestions").select("id, message").eq("id", dm.id)).data ?? []).length;
+  ok("a challenge is hidden from signed-out visitors", (await seen(anon)) === 0);
+  ok("and from people who share no squad with either side", (await seen(lone.cli)) === 0);
+  ok("but its two people see it", (await seen(a.cli)) === 1 && (await seen(b.cli)) === 1);
+  ok("and so do their squadmates (the squad page lists them)", (await seen(c.cli)) === 1);
+  // The /c/<id> link is the invitation: whoever holds it can open that one
+  // challenge, signed in or not, even with no shared squad.
+  const { data: viaLinkAnon, error: linkErr } = await anon.rpc("get_challenge", { p_id: dm.id });
+  ok("the challenge link opens for a signed-out visitor holding it",
+    !linkErr && viaLinkAnon?.id === dm.id && viaLinkAnon?.from_profile?.id === a.id && viaLinkAnon?.to_profile?.id === b.id,
+    linkErr?.message);
+  const { data: viaLinkLone } = await lone.cli.rpc("get_challenge", { p_id: dm.id });
+  ok("and for a signed-in stranger holding it", viaLinkLone?.id === dm.id);
+  const { data: listAnon } = await anon.from("suggestions").select("id").limit(50);
+  ok("but nobody without the link can list challenges", (listAnon ?? []).length === 0);
+  const { data: noSuch } = await anon.rpc("get_challenge", { p_id: "00000000-0000-0000-0000-000000000000" });
+  ok("an unknown id is simply nothing", noSuch === null);
+
+  const { error: aiAnon } = await anon.rpc("ai_calls_remaining", { p_squad: priv });
+  const { error: aiAuthed } = await a.cli.rpc("ai_calls_remaining", { p_squad: priv });
+  const { data: aiService, error: aiServiceErr } = await db.rpc("ai_calls_remaining", { p_squad: priv });
+  ok("a squad's AI usage is not readable by visitors or signed-in users", !!aiAnon && !!aiAuthed);
+  ok("the server still reads it", !aiServiceErr && Number.isInteger(aiService), aiServiceErr?.message);
+
+  const { error: rename } = await a.cli.from("squads").update({ name: `${tag} renamed` }).eq("id", priv);
+  ok("a squad's creator can still rename it", !rename, rename?.message);
+  const { data: before } = await db.from("squads").select("is_demo, invite_code, ai_enabled").eq("id", priv).single();
+  const { error: demo } = await a.cli.from("squads").update({ is_demo: !before.is_demo }).eq("id", priv);
+  const { error: code } = await a.cli.from("squads").update({ invite_code: "HIJACKED" }).eq("id", priv);
+  const { error: ai } = await a.cli.from("squads").update({ ai_enabled: !before.ai_enabled }).eq("id", priv);
+  const { data: after } = await db.from("squads").select("is_demo, invite_code, ai_enabled").eq("id", priv).single();
+  ok("but cannot flip is_demo, the invite code or the AI switch",
+    !!demo && !!code && !!ai && JSON.stringify(after) === JSON.stringify(before),
+    JSON.stringify(after));
+  const { error: directCreate } = await lone.cli.from("squads").insert({ name: "direct", created_by: lone.id, invite_code: "DIRECT01", is_demo: true });
+  ok("squads are created only through the server route", !!directCreate);
+  await db.from("squads").update({ name: `${tag} squad 1` }).eq("id", priv);
+  await db.from("suggestions").delete().eq("id", dm.id);
+
   // ── 6. content_impact no longer lists forks inside private notes ──────────
   const { data: appr } = await db.from("approaches")
     .insert({ user_id: a.id, problem_slug: "two-sum", core_idea: "hash map", visibility: "public" }).select("id").single();

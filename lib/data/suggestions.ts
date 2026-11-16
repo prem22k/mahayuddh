@@ -4,9 +4,9 @@ import { Suggestion, Difficulty } from "@/types/database";
 import { DataError } from "@/lib/data/errors";
 
 /**
- * Challenges you sent or received. The table is readable platform-wide (share
- * pages and season results read it), so the caller filter lives here: without
- * it the All and Done tabs listed everyone's challenges.
+ * Challenges you sent or received. The table shows a challenge to its two
+ * people and their squadmates, so the caller filter still lives here: without
+ * it the All and Done tabs would list your squadmates' challenges too.
  */
 export async function getSuggestions(): Promise<Suggestion[]> {
   const supabase = createClient();
@@ -60,6 +60,15 @@ export async function getIncomingSuggestionCount(userId: string): Promise<number
 
 export async function getSuggestionById(id: string): Promise<Suggestion | null> {
   const supabase = createClient();
+  // The /c/<id> link works for whoever holds it (get_challenge), while the
+  // table itself only shows a challenge's people and their squadmates.
+  const viaLink = await supabase.rpc("get_challenge", { p_id: id });
+  if (!viaLink.error) return (viaLink.data as Suggestion | null) ?? null;
+  // PGRST202: the function is not deployed yet. Read the table as before, so
+  // this code can ship ahead of its migration without breaking the link.
+  if (viaLink.error.code !== "PGRST202") {
+    throw new DataError("suggestions", "Couldn't load this challenge. Retry.", { cause: viaLink.error });
+  }
   const { data, error } = await supabase
     .from("suggestions")
     .select(`
