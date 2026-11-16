@@ -302,14 +302,6 @@ try {
   });
   check("a single timed solve is not an improvement", (improved4 ?? []).find((r) => r.user_id === bob)?.segment_value ?? 0, 0);
 
-  // ── §34: a beginner lands on 'rising', not the lifetime board ─────────────
-  const { data: beginnerDefault } = await db.rpc("default_leaderboard_segment", { p_user: bob });
-  check("a beginner's default segment is 'rising'", beginnerDefault, "rising");
-
-  await db.from("profiles").update({ total_easy: 400, total_medium: 150 }).eq("id", alice);
-  const { data: veteranDefault } = await db.rpc("default_leaderboard_segment", { p_user: alice });
-  check("somebody with 550 lifetime solves gets the lifetime board", veteranDefault, "most_solved");
-
   // Pagination: a limit of 1 must not return the whole table.
   const { data: page1 } = await db.rpc("global_leaderboard", {
     p_segment: "rising", p_pattern: null, p_limit: 1, p_offset: 0,

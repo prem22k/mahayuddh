@@ -25,9 +25,9 @@ export interface MySquads {
  * invite_code is not readable from the browser; members get it from
  * my_squad_invite_codes() (see withInviteCodes).
  */
-const SQUAD_COLUMNS = "id,name,avatar_url,description,created_by,shared_goal_text,season_name,created_at";
+const SQUAD_COLUMNS = "id,name,avatar_url,description,created_by,created_at";
 const SQUAD_MEMBER_COLUMNS =
-  "squad_id,user_id,role,active,joined_at,last_active_at,profile:user_id (id, username, leetcode_username, leetcode_verified_at, avatar_url, streak, total_easy, total_medium, total_hard, contest_rating)";
+  "squad_id,user_id,role,joined_at,last_active_at,profile:user_id (id, username, leetcode_username, leetcode_verified_at, avatar_url, streak, total_easy, total_medium, total_hard, contest_rating)";
 const SQUAD_GOAL_COLUMNS =
   "id,squad_id,title,target_count,pattern,deadline,status,created_by,created_at,starts_at,archived";
 
