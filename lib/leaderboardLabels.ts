@@ -37,8 +37,21 @@ export function verifiedMetricUnit(
     : { long: "solves on LeetCode", short: "solves" };
 }
 
-/** Unit after a row's number: long on desktop, one word on phones. */
+/** Unit after a row's number: long on desktop, one word on phones. "1 solve", not "1 solves". */
 export function metricUnit(
+  metric: LeaderboardMetric,
+  period: LeaderboardWindow,
+  ownerVerified: boolean,
+  pattern?: string | null,
+  value?: number | null
+): { long: string; short: string } {
+  const unit = pluralUnit(metric, period, ownerVerified, pattern);
+  if (value !== 1) return unit;
+  const one = (s: string) => s.replace(/\bsolves\b/, "solve").replace(/^problems got/, "problem got");
+  return { long: one(unit.long), short: one(unit.short) };
+}
+
+function pluralUnit(
   metric: LeaderboardMetric,
   period: LeaderboardWindow,
   ownerVerified: boolean,

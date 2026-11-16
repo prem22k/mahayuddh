@@ -468,7 +468,7 @@ export default function LeaderboardPage() {
             <ol className={boardListCls}>
               {rows.map((row) => {
                 const isCurrentUser = row.user_id === user?.id;
-                const unit = metricUnit(metric, timeWindow, row.leetcode_verified, appliedPattern);
+                const unit = metricUnit(metric, timeWindow, row.leetcode_verified, appliedPattern, row.value);
                 const noValue = row.value == null;
                 const delta = rankChangeLabel(prevRanks.get(row.user_id), row.rank, prevReadOk);
                 return (
@@ -629,7 +629,7 @@ export default function LeaderboardPage() {
                   <p className="truncate font-mono text-xs text-text-secondary tnum">
                     {selfRow.value == null
                       ? "—"
-                      : `${selfRow.value} ${metricUnit(metric, timeWindow, selfRow.leetcode_verified, appliedPattern).long}`}
+                      : `${selfRow.value} ${metricUnit(metric, timeWindow, selfRow.leetcode_verified, appliedPattern, selfRow.value).long}`}
                   </p>
                 </div>
                 {profile?.leetcode_username && (

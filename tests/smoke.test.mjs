@@ -2859,6 +2859,12 @@ describe("leaderboard labels", () => {
   it("a point-in-time board says the window does not apply", () => {
     for (const m of ["streak", "hard", "rating"]) assert.match(rankingBasis(m, "week"), /does not apply/);
   });
+  it("one is singular", () => {
+    assert.equal(metricUnit("solves", "month", false, null, 1).long, "solve in 30 days");
+    assert.equal(metricUnit("verified", "all", true, null, 1).long, "verified solve");
+    assert.equal(metricUnit("improved", "all", false, null, 1).long, "problem got faster");
+    assert.equal(metricUnit("solves", "month", false, null, 2).long, "solves in 30 days");
+  });
   it("By pattern without a pattern asks for one", () => {
     assert.match(rankingBasis("pattern", "week", null), /Pick a pattern/);
   });
