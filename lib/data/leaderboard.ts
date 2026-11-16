@@ -1,153 +1,60 @@
 import { createClient } from "@/lib/supabase/client";
 import { DataError } from "@/lib/data/errors";
+import type { LeaderboardMetric, LeaderboardWindow } from "@/lib/leaderboardLabels";
+
+export type { LeaderboardMetric, LeaderboardWindow } from "@/lib/leaderboardLabels";
 
 /**
- * Global leaderboard segments (Step 23, Bible §34).
- *
- * §34 is about one feeling: a beginner should not open the global board and be
- * met with someone who has solved 2,000 problems. So the segments are the
- * product, and the default is chosen by how much the viewer has solved — not by
- * whoever is at the top of the pile.
- *
- * Sorting happens in SQL (public.global_leaderboard). Loading every profile and
- * sorting in the browser is what produced the problem.
+ * Both leaderboard tabs read one SQL function, public.leaderboard. Global is
+ * everyone; squad is the signed-in user's active squad, which the database
+ * takes from the session (there is no squad parameter to point elsewhere).
+ * Ranking, filters and pagination all happen there, so neither tab downloads
+ * every profile to sort in the browser.
  */
 
-export type LeaderboardSegment = "rising" | "improved" | "pattern" | "recent" | "most_solved";
+export type LeaderboardScope = "global" | "squad";
 
-export interface LeaderboardSegmentInfo {
-  id: LeaderboardSegment;
-  label: string;
-  /** What this view actually ranks by. Shown, so the ordering is not a mystery. */
-  ranks: string;
-}
-
-export const LEADERBOARD_SEGMENTS: LeaderboardSegmentInfo[] = [
-  { id: "rising", label: "Rising", ranks: "Solves in the last 30 days" },
-  { id: "improved", label: "Most improved", ranks: "Problems that got measurably faster" },
-  { id: "pattern", label: "By pattern", ranks: "Solves touching a pattern you pick" },
-  // The database ranks this by 30-day solves too (it just keeps people with none
-  // and shows their last-active date), so it is named for what it ranks by.
-  { id: "recent", label: "Last 30 days", ranks: "Solves in the last 30 days, everyone listed, with each person's last active date" },
-  { id: "most_solved", label: "Most solved", ranks: "Lifetime solves" },
-];
-
-export interface LeaderboardRow {
+export interface BoardRow {
   user_id: string;
   username: string;
   avatar_url: string | null;
-  total_solves: number;
-  segment_value: number;
-  segment_label: string;
-  last_active_at: string | null;
+  leetcode_username: string | null;
+  leetcode_verified: boolean;
+  /** Dense rank across the whole board, not just this page. */
+  rank: number;
+  /** null only for contest rating when the person is unrated. */
+  value: number | null;
+  /** Everyone on the board under these filters. */
+  total_count: number;
 }
 
-export async function getGlobalLeaderboard(opts: {
-  segment?: LeaderboardSegment;
+export interface LeaderboardQuery {
+  scope: LeaderboardScope;
+  metric: LeaderboardMetric;
+  window: LeaderboardWindow;
   pattern?: string | null;
+  linkedOnly?: boolean;
+  /** Just this person's row, ranked among everyone (the "you are #N" bar). */
+  onlyUser?: string | null;
   limit?: number;
   offset?: number;
-} = {}): Promise<{ rows: LeaderboardRow[]; segment: LeaderboardSegment }> {
+}
+
+export async function getLeaderboard(q: LeaderboardQuery): Promise<{ rows: BoardRow[]; total: number }> {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // Ask the database which segment this viewer should land on, so the rule
-  // lives in one place instead of being duplicated in this file and in the UI.
-  let segment = opts.segment;
-  if (!segment) {
-    const { data } = await supabase.rpc("default_leaderboard_segment", { p_user: user?.id ?? null });
-    segment = (data as LeaderboardSegment | null) ?? "rising";
-  }
-
-  const { data, error } = await supabase.rpc("global_leaderboard", {
-    p_segment: segment,
-    p_pattern: opts.pattern ?? null,
-    p_limit: Math.min(opts.limit ?? 25, 100),
-    p_offset: opts.offset ?? 0,
+  const { data, error } = await supabase.rpc("leaderboard", {
+    p_scope: q.scope,
+    p_metric: q.metric,
+    p_window: q.window,
+    p_pattern: q.pattern?.trim() || null,
+    p_linked_only: q.linkedOnly ?? false,
+    p_only_user: q.onlyUser ?? null,
+    p_limit: Math.min(q.limit ?? 25, 100),
+    p_offset: q.offset ?? 0,
   });
   if (error) throw new DataError("leaderboard", "Couldn't load the leaderboard. Retry.", { cause: error });
-
-  return { rows: (data ?? []) as LeaderboardRow[], segment };
-}
-
-/**
- * Which segment this viewer should land on, without loading the board.
- *
- * §34's rule in one place so the UI can explain itself: below 500 lifetime
- * solves, a week of real work should put somebody near the top of the view they
- * are given.
- */
-export function defaultSegmentFor(lifetimeSolves: number | null | undefined): LeaderboardSegment {
-  if (lifetimeSolves == null) return "rising";
-  return lifetimeSolves >= 500 ? "most_solved" : "rising";
-}
-
-/** True when the viewer's view is the lifetime board, so the UI can say why. */
-export function isLifetimeView(segment: LeaderboardSegment): boolean {
-  return segment === "most_solved";
-}
-
-// ── Windowed squad-board counts ─────────────────────────────────────────────
-// The squad leaderboard's "Last 7 days" scope ranks measured event windows,
-// not profile lifetime totals. problem_events is publicly readable, so these
-// run as the viewer; an empty squad is an empty map, never an error.
-
-function emptyCounts(userIds: string[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const id of userIds) counts.set(id, 0);
-  return counts;
-}
-
-/**
- * Verified solves per user since `sinceISO`: kind='solved' events whose
- * battle-derived metadata marks them LeetCode-verified (source='leetcode').
- * Counts client-side from the filtered rows.
- */
-export async function getVerifiedSolvesWindow(
-  userIds: string[],
-  sinceISO: string
-): Promise<Map<string, number>> {
-  const counts = emptyCounts(userIds);
-  if (userIds.length === 0) return counts;
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("problem_events")
-    .select("user_id")
-    .in("user_id", userIds)
-    .eq("kind", "solved")
-    .gte("created_at", sinceISO)
-    .filter("metadata->>source", "eq", "leetcode");
-  if (error) throw new DataError("leaderboard", "Couldn't load weekly verified solves. Retry.", { cause: error });
-  for (const row of (data ?? []) as Array<{ user_id: string }>) {
-    counts.set(row.user_id, (counts.get(row.user_id) ?? 0) + 1);
-  }
-  return counts;
-}
-
-/**
- * All solves per user since `sinceISO` (no source filter): the activity
- * fallback behind the week scope's streak-ish column.
- */
-export async function getSolvesWindow(
-  userIds: string[],
-  sinceISO: string
-): Promise<Map<string, number>> {
-  const counts = emptyCounts(userIds);
-  if (userIds.length === 0) return counts;
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("problem_events")
-    .select("user_id")
-    .in("user_id", userIds)
-    .eq("kind", "solved")
-    .gte("created_at", sinceISO);
-  if (error) throw new DataError("leaderboard", "Couldn't load weekly activity. Retry.", { cause: error });
-  for (const row of (data ?? []) as Array<{ user_id: string }>) {
-    counts.set(row.user_id, (counts.get(row.user_id) ?? 0) + 1);
-  }
-  return counts;
+  const rows = (data ?? []) as BoardRow[];
+  return { rows, total: rows[0]?.total_count ?? 0 };
 }
 
 // ── Rank snapshots (change indicators) ──────────────────────────────────────
