@@ -182,7 +182,8 @@ export interface Squad {
   avatar_url: string | null;
   description: string | null;
   created_by: string | null;
-  invite_code: string;
+  /** Members only: null when the viewer is not in the squad. */
+  invite_code: string | null;
   shared_goal_text: string | null;
   season_name: string | null;
   created_at: string;

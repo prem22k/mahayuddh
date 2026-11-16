@@ -759,8 +759,14 @@ describe("static invariants", () => {
       "utf8"
     );
     // Granted to anon/authenticated: `grant execute on function public.<name>(`.
+    // RPCs added after the hardening grant themselves in their own migration
+    // (my_streak, my_squad_invite_codes), so every migration counts.
+    const migrations = readdirSync("supabase/migrations")
+      .filter((f) => f.endsWith(".sql"))
+      .map((f) => readFileSync(`supabase/migrations/${f}`, "utf8"))
+      .join("\n");
     const granted = new Set(
-      [...sql.matchAll(/grant execute on function public\.([a-z_][a-z0-9_]*)\s*\(/gi)].map(
+      [...migrations.matchAll(/grant execute on function public\.([a-z_][a-z0-9_]*)\s*\(/gi)].map(
         (m) => m[1].toLowerCase()
       )
     );

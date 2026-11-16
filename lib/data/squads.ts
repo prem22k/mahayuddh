@@ -20,12 +20,29 @@ export interface MySquads {
   activeSquadId: string | null;
 }
 
-/** Explicit projections (no `*`): every column callers use, per schema. */
-const SQUAD_COLUMNS = "id,name,avatar_url,description,created_by,invite_code,shared_goal_text,season_name,created_at";
+/**
+ * Explicit projections (no `*`): every column callers use, per schema.
+ * invite_code is not readable from the browser; members get it from
+ * my_squad_invite_codes() (see withInviteCodes).
+ */
+const SQUAD_COLUMNS = "id,name,avatar_url,description,created_by,shared_goal_text,season_name,created_at";
 const SQUAD_MEMBER_COLUMNS =
   "squad_id,user_id,role,active,joined_at,last_active_at,profile:user_id (id, username, leetcode_username, leetcode_verified_at, avatar_url, streak, total_easy, total_medium, total_hard, contest_rating)";
 const SQUAD_GOAL_COLUMNS =
   "id,squad_id,title,target_count,pattern,deadline,status,created_by,created_at,starts_at,archived";
+
+/**
+ * Fill invite codes for the squads the caller belongs to; null for the rest.
+ * A failed lookup only hides the code, it never fails the page around it.
+ */
+async function withInviteCodes<T extends { id: string }>(squads: T[]): Promise<(T & { invite_code: string | null })[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("my_squad_invite_codes");
+  const codes = new Map(
+    error ? [] : ((data ?? []) as { squad_id: string; invite_code: string }[]).map((r) => [r.squad_id, r.invite_code])
+  );
+  return squads.map((s) => ({ ...s, invite_code: codes.get(s.id) ?? null }));
+}
 
 export async function getMySquads(userId: string, activeSquadId?: string | null): Promise<MySquads> {
   const supabase = createClient();
@@ -42,7 +59,7 @@ export async function getMySquads(userId: string, activeSquadId?: string | null)
   if (sErr) {
     throw new DataError("squads", "Couldn't load your squads. Check your connection and retry.", { cause: sErr });
   }
-  return { squads: (squads ?? []) as Squad[], activeSquadId: activeSquadId ?? null };
+  return { squads: await withInviteCodes((squads ?? []) as Squad[]), activeSquadId: activeSquadId ?? null };
 }
 
 export async function getSquadDetail(squadId: string): Promise<{
@@ -71,8 +88,9 @@ export async function getSquadDetail(squadId: string): Promise<{
   }
   if (mErr) throw new DataError("squads", "Couldn't load squad members. Retry.", { cause: mErr });
   if (gErr) throw new DataError("squads", "Couldn't load squad goals. Retry.", { cause: gErr });
+  const [withCode] = await withInviteCodes([squad as Squad]);
   return {
-    squad: squad as Squad,
+    squad: withCode,
     members: (members ?? []) as unknown as SquadMember[],
     goals: (goals ?? []) as SquadGoal[],
   };

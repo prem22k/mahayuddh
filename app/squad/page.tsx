@@ -207,7 +207,7 @@ export default function SquadPage() {
   const [copied, setCopied] = useState(false);
 
   const inviteLink = (s: Squad | null) =>
-    s && typeof window !== "undefined" ? `${window.location.origin}/squad/join/${s.invite_code}` : "";
+    s?.invite_code && typeof window !== "undefined" ? `${window.location.origin}/squad/join/${s.invite_code}` : "";
 
   const handleCopyInvite = async () => {
     if (!activeSquad) return;
