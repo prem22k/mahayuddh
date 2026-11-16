@@ -10,6 +10,7 @@
 -- them (the squad page, recaps and goals show challenges among members).
 -- Public profile numbers come from teacher_stats, which counts as its owner.
 drop policy if exists "Allow public read access for suggestions" on public.suggestions;
+drop policy if exists "Challenges readable by their people and squadmates" on public.suggestions;
 create policy "Challenges readable by their people and squadmates" on public.suggestions
   for select using (
     (select auth.uid()) = from_user
@@ -35,3 +36,27 @@ grant execute on function public.ai_calls_remaining(uuid) to service_role;
 -- The creator keeps the plain fields.
 revoke insert, update on public.squads from anon, authenticated;
 grant update (name, avatar_url, description, visibility) on public.squads to authenticated;
+
+-- ── 1b. The challenge link still works for whoever holds it ─────────────────
+-- /c/<id> is shared (WhatsApp, DMs) to people who may have no account yet:
+-- the challenge's id is the invitation, like a squad's invite code. What
+-- leaked was listing every challenge; fetching one by its id is the link
+-- working as intended. Same shape getSuggestionById reads (the row plus both
+-- people's public profile fields). suggestion_chain(id) is by id too.
+create or replace function public.get_challenge(p_id uuid)
+returns jsonb
+language sql stable security definer set search_path = public as $$
+  select to_jsonb(s)
+      || jsonb_build_object(
+           'from_profile', (select jsonb_build_object('id', p.id, 'username', p.username,
+                              'leetcode_username', p.leetcode_username, 'avatar_url', p.avatar_url)
+                            from public.profiles p where p.id = s.from_user),
+           'to_profile', (select jsonb_build_object('id', p.id, 'username', p.username,
+                              'leetcode_username', p.leetcode_username, 'avatar_url', p.avatar_url)
+                          from public.profiles p where p.id = s.to_user))
+  from public.suggestions s
+  where s.id = p_id
+$$;
+
+revoke all on function public.get_challenge(uuid) from public;
+grant execute on function public.get_challenge(uuid) to anon, authenticated;

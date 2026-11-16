@@ -310,6 +310,18 @@ try {
   ok("and from people who share no squad with either side", (await seen(lone.cli)) === 0);
   ok("but its two people see it", (await seen(a.cli)) === 1 && (await seen(b.cli)) === 1);
   ok("and so do their squadmates (the squad page lists them)", (await seen(c.cli)) === 1);
+  // The /c/<id> link is the invitation: whoever holds it can open that one
+  // challenge, signed in or not, even with no shared squad.
+  const { data: viaLinkAnon, error: linkErr } = await anon.rpc("get_challenge", { p_id: dm.id });
+  ok("the challenge link opens for a signed-out visitor holding it",
+    !linkErr && viaLinkAnon?.id === dm.id && viaLinkAnon?.from_profile?.id === a.id && viaLinkAnon?.to_profile?.id === b.id,
+    linkErr?.message);
+  const { data: viaLinkLone } = await lone.cli.rpc("get_challenge", { p_id: dm.id });
+  ok("and for a signed-in stranger holding it", viaLinkLone?.id === dm.id);
+  const { data: listAnon } = await anon.from("suggestions").select("id").limit(50);
+  ok("but nobody without the link can list challenges", (listAnon ?? []).length === 0);
+  const { data: noSuch } = await anon.rpc("get_challenge", { p_id: "00000000-0000-0000-0000-000000000000" });
+  ok("an unknown id is simply nothing", noSuch === null);
 
   const { error: aiAnon } = await anon.rpc("ai_calls_remaining", { p_squad: priv });
   const { error: aiAuthed } = await a.cli.rpc("ai_calls_remaining", { p_squad: priv });
