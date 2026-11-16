@@ -64,7 +64,8 @@ export async function getLeaderboard(q: LeaderboardQuery): Promise<{ rows: Board
  * public or the viewer's own.
  */
 export interface SquadBoardRow {
-  squad_id: string;
+  /** null for a private squad that is not yours: outsiders get name and rank only. */
+  squad_id: string | null;
   name: string;
   avatar_url: string | null;
   is_public: boolean;

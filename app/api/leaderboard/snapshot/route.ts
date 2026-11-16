@@ -14,8 +14,11 @@ import { readJsonBounded } from "@/lib/security/body";
 // Writes use the service key (the table has no client insert policy), so the
 // caller must be signed in; the payload is fully re-validated below.
 
-const SCOPE_RE = /^[a-z0-9:_-]{1,64}$/i;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// The page only freezes squad boards, so that is all this accepts: a squad
+// the caller is in, and a metric the board can rank by.
+const SQUAD_SCOPE_RE = /^squad:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+const METRIC_RE = /^(verified|solves|streak|hard|rating|improved|pattern):(week|month|all)(:[a-z0-9-]{1,32})?$/;
 const MAX_ROWS = 100;
 
 interface SnapshotRowInput {
@@ -41,10 +44,11 @@ export async function POST(request: Request) {
   const scope = body?.scope;
   const metric = body?.metric;
   const rows = body?.rows;
-  if (typeof scope !== "string" || !SCOPE_RE.test(scope)) {
+  const squadId = typeof scope === "string" ? SQUAD_SCOPE_RE.exec(scope)?.[1] : undefined;
+  if (typeof scope !== "string" || !squadId) {
     return NextResponse.json({ error: "Invalid scope." }, { status: 400 });
   }
-  if (typeof metric !== "string" || !SCOPE_RE.test(metric)) {
+  if (typeof metric !== "string" || !METRIC_RE.test(metric)) {
     return NextResponse.json({ error: "Invalid metric." }, { status: 400 });
   }
   if (!Array.isArray(rows) || rows.length === 0 || rows.length > MAX_ROWS) {
@@ -89,6 +93,23 @@ export async function POST(request: Request) {
   }
 
   if (clean.length === 0) {
+    return NextResponse.json({ error: "Invalid rows." }, { status: 400 });
+  }
+
+  // Anyone signed in could otherwise freeze another squad's board (first
+  // writer wins for the day) with made-up people and ranks.
+  const { data: memberRows, error: memberError } = await supabase
+    .from("squad_members")
+    .select("user_id")
+    .eq("squad_id", squadId);
+  if (memberError) {
+    return NextResponse.json({ error: "Couldn't save snapshot." }, { status: 500 });
+  }
+  const memberIds = new Set((memberRows ?? []).map((m) => (m as { user_id: string }).user_id));
+  if (!memberIds.has(auth.user.id)) {
+    return NextResponse.json({ error: "Not a member of that squad." }, { status: 403 });
+  }
+  if (clean.some((row) => !memberIds.has(row.user_id))) {
     return NextResponse.json({ error: "Invalid rows." }, { status: 400 });
   }
 
