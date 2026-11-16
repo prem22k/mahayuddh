@@ -11,7 +11,7 @@
  *   - a solved battle completing a challenge notifies the sender exactly once
  *   - the goal nudge cannot stack, which is §37's low-noise default
  *   - contest reminders are idempotent so the cron can re-run them
- *   - leaderboard segments actually segment, and 'rising' is the default for a
+ *   - the global leaderboard ranks what it says (30-day solves, most improved), for a
  *     beginner rather than a lifetime 2,000-solve ranking (§34)
  *
  * Run: npm run test:integration:notify
@@ -94,6 +94,13 @@ async function notificationsFor(userId, kind) {
 async function clearNotifications(userId) {
   await db.from("notifications").delete().eq("user_id", userId);
 }
+
+// Global board through the one leaderboard function both tabs use.
+const board = (metric, window, limit = 25, offset = 0) =>
+  db.rpc("leaderboard", {
+    p_scope: "global", p_metric: metric, p_window: window, p_pattern: null,
+    p_linked_only: false, p_only_user: null, p_limit: limit, p_offset: offset,
+  });
 
 try {
   const alice = await makeUser(1);
@@ -224,19 +231,17 @@ try {
   // ── Leaderboard segments (§34) ────────────────────────────────────────────
   await clearNotifications(bob);
 
-  // One recent solve for bob, none for alice: 'rising' must show bob only.
+  // One recent solve for bob, none for alice: the 30-day Solves board shows bob only.
   const { data: ev } = await db.from("problem_events").insert([
     { user_id: bob, problem_slug: `${tag}-r1`, kind: "solved", duration_sec: 900, metadata: {} },
   ]).select("id");
   made.events.push(...ev.map((e) => e.id));
 
-  const { data: rising, error: rErr } = await db.rpc("global_leaderboard", {
-    p_segment: "rising", p_pattern: null, p_limit: 25, p_offset: 0,
-  });
-  if (rErr) throw new Error(`global_leaderboard rising: ${rErr.message}`);
-  ok("'rising' includes somebody who solved in the last 30 days", (rising ?? []).some((r) => r.user_id === bob));
-  check("'rising' excludes somebody with no recent activity", (rising ?? []).some((r) => r.user_id === alice), false);
-  ok("every rising row states what it was ranked by", (rising ?? []).every((r) => typeof r.segment_label === "string" && r.segment_label.length > 0));
+  const { data: rising, error: rErr } = await board("solves", "month", 25, 0);
+  if (rErr) throw new Error(`leaderboard solves: ${rErr.message}`);
+  ok("the 30-day board includes somebody who solved in the last 30 days", (rising ?? []).some((r) => r.user_id === bob));
+  check("the 30-day board excludes somebody with no recent activity", (rising ?? []).some((r) => r.user_id === alice), false);
+  ok("every row carries its rank and value", (rising ?? []).every((r) => Number.isInteger(r.rank) && Number.isInteger(r.value)));
 
   // Getting SLOWER must not count as improved. This assertion was backwards
   // when the segment was first written: the SQL selected `last >= first` and
@@ -247,9 +252,7 @@ try {
   await timedEvent(bob, `${tag}-imp`, "solved", 300, -2);
   await timedEvent(bob, `${tag}-imp`, "revisited", 900, -1);
 
-  const { data: notImproved } = await db.rpc("global_leaderboard", {
-    p_segment: "improved", p_pattern: null, p_limit: 25, p_offset: 0,
-  });
+  const { data: notImproved } = await board("improved", "month", 25, 0);
   check("getting slower is NOT counted as improved", (notImproved ?? []).some((r) => r.user_id === bob), false);
 
   // Getting faster, twice, on two different problems -> two real gains.
@@ -258,23 +261,18 @@ try {
   await timedEvent(alice, `${tag}-f2`, "solved", 800, -2);
   await timedEvent(alice, `${tag}-f2`, "revisited", 150, -1);
 
-  const { data: improved } = await db.rpc("global_leaderboard", {
-    p_segment: "improved", p_pattern: null, p_limit: 25, p_offset: 0,
-  });
+  const { data: improved } = await board("improved", "month", 25, 0);
   ok("getting faster twice IS counted as improved", (improved ?? []).some((r) => r.user_id === alice));
   const aliceRow = (improved ?? []).find((r) => r.user_id === alice);
-  check("the improved count is the number of problems, not the number of solves", aliceRow?.segment_value, 2);
-  // The label and the predicate must agree. If the label ever says "got faster"
-  // while the predicate selects non-improvement, that is a one-line regression.
-  ok("the row states that these problems got faster", /got faster/.test(aliceRow?.segment_label ?? ""));
+  check("the improved count is the number of problems, not the number of solves", aliceRow?.value, 2);
+  // The row's wording ("problems got faster") lives in lib/leaderboardLabels.ts,
+  // covered by the smoke tests.
 
   // Equal times are not an improvement.
   await timedEvent(bob, `${tag}-same`, "solved", 400, -2);
   await timedEvent(bob, `${tag}-same`, "revisited", 400, -1);
-  const { data: improved3 } = await db.rpc("global_leaderboard", {
-    p_segment: "improved", p_pattern: null, p_limit: 25, p_offset: 0,
-  });
-  check("identical times are not an improvement", (improved3 ?? []).find((r) => r.user_id === bob)?.segment_value ?? 0, 0);
+  const { data: improved3 } = await board("improved", "month", 25, 0);
+  check("identical times are not an improvement", (improved3 ?? []).find((r) => r.user_id === bob)?.value ?? 0, 0);
 
   // One statement means one timestamp for both rows, so there is no order to
   // recover and the segment must decline to claim an improvement. This is the
@@ -284,12 +282,10 @@ try {
     { user_id: alice, problem_slug: `${tag}-batch`, kind: "revisited", duration_sec: 100, metadata: {} },
   ]).select("id");
   made.events.push(...(batch ?? []).map((e) => e.id));
-  const { data: improvedBatch } = await db.rpc("global_leaderboard", {
-    p_segment: "improved", p_pattern: null, p_limit: 25, p_offset: 0,
-  });
+  const { data: improvedBatch } = await board("improved", "month", 25, 0);
   check(
     "two solves sharing one timestamp make no improvement claim",
-    (improvedBatch ?? []).find((r) => r.user_id === alice)?.segment_value ?? 0,
+    (improvedBatch ?? []).find((r) => r.user_id === alice)?.value ?? 0,
     2
   );
 
@@ -297,18 +293,12 @@ try {
   await db.from("problem_events").insert([
     { user_id: bob, problem_slug: `${tag}-solo`, kind: "solved", duration_sec: 100, metadata: {} },
   ]).select("id").then(({ data }) => made.events.push(...(data ?? []).map((e) => e.id)));
-  const { data: improved4 } = await db.rpc("global_leaderboard", {
-    p_segment: "improved", p_pattern: null, p_limit: 25, p_offset: 0,
-  });
-  check("a single timed solve is not an improvement", (improved4 ?? []).find((r) => r.user_id === bob)?.segment_value ?? 0, 0);
+  const { data: improved4 } = await board("improved", "month", 25, 0);
+  check("a single timed solve is not an improvement", (improved4 ?? []).find((r) => r.user_id === bob)?.value ?? 0, 0);
 
   // Pagination: a limit of 1 must not return the whole table.
-  const { data: page1 } = await db.rpc("global_leaderboard", {
-    p_segment: "rising", p_pattern: null, p_limit: 1, p_offset: 0,
-  });
-  const { data: page2 } = await db.rpc("global_leaderboard", {
-    p_segment: "rising", p_pattern: null, p_limit: 1, p_offset: 1,
-  });
+  const { data: page1 } = await board("solves", "month", 1, 0);
+  const { data: page2 } = await board("solves", "month", 1, 1);
   check("limit is respected", (page1 ?? []).length, 1);
   ok("a second page returns a different row", (page2 ?? [])[0]?.user_id !== (page1 ?? [])[0]?.user_id || (page1 ?? []).length === 0);
 
