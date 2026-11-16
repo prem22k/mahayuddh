@@ -35,6 +35,14 @@ export async function getSquadProfiles(opts?: {
   return data as Profile[];
 }
 
+/** One person's public profile, e.g. to open a leaderboard row's dossier. */
+export async function getPublicProfile(id: string): Promise<Profile | null> {
+  const supabase = createClient();
+  const { data, error } = await supabase.from("profiles").select(PUBLIC_PROFILE_COLUMNS).eq("id", id).maybeSingle();
+  if (error) throw new DataError("profiles", "Couldn't load this profile. Retry.", { cause: error });
+  return (data as Profile | null) ?? null;
+}
+
 export async function getProfileByLeetcodeUsername(leetcodeUsername: string): Promise<Profile | null> {
   const supabase = createClient();
   const { data, error } = await supabase

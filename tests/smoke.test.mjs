@@ -50,7 +50,7 @@ import {
   recapRecency,
   countWeekFeedRows,
 } from "../lib/recap.ts";
-import { verifiedMetricUnit } from "../lib/leaderboardLabels.ts";
+import { verifiedMetricUnit, metricUnit, rankingBasis, isWindowed } from "../lib/leaderboardLabels.ts";
 import { RITUALS } from "../lib/rituals.ts";
 import { buildJourney, journeyWindow, median } from "../lib/journey.ts";
 import { withVia, viaSlug, artifactPath, shareTargets } from "../lib/share.ts";
@@ -2844,6 +2844,29 @@ describe("verifiedMetricUnit", () => {
   it("last 7 days counts server-vouched events, verified for anyone", () => {
     assert.equal(verifiedMetricUnit("week", false).long, "verified this week");
     assert.equal(verifiedMetricUnit("week", true).long, "verified this week");
+  });
+});
+
+describe("leaderboard labels", () => {
+  it("the time window applies only to counted metrics", () => {
+    for (const m of ["verified", "solves", "improved", "pattern"]) assert.equal(isWindowed(m), true);
+    for (const m of ["streak", "hard", "rating"]) assert.equal(isWindowed(m), false);
+  });
+  it("a windowed unit names its window", () => {
+    assert.equal(metricUnit("solves", "month", false).long, "solves in 30 days");
+    assert.equal(verifiedMetricUnit("month", false).long, "verified in 30 days");
+  });
+  it("a point-in-time board says the window does not apply", () => {
+    for (const m of ["streak", "hard", "rating"]) assert.match(rankingBasis(m, "week"), /does not apply/);
+  });
+  it("one is singular", () => {
+    assert.equal(metricUnit("solves", "month", false, null, 1).long, "solve in 30 days");
+    assert.equal(metricUnit("verified", "all", true, null, 1).long, "verified solve");
+    assert.equal(metricUnit("improved", "all", false, null, 1).long, "problem got faster");
+    assert.equal(metricUnit("solves", "month", false, null, 2).long, "solves in 30 days");
+  });
+  it("By pattern without a pattern asks for one", () => {
+    assert.match(rankingBasis("pattern", "week", null), /Pick a pattern/);
   });
 });
 
