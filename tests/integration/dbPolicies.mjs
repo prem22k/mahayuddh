@@ -210,7 +210,8 @@ try {
   const verified = (uid, slug) => ({ user_id: uid, problem_slug: slug, kind: "solved", metadata: { source: "leetcode" } });
   await db.from("problem_events").insert([verified(a.id, "two-sum"), verified(a.id, "valid-anagram"), verified(c.id, "two-sum"), verified(b.id, "two-sum")]);
   const { data: boardAnon } = await anon.rpc("squad_leaderboard", { p_window: "week", p_limit: 100, p_offset: 0 });
-  const privRow = (boardAnon ?? []).find((r) => r.squad_id === priv);
+  // Outsiders get no id for a private squad, so find it by name.
+  const privRow = (boardAnon ?? []).find((r) => r.name === `${tag} squad 1`);
   const pubRow = (boardAnon ?? []).find((r) => r.squad_id === pub);
   ok("a private squad still appears on the squad board by name", privRow?.name === `${tag} squad 1`);
   ok("ranked by verified solves per member (3 solves / 2 members = 1.5)", Number(privRow?.value) === 1.5, String(privRow?.value));
@@ -236,6 +237,67 @@ try {
   ok("the admin can make it public, and then anyone sees its members", !adminFlip && (nowPublic ?? []).length === 2, adminFlip?.message);
   await a.cli.rpc("set_squad_visibility", { p_squad: priv, p_visibility: "private" });
   await db.from("problem_events").delete().in("user_id", [a.id, b.id, c.id]);
+
+  // ── 8. Review follow-ups: no roster leaks through the leaderboard ─────────
+  // Squad board: the caller must be in the squad their active_squad_id names.
+  const lone = await withProfile("lone");
+  await db.from("profiles").update({ active_squad_id: priv }).eq("id", lone.id); // stale pointer, not a member
+  const { data: staleBoard } = await lone.cli.rpc("leaderboard", { p_scope: "squad", p_metric: "solves", p_window: "all" });
+  ok("a stale active squad shows nothing, not that squad's roster", (staleBoard ?? []).length === 0, `${(staleBoard ?? []).length} rows`);
+  const { data: emptySquad } = await db.from("squads").insert({ name: `${tag} empty`, created_by: lone.id, invite_code: `${tag}E`.slice(-8).toUpperCase() }).select("id").single();
+  made.squads.push(emptySquad.id);
+  await db.from("profiles").update({ active_squad_id: emptySquad.id }).eq("id", lone.id);
+  const { data: emptyBoard } = await lone.cli.rpc("leaderboard", { p_scope: "squad", p_metric: "solves", p_window: "all" });
+  ok("an empty squad's board is empty, not the global board", (emptyBoard ?? []).length === 0, `${(emptyBoard ?? []).length} rows`);
+  const { data: wild } = await anon.rpc("leaderboard", { p_scope: "global", p_metric: "pattern", p_window: "all", p_pattern: "%" });
+  ok("'%' as a pattern is literal, not a match-everything wildcard", (wild ?? []).length === 0, `${(wild ?? []).length} rows`);
+
+  // Squad board hides a private squad's id from outsiders; bad window = nothing.
+  const { data: sb } = await anon.rpc("squad_leaderboard", { p_window: "all", p_limit: 100, p_offset: 0 });
+  ok("the squad board gives outsiders no id for a private squad", (sb ?? []).filter((r) => !r.is_public && !r.is_mine).every((r) => r.squad_id === null));
+  const { data: sbMine } = await a.cli.rpc("squad_leaderboard", { p_window: "all", p_limit: 100, p_offset: 0 });
+  ok("but members get their own squad's id", (sbMine ?? []).some((r) => r.is_mine && r.squad_id === priv));
+  const { data: sbBad } = await anon.rpc("squad_leaderboard", { p_window: "bogus", p_limit: 100, p_offset: 0 });
+  ok("an unknown window returns nothing", (sbBad ?? []).length === 0);
+
+  // Rank history of a private squad is for its members.
+  const today = new Date().toISOString().slice(0, 10);
+  await db.from("leaderboard_snapshots").insert([
+    { scope: `squad:${priv}`, metric: "solves:week", user_id: a.id, rank: 1, value: 2, snapshot_date: today },
+    { scope: "global", metric: `${tag}:week`, user_id: a.id, rank: 1, value: 2, snapshot_date: today },
+  ]);
+  const { data: snapAnon } = await anon.from("leaderboard_snapshots").select("user_id").eq("scope", `squad:${priv}`);
+  const { data: snapOut } = await outsider.cli.from("leaderboard_snapshots").select("user_id").eq("scope", `squad:${priv}`);
+  const { data: snapMem } = await a.cli.from("leaderboard_snapshots").select("user_id").eq("scope", `squad:${priv}`);
+  ok("a private squad's rank history is hidden from outsiders and signed-out visitors",
+    (snapAnon ?? []).length === 0 && (snapOut ?? []).length === 0, `anon ${(snapAnon ?? []).length}, outsider ${(snapOut ?? []).length}`);
+  ok("and shown to its members", (snapMem ?? []).length === 1);
+  const { data: snapGlobal } = await anon.from("leaderboard_snapshots").select("user_id").eq("metric", `${tag}:week`);
+  ok("global rank history stays public", (snapGlobal ?? []).length === 1);
+  await db.from("leaderboard_snapshots").delete().in("scope", [`squad:${priv}`]);
+  await db.from("leaderboard_snapshots").delete().eq("metric", `${tag}:week`);
+
+  // The snapshot route only freezes a squad the caller is in, with its members.
+  const BASE = process.env.BASE_URL || env.BASE_URL || "http://localhost:3000";
+  const serverUp = await fetch(`${BASE}/robots.txt`, { signal: AbortSignal.timeout(5000) }).then((r) => r.ok).catch(() => false);
+  if (serverUp) {
+    const tokenOf = async (u) => (await u.cli.auth.getSession()).data.session.access_token;
+    const post = async (u, body) => (await fetch(`${BASE}/api/leaderboard/snapshot`, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await tokenOf(u)}` },
+      body: JSON.stringify(body),
+    })).status;
+    ok("snapshot route: an outsider cannot freeze another squad's board",
+      (await post(outsider, { scope: `squad:${priv}`, metric: "solves:week", rows: [{ user_id: outsider.id, rank: 1, value: 9 }] })) === 403);
+    ok("snapshot route: a member cannot slip a non-member into the board",
+      (await post(a, { scope: `squad:${priv}`, metric: "solves:week", rows: [{ user_id: outsider.id, rank: 1, value: 9 }] })) === 400);
+    ok("snapshot route: a made-up metric is refused",
+      (await post(a, { scope: `squad:${priv}`, metric: "anything:goes", rows: [{ user_id: a.id, rank: 1, value: 1 }] })) === 400);
+    ok("snapshot route: a member freezes their own squad's board",
+      (await post(a, { scope: `squad:${priv}`, metric: "solves:week", rows: [{ user_id: a.id, rank: 1, value: 2 }, { user_id: c.id, rank: 2, value: 1 }] })) === 200);
+    await db.from("leaderboard_snapshots").delete().eq("scope", `squad:${priv}`);
+  } else {
+    console.log("SKIP  snapshot route checks (no server at BASE_URL)");
+  }
 
   // ── 6. content_impact no longer lists forks inside private notes ──────────
   const { data: appr } = await db.from("approaches")

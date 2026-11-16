@@ -343,7 +343,8 @@ export default function LeaderboardPage() {
     void snapshotRanks(
       scopeKey,
       snapshotMetric,
-      rows.map((row) => ({ user_id: row.user_id, rank: row.rank, value: row.value ?? 0 }))
+      // -1 is the snapshot route's "no rating", so an unrated member is not a 0.
+      rows.map((row) => ({ user_id: row.user_id, rank: row.rank, value: row.value ?? -1 }))
     );
   }, [tab, page, hasNext, rows, scopeKey, snapshotMetric]);
 
@@ -517,7 +518,7 @@ export default function LeaderboardPage() {
             <ol className={boardListCls}>
               {squadRows.map((row) => (
                 <li
-                  key={row.squad_id}
+                  key={row.squad_id ?? `${row.rank}:${row.name}`}
                   aria-label={`${row.name}, rank ${row.rank}`}
                   className={boardRowCls(row.is_mine)}
                 >
@@ -533,7 +534,7 @@ export default function LeaderboardPage() {
                     <Avatar name={row.name} src={row.avatar_url} size="md" />
                     <div className="flex min-w-0 flex-col md:flex-row md:items-center md:gap-2">
                       <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-                        {row.is_public || row.is_mine ? (
+                        {row.squad_id && (row.is_public || row.is_mine) ? (
                           <Link
                             href={`/squad/${row.squad_id}/wall`}
                             className="truncate text-sm font-semibold text-text-primary hover:underline"
