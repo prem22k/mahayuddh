@@ -246,10 +246,14 @@ create trigger discussion_squad_guard
   for each row execute function public.discussion_squad_guard();
 
 -- ── 6. content_impact showed forks inside private notes ─────────────────────
--- It ran with its owner's rights, so anyone could list who forked what into a
--- private note and when they solved it. It now reads as the caller, so the
--- notebook policies apply. my_content_impact() runs as its owner and is
--- unaffected. teacher_stats stays as it is: it publishes counts only, by
--- design, for public profiles.
+-- 20261004000003 kept both views at owner rights on the grounds that they
+-- expose "only counts plus already-public usernames". That holds for
+-- teacher_stats, which stays as it is. content_impact returns one row per
+-- fork (who forked what, the problem, when they solved it), including forks
+-- into private notes, readable signed out. It now reads as the caller, so the
+-- notebook policies apply. The undercount that decision avoided does not
+-- happen: a creator's own totals come from my_content_impact(), which runs as
+-- its owner and still counts private forks (checked: "1 copy" for a private
+-- fork, while the view itself no longer lists that row).
 alter view public.content_impact set (security_invoker = true);
 revoke insert, update, delete, truncate on public.content_impact, public.teacher_stats from anon, authenticated;
