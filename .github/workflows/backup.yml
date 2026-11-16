@@ -19,12 +19,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Checks the URL's shape without ever printing it: this repo's Actions
+      # logs are public, and a malformed URL (an unencoded @ in the password)
+      # once made pg_dump print part of the password as a "host name".
       - name: Check DB URL secret
         run: |
-          if [ -z "$SUPABASE_DB_URL" ]; then
-            echo "::error::SUPABASE_DB_URL secret is not set. Add it under Settings → Secrets → Actions as the Supabase pooled (or direct) Postgres connection string, then re-run."
-            exit 1
-          fi
+          python3 -I - <<'PY'
+          import os, sys
+          from urllib.parse import urlsplit
+          url = os.environ.get("SUPABASE_DB_URL", "")
+          def fail(msg):
+              print(f"::error::SUPABASE_DB_URL {msg}. Use the Supabase session pooler string "
+                    "(postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres), "
+                    "with a password of letters and digits or URL-encoded.")
+              sys.exit(1)
+          if not url:
+              fail("is not set")
+          if url.count("@") != 1:
+              fail("does not parse: the password needs URL-encoding (it contains @)")
+          try:
+              u = urlsplit(url)
+              host = u.hostname or ""
+          except ValueError:
+              fail("does not parse")
+          if u.scheme not in ("postgres", "postgresql") or not u.password:
+              fail("is not a postgres URL with a password")
+          if not host.endswith(".pooler.supabase.com"):
+              fail("is not the pooler host (the direct db.<ref>.supabase.co host is IPv6-only; GitHub runners have no IPv6)")
+          PY
 
       - name: Install Postgres client
         run: |
@@ -32,8 +54,11 @@ jobs:
             sudo apt-get update && sudo apt-get install -y postgresql-client
           fi
 
+      # pipefail: without it a failed pg_dump piped into gzip still "succeeded"
+      # and every nightly backup was an empty 20-byte file.
       - name: Dump irreplaceable tables
         run: |
+          set -euo pipefail
           STAMP=$(date -u +%Y%m%dT%H%M%SZ)
           echo "STAMP=$STAMP" >> "$GITHUB_ENV"
           pg_dump "$SUPABASE_DB_URL" \
@@ -57,6 +82,13 @@ jobs:
             -t public.squad_seasons \
             | gzip > "mahayuddh-backup-$STAMP.sql.gz"
           ls -lh "mahayuddh-backup-$STAMP.sql.gz"
+          # A dump of real data has rows; profiles alone always has some.
+          ROWS=$(gzip -dc "mahayuddh-backup-$STAMP.sql.gz" | grep -c '^INSERT INTO' || true)
+          echo "rows dumped: $ROWS"
+          if [ "$ROWS" -lt 1 ]; then
+            echo "::error::Backup contains no rows; refusing to upload an empty backup."
+            exit 1
+          fi
           echo "BACKUP_FILE=mahayuddh-backup-$STAMP.sql.gz" >> "$GITHUB_ENV"
 
       - name: Upload backup artifact (30-day retention)
