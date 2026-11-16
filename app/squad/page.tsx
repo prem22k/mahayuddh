@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/Button";
 import { PatternChip } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { ErrorCard } from "@/components/ui/States";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import {
   getMySquads,
   getSquadDetail,
@@ -38,6 +39,7 @@ import {
   leaveSquad,
   createSquadGoal,
   completeSquadGoal,
+  setSquadVisibility,
 } from "@/lib/data/squads";
 import { getSquadChallengeRows } from "@/lib/data/challenges";
 import {
@@ -64,7 +66,7 @@ import {
 } from "@/lib/data/goals";
 import { getRecaps } from "@/lib/data/recap";
 import { RITUALS } from "@/lib/rituals";
-import { Squad, SquadMember, SquadRecap, SquadSeason } from "@/types/database";
+import { Squad, SquadMember, SquadRecap, SquadSeason, SquadVisibility } from "@/types/database";
 import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 
 const NO_SQUADS: Squad[] = [];
@@ -131,6 +133,11 @@ export default function SquadPage() {
   );
   const activeSquad = squadDetail.data?.squad ?? null;
   const members = squadDetail.data?.members ?? NO_MEMBERS;
+  // Admins decide who outside the squad can see it (set_squad_visibility
+  // checks the same thing server-side).
+  const isSquadAdmin =
+    members.some((m) => m.user_id === user?.id && m.role === "admin") ||
+    (!!user && activeSquad?.created_by === user.id);
   const memberIds = useMemo(() => members.map((m) => m.user_id), [members]);
   const memberKey = memberIds.join(",");
 
@@ -204,6 +211,9 @@ export default function SquadPage() {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Inline, not actionError: a failed toggle should not replace the page.
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
+  const [visibilityError, setVisibilityError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const inviteLink = (s: Squad | null) =>
@@ -329,6 +339,20 @@ export default function SquadPage() {
       label: squadDayLabel(dayNum),
     }));
   }, []);
+
+  const handleVisibility = async (next: SquadVisibility) => {
+    if (!activeSquad || next === activeSquad.visibility) return;
+    setVisibilityBusy(true);
+    setVisibilityError(null);
+    try {
+      await setSquadVisibility(activeSquad.id, next);
+      await invalidate("my-squads", "squad-detail", "squad-leaderboard");
+    } catch (err) {
+      setVisibilityError(dataErrorMessage(err, "Couldn't change who sees the squad. Try again."));
+    } finally {
+      setVisibilityBusy(false);
+    }
+  };
 
   const loading = mySquadsQuery.isLoading || (Boolean(activeId) && squadDetail.isLoading);
   if (loading) return <SquadSkeleton />;
@@ -733,6 +757,44 @@ export default function SquadPage() {
                   </button>
                 </div>
                 <InviteLink squadId={activeSquad.id} squadName={activeSquad.name} />
+              </section>
+            )}
+
+            {activeSquad && (
+              <section className="rounded-lg border border-hairline bg-surface p-4 md:p-5" aria-label="Who can see this squad">
+                <h2 className="font-display text-sm font-semibold tracking-tight text-text-primary md:text-base">
+                  Who can see this squad
+                </h2>
+                {isSquadAdmin ? (
+                  <>
+                    <fieldset disabled={visibilityBusy} className="mt-3 disabled:opacity-60">
+                      <SegmentedControl
+                        label="Who can see this squad"
+                        value={activeSquad.visibility}
+                        onChange={(next) => void handleVisibility(next)}
+                        className="max-md:h-auto [&>button]:min-h-[44px] md:[&>button]:min-h-0"
+                        options={[
+                          { value: "private", label: "Private" },
+                          { value: "public", label: "Public" },
+                        ]}
+                      />
+                    </fieldset>
+                    <p className="mt-2 text-xs leading-relaxed text-text-secondary">
+                      {activeSquad.visibility === "private"
+                        ? "Outsiders see only the name and leaderboard rank."
+                        : "Anyone can see members, goals, recaps and the wall."}
+                    </p>
+                    {visibilityError && (
+                      <p role="alert" className="mt-2 text-xs text-error">
+                        {visibilityError}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="mt-1 text-xs leading-relaxed text-text-secondary md:mt-2">
+                    This squad is {activeSquad.visibility}. Only an admin can change it.
+                  </p>
+                )}
               </section>
             )}
 

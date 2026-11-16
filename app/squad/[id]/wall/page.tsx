@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ErrorCard } from "@/components/ui/States";
+import { EmptyState, ErrorCard } from "@/components/ui/States";
 import { SquadWallSkeleton } from "@/components/skeletons/SquadWallSkeleton";
 import { VerifiedBadge } from "@/components/ui/Badge";
 import { ShareRow } from "@/components/ui/ShareRow";
@@ -122,6 +122,25 @@ export default function SquadWallPage() {
           void seasonsQuery.refresh();
         }}
       />
+    );
+  }
+
+  if (wallQuery.data?.hidden) {
+    return (
+      <div className="mx-auto w-full max-w-reading">
+        <EmptyState
+          heading="This squad is private"
+          body="Only its members can see its wall. Its name and rank are on the squad leaderboard."
+          action={
+            <Link
+              href="/leaderboard"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-surface-overlay px-4 text-sm font-medium leading-5 text-text-primary transition-colors hover:bg-[#272830]"
+            >
+              Squad leaderboard
+            </Link>
+          }
+        />
+      </div>
     );
   }
 
