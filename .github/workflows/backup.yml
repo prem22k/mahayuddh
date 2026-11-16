@@ -12,6 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      # This repo is public, so its Actions artifacts can be downloaded by any
+      # signed-in GitHub user. Backups are encrypted with this passphrase before
+      # upload, and nothing is uploaded without it. Restore:
+      #   openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:BACKUP_PASSPHRASE \
+      #     -in mahayuddh-backup-<stamp>.sql.gz.enc | gunzip > restore.sql
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
       BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -47,6 +53,13 @@ jobs:
           if not host.endswith(".pooler.supabase.com"):
               fail("is not the pooler host (the direct db.<ref>.supabase.co host is IPv6-only; GitHub runners have no IPv6)")
           PY
+
+      - name: Check backup passphrase secret
+        run: |
+          if [ "${#BACKUP_PASSPHRASE}" -lt 32 ]; then
+            echo "::error::BACKUP_PASSPHRASE is missing or shorter than 32 characters. Backups are not uploaded unencrypted from a public repo. Set it with: openssl rand -base64 32 | gh secret set BACKUP_PASSPHRASE (and keep a copy: it is the only way to restore)."
+            exit 1
+          fi
 
       - name: Install Postgres client
         run: |
@@ -89,9 +102,27 @@ jobs:
             echo "::error::Backup contains no rows; refusing to upload an empty backup."
             exit 1
           fi
-          echo "BACKUP_FILE=mahayuddh-backup-$STAMP.sql.gz" >> "$GITHUB_ENV"
+          # Encrypt, prove the copy decrypts, then keep only the encrypted file.
+          openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:BACKUP_PASSPHRASE \
+            -in "mahayuddh-backup-$STAMP.sql.gz" -out "mahayuddh-backup-$STAMP.sql.gz.enc"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:BACKUP_PASSPHRASE \
+            -in "mahayuddh-backup-$STAMP.sql.gz.enc" | gzip -t
+          rm -f "mahayuddh-backup-$STAMP.sql.gz"
+          ls -lh "mahayuddh-backup-$STAMP.sql.gz.enc"
+          echo "BACKUP_FILE=mahayuddh-backup-$STAMP.sql.gz.enc" >> "$GITHUB_ENV"
 
-      - name: Upload backup artifact (30-day retention)
+      - name: Refuse to upload anything unencrypted
+        run: |
+          case "$BACKUP_FILE" in
+            *.enc) ;;
+            *) echo "::error::Backup file is not encrypted; refusing to upload."; exit 1 ;;
+          esac
+          if ls ./*.sql.gz >/dev/null 2>&1; then
+            echo "::error::A plaintext dump is still on disk; refusing to upload."
+            exit 1
+          fi
+
+      - name: Upload encrypted backup artifact (30-day retention)
         uses: actions/upload-artifact@v4
         with:
           name: mahayuddh-backup-${{ env.STAMP }}
