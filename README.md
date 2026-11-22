@@ -31,8 +31,8 @@ Two rules run the whole product: **never gate on LeetCode** (everything works wi
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 15 (App Router, React 19, TypeScript strict) |
-| Styling | Tailwind CSS v3 + Lucide icons |
+| Framework | Next.js 16 (App Router, React 19, TypeScript strict) |
+| Styling | Tailwind CSS v4 + Lucide icons |
 | Database & Auth | Supabase (PostgreSQL 17, RLS everywhere) |
 | Data engine | LeetCode GraphQL (unofficial, optional, politely rate-limited) |
 | AI hints | Ladder-capped assistant (OpenAI / Anthropic / Gemini via OpenAI-compatible wire) |

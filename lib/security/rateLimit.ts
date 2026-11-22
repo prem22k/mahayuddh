@@ -7,8 +7,8 @@
  * here rather than implied away by the word "rate limit".
  *
  * It is still the right layer for this app because the abuse it stops is
- * per-account and burst-shaped — a script hammering /api/notify or burning AI
- * budget — and a script has to keep its connection somewhere. Anything that needs
+ * per-account and burst-shaped — a script hammering challenge reminders or
+ * burning AI budget — and a script has to keep its connection somewhere. Anything that needs
  * a *global* guarantee (per-email outbound send caps, per-IP credential
  * stuffing across accounts) belongs in Postgres, and `sync_rate_limits` is
  * already exactly that for the LeetCode sync path.
@@ -119,19 +119,11 @@ const MINUTE = 60_000;
 const HOUR = 60 * 60_000;
 
 export const RATE_RULES = {
-  /**
-   * /api/notify is a free-text push to an arbitrary user id for any
-   * authenticated caller. Without a cap it is a spam cannon pointed at a
-   * stranger's phone. Deliberately tight: a real product action is a handful a
-   * day.
-   */
-  notify: { limit: 30, windowMs: HOUR },
+  /** A caller may remind only about their own pending challenge; DB also enforces 24h per challenge. */
+  challengeReminder: { limit: 10, windowMs: HOUR },
   /** Squad creation is one-per-person-per-life, not one-per-minute. */
   squadCreate: { limit: 3, windowMs: HOUR },
-  /**
-   * Invite codes are 8 characters over a 30-symbol alphabet, so guessing is not
-   * the risk — hammering the endpoint is. Also the outbound-notification path.
-   */
+  /** Invite codes are 8 characters over a 30-symbol alphabet; the risk is hammering the endpoint, not realistic guessing. */
   squadJoin: { limit: 20, windowMs: 10 * MINUTE },
   /**
    * Per-address ceiling for the same route, and deliberately several times

@@ -13,7 +13,6 @@ import { createSuggestion } from "@/lib/data/suggestions";
 import { getCatalogBySlugs, searchCatalogProblems } from "@/lib/data/problems";
 import { getLatestBattle } from "@/lib/data/battles";
 import { logFeedEvent } from "@/lib/data/feed";
-import { notify } from "@/lib/data/notifications";
 import { useAuth } from "@/components/providers/AuthProvider";
 import type { Difficulty, Problem, Profile, Suggestion } from "@/types/database";
 import { track } from "@/lib/analytics";
@@ -266,15 +265,6 @@ export function SendChallengeModal({
 
       if (res.ok) {
         track("challenge_sent", { problem_slug: slug, beat_time: beatTime, pass: !!passParent });
-        notify({
-          userId: targetUserId,
-          kind: "challenge",
-          title: `${profile ? `@${profile.username}` : "A squad mate"} challenged you`,
-          body: `${problemTitle.trim()} · ${difficulty}`,
-          deepLink: `/c/${res.suggestion.id}`,
-          actorId: user.id,
-          urgent: true,
-        }).catch(() => {});
         logFeedEvent({
           eventType: "challenge",
           squadId: profile?.active_squad_id ?? null,

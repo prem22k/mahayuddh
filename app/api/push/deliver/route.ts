@@ -59,7 +59,7 @@ export async function POST(request: Request) {
 
   const { data: row, error } = await supabase
     .from("notifications")
-    .select("id,title,body,deep_link,read_at")
+    .select("id,kind,dedupe_key,title,body,deep_link,read_at")
     .eq("id", id)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -71,6 +71,8 @@ export async function POST(request: Request) {
 
   try {
     const result = await sendPushToUser(user.id, {
+      kind: row.kind,
+      dedupeKey: row.dedupe_key ?? undefined,
       title: row.title,
       body: row.body ?? undefined,
       url: row.deep_link ?? undefined,

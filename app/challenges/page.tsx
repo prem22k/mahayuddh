@@ -176,7 +176,7 @@ export default function SuggestionsPage() {
   const handleRemind = async (item: Suggestion) => {
     setRemindId(item.id);
     try {
-      const res = await remindSuggestion(item.id, user?.id ?? "");
+      const res = await remindSuggestion(item.id);
       if (!res.ok && res.reason === "throttled") {
         setActionNotice("You already nudged about this challenge in the last 24 hours.");
       } else if (res.ok) {

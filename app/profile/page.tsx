@@ -28,7 +28,7 @@ import {
 import { cn } from "@/lib/utils";
 import { OBJECTIVES } from "@/lib/objectives";
 import type { Squad } from "@/types/database";
-import { useCachedQuery } from "@/lib/cache/query";
+import { useCachedQuery, useInvalidate } from "@/lib/cache/query";
 import { createClient } from "@/lib/supabase/client";
 import { SignInMethods } from "@/components/profile/SignInMethods";
 import { replayTour } from "@/components/tour/replay";
@@ -72,6 +72,7 @@ const squadInitials = (name: string) =>
 export default function ProfilePage() {
   const { user, profile, session, signOut, refreshProfile, loading: authLoading } = useAuth();
   const userId = user?.id ?? null;
+  const invalidate = useInvalidate();
   const leetcodeSynced = useLeetCodeSynced();
 
   const [connectOpen, setConnectOpen] = useState(false);
@@ -194,7 +195,9 @@ export default function ProfilePage() {
     void savePrefs({ [key]: value } as Partial<NotificationPrefs>)
       .then((server) => {
         void prefsQuery.setData(server);
+        void invalidate("notification-history");
         setNotifSource("server");
+        window.dispatchEvent(new Event("notifications-changed"));
         try {
           localStorage.setItem("mahayuddh.notif", JSON.stringify(server));
         } catch {
@@ -410,7 +413,7 @@ export default function ProfilePage() {
   ];
 
   const notifRows: { id: keyof NotificationPrefs; label: string; caption: string }[] = [
-    { id: "push_enabled", label: "Push alerts on this device", caption: "" },
+    { id: "push_enabled", label: "Push alerts on your devices", caption: "" },
     { id: "challenge", label: "New challenges", caption: "When a squad mate sends you a 1v1 challenge." },
     { id: "squad", label: "Squad goals and recaps", caption: "Goal progress and the weekly squad recap." },
     { id: "practice", label: "Practice and revenge reminders", caption: "When a problem you missed is due for another try." },
@@ -899,7 +902,7 @@ export default function ProfilePage() {
           <SettingsCard
             id="notifications"
             title="Notifications"
-            description="Choose what reaches you, and on which devices."
+            description="Choose which alerts appear in your inbox and which can be pushed to your devices."
             action={
               <span className="hidden shrink-0 items-center gap-1 pt-0.5 font-mono text-[11px] text-text-tertiary md:inline-flex">
                 <Check className="h-3 w-3" strokeWidth={2} aria-hidden />
