@@ -30,5 +30,6 @@ jobs:
       - run: npm run test:routes
       # The password-reset form's email-link gate (lib/auth/emailLinkSession.ts).
       - run: npm run test:auth
+      - run: npm run test:notifications
       # Nothing sent to PostHog carries a credential; CSP allows it only when configured.
       - run: npm run test:posthog

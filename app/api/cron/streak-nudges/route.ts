@@ -25,9 +25,8 @@ interface Nudge {
  * and the 3/7/14-day lapsed digest. Authorized by the cron secret, never by a
  * session — GitHub Actions calls it with a bearer token (see sync.yml).
  *
- * Delivery goes through the same store the notify() path writes
- * (public.notifications, kind 'nudge') plus the same push fan-out, so the
- * bell and the push permission flow treat these like every other notice.
+ * Each nudge is stored in public.notifications (kind 'nudge') before push
+ * fan-out, so the bell and push permission flow treat it like every other notice.
  * dedupe_key carries the subtype and the date, so the partial unique index on
  * (user_id, kind, dedupe_key) collapses repeats to one open notice per day.
  *
@@ -197,7 +196,13 @@ export async function POST(request: Request) {
     }
     stored += 1;
     pushes.push(
-      sendPushToUser(n.userId, { title: n.title, body: n.body, url: n.deepLink }).catch(() => null)
+      sendPushToUser(n.userId, {
+        kind: "nudge",
+        dedupeKey: n.dedupeKey,
+        title: n.title,
+        body: n.body,
+        url: n.deepLink,
+      }).catch(() => null)
     );
   }
   await Promise.allSettled(pushes);

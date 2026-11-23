@@ -7,7 +7,9 @@
  *
  * Cases:
  *   - a caller who is not in a squad cannot spend that squad's AI budget
- *   - /api/notify cannot be turned into a spam cannon or a forged-actor relay
+ *   - the retired free-form notification relay cannot be used to target arbitrary users
+ *   - challenge reminders require membership, protect their throttle from direct writes,
+ *     and use the challenge's real recipient/actor
  *   - /api/squads/join is throttled server-side
  *   - oversized and cross-site requests are refused at the edge
  *   - the cron guard rejects a wrong secret
@@ -36,7 +38,7 @@ const BASE_URL = process.env.BASE_URL || env.BASE_URL || "http://localhost:3000"
 
 const stamp = Date.now();
 const tag = `xsec${stamp}`.slice(0, 24);
-const made = { users: [], squads: [], members: [], calls: [], notifications: [] };
+const made = { users: [], squads: [], members: [], calls: [], suggestions: [], notifications: [] };
 
 let pass = 0, fail = 0, skip = 0;
 function ok(label, cond, detail = "") {
@@ -96,6 +98,7 @@ if (!up) {
 try {
   const victim = await makeUser(1);
   const attacker = await makeUser(2);
+  const outsider = await makeUser(3);
 
   const { data: squad, error: sErr } = await db
     .from("squads")
@@ -165,50 +168,89 @@ try {
       `got ${memberCall.status}`
     );
 
-    // ── Notification spam and forged actor ─────────────────────────────────
-    const spam = await callApi("/api/notify", {
+    // ── Free-form relay is gone; reminders are tied to a real challenge ──────
+    const arbitrary = await callApi("/api/notify", {
       token: attackerToken,
       body: {
         userId: victim.id,
         kind: "challenge",
         title: "you have been challenged",
         body: "click here",
-        // The victim, not the caller, must never appear as the actor.
         actorId: victim.id,
         urgent: true,
       },
     });
-    ok("notify accepts a legitimate-looking challenge", spam.status === 201, JSON.stringify(spam.body));
+    ok("the free-form notification relay is retired", arbitrary.status === 410, JSON.stringify(arbitrary.body));
 
-    const { data: forged } = await db
-      .from("notifications")
-      .select("actor_id,user_id")
-      .eq("id", spam.body?.error ?? "");
-    const { data: byUser } = await db
-      .from("notifications")
-      .select("actor_id,user_id,title")
-      .eq("user_id", victim.id)
-      .eq("title", "you have been challenged")
-      .order("created_at", { ascending: false })
-      .limit(1);
-    for (const row of byUser ?? []) made.notifications.push(row.actor_id);
-    ok(
-      "the stored actor is the authenticated caller, not the forged victim id",
-      byUser?.[0]?.actor_id === attacker.id,
-      JSON.stringify(byUser?.[0])
+    const { data: reminderChallenge, error: reminderChallengeError } = await db
+      .from("suggestions")
+      .insert({
+        from_user: victim.id,
+        to_user: attacker.id,
+        problem_slug: `${tag}-reminder`,
+        problem_title: "Reminder probe",
+        difficulty: "Medium",
+      })
+      .select("id")
+      .single();
+    if (reminderChallengeError) throw new Error(`reminder challenge: ${reminderChallengeError.message}`);
+    made.suggestions.push(reminderChallenge.id);
+
+    const directReminderWrite = await fetch(
+      `${env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/suggestions?id=eq.${reminderChallenge.id}`,
+      {
+        method: "PATCH",
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${attackerToken}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify({ reminded_at: new Date().toISOString() }),
+      }
     );
-    void forged;
+    const { data: unchangedReminder } = await db
+      .from("suggestions")
+      .select("reminded_at")
+      .eq("id", reminderChallenge.id)
+      .maybeSingle();
+    ok(
+      "a party cannot forge the server-managed reminder throttle column",
+      !directReminderWrite.ok && unchangedReminder?.reminded_at == null,
+      `got ${directReminderWrite.status}; reminded_at=${unchangedReminder?.reminded_at}`
+    );
 
-    // Spam cap: the rule is 30/hour, so the 32nd must be refused.
-    let throttled = null;
-    for (let i = 0; i < 40 && !throttled; i++) {
-      const r = await callApi("/api/notify", {
-        token: attackerToken,
-        body: { userId: victim.id, kind: "contest", title: `burst ${i}` },
-      });
-      if (r.status === 429) throttled = r;
+    const outsiderToken = await tokenFor(outsider.email);
+    const unrelatedReminder = await callApi(`/api/challenges/${reminderChallenge.id}/remind`, {
+      token: outsiderToken,
+    });
+    ok("a non-party cannot remind about someone else's challenge", unrelatedReminder.status === 404);
+
+    const reminder = await callApi(`/api/challenges/${reminderChallenge.id}/remind`, {
+      token: attackerToken,
+    });
+    ok("a challenge party can send a reminder", reminder.status === 201, JSON.stringify(reminder.body));
+
+    const localHour = Number(new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Kolkata", hour: "2-digit", hourCycle: "h23",
+    }).format(new Date()));
+    if (localHour >= 8 && localHour < 22) {
+      const { data: reminderRows } = await db
+        .from("notifications")
+        .select("id,actor_id,user_id,title,deep_link")
+        .eq("user_id", victim.id)
+        .eq("title", "Challenge reminder")
+        .eq("deep_link", `/c/${reminderChallenge.id}`);
+      const note = reminderRows?.[0];
+      if (note) made.notifications.push(note.id);
+      ok("the reminder is stored for the other party", Boolean(note), JSON.stringify(note));
+      ok("the reminder actor is the authenticated party", note?.actor_id === attacker.id, JSON.stringify(note));
     }
-    ok("the notify spam cap engages server-side", Boolean(throttled), "no 429 after 40 sends");
+
+    const duplicateReminder = await callApi(`/api/challenges/${reminderChallenge.id}/remind`, {
+      token: attackerToken,
+    });
+    ok("the same challenge cannot be reminded twice in 24 hours", duplicateReminder.status === 429);
 
     // ── Join-code brute force ──────────────────────────────────────────────
     let joinThrottled = null;
@@ -346,6 +388,9 @@ try {
   console.log(`\n${pass} passed, ${fail} failed${skip ? `, ${skip} skipped` : ""}`);
 } finally {
   for (const id of made.calls) await db.from("ai_calls").delete().eq("id", id);
+  for (const id of made.notifications) await db.from("notifications").delete().eq("id", id);
+  for (const id of made.suggestions) await db.from("suggestions").delete().eq("id", id);
+  for (const uid of made.users) await db.from("notifications").delete().eq("user_id", uid);
   for (const uid of made.members) await db.from("squad_members").delete().eq("user_id", uid);
   for (const s of made.squads) {
     await db.from("squad_members").delete().eq("squad_id", s.id);

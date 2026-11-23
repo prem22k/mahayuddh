@@ -72,6 +72,12 @@ export function NotificationBell() {
     if (!rows) return;
     for (const n of rows) {
       if (n.read_at || pushed.current.has(n.id)) continue;
+      // The streak-nudge cron sends its push after inserting the row. Do not
+      // drain that same row from the bell as a second push path.
+      if (n.kind === "nudge") {
+        pushed.current.add(n.id);
+        continue;
+      }
       pushed.current.add(n.id);
       // Server-side because it needs the service key and the VAPID private
       // key. The route takes a notification id rather than arbitrary text, so
@@ -81,11 +87,16 @@ export function NotificationBell() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: n.id }),
-      }).catch(() => {
-        // A failed push is not worth surfacing. The row is still there and
-        // the bell still shows it.
-      });
-      track("notification_delivered", { kind: n.kind, via: "push" });
+      })
+        .then(async (response) => {
+          if (!response.ok) return;
+          const result = (await response.json().catch(() => null)) as { sent?: number } | null;
+          if (result?.sent) track("notification_delivered", { kind: n.kind, via: "push" });
+        })
+        .catch(() => {
+          // A failed push is not worth surfacing. The row is still there and
+          // the bell still shows it.
+        });
     }
   }, [notificationsQuery.data]);
 

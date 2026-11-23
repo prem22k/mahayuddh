@@ -747,6 +747,66 @@ describe("static invariants", () => {
     assert.deepEqual(offenders, [], `unbounded body parse in: ${offenders.join(", ")}`);
   });
 
+  it("the service worker never caches user-specific page or API responses", async () => {
+    const { readFileSync } = await import("node:fs");
+    const vm = await import("node:vm");
+    const listeners = new Map();
+    const stored = new Map();
+    const deleted = [];
+    const response = { status: 200, type: "basic", clone() { return this; } };
+    const cache = {
+      addAll: async () => {},
+      put: async (request, value) => stored.set(request.url ?? request, value),
+    };
+    const cacheStorage = {
+      open: async () => cache,
+      match: async (request) => stored.get(request.url ?? request),
+      keys: async () => ["mahayuddh-v2", "mahayuddh-v3"],
+      delete: async (key) => { deleted.push(key); return true; },
+    };
+    const serviceClients = { claim: async () => {} };
+    const context = {
+      URL,
+      caches: cacheStorage,
+      clients: serviceClients,
+      fetch: async () => response,
+      self: {
+        location: { origin: "https://arena.test" },
+        clients: serviceClients,
+        addEventListener: (name, handler) => listeners.set(name, handler),
+        skipWaiting: () => {},
+      },
+    };
+    vm.runInNewContext(readFileSync("public/sw.js", "utf8"), context);
+
+    const dispatchGet = async (path, mode = "navigate") => {
+      let pending;
+      listeners.get("fetch")({
+        request: { method: "GET", url: `https://arena.test${path}`, mode },
+        respondWith: (promise) => { pending = Promise.resolve(promise); },
+      });
+      if (pending) await pending;
+      await new Promise((resolve) => setImmediate(resolve));
+    };
+
+    await dispatchGet("/profile");
+    await dispatchGet("/api/notifications", "cors");
+    await dispatchGet("/auth/callback", "cors");
+    assert.equal(stored.size, 0, "personalized HTML, API, and auth responses must stay out of CacheStorage");
+
+    await dispatchGet("/_next/static/chunks/app.js", "no-cors");
+    assert.ok(stored.has("https://arena.test/_next/static/chunks/app.js"), "public versioned assets remain cacheable");
+    await dispatchGet("/icon-192.png", "no-cors");
+    assert.ok(stored.has("https://arena.test/icon-192.png"), "explicit public icons remain cacheable");
+    await dispatchGet("/u/private-profile.png");
+    assert.equal(stored.has("https://arena.test/u/private-profile.png"), false, "extension-like app routes are not treated as static assets");
+
+    let activation;
+    listeners.get("activate")({ waitUntil: (promise) => { activation = promise; } });
+    await activation;
+    assert.ok(deleted.includes("mahayuddh-v2"), "activation removes the old unpartitioned cache");
+  });
+
   it("every app RPC is in the EXECUTE keep-list (no silent exposure, no silent breakage)", async () => {
     const { readFileSync, readdirSync } = await import("node:fs");
     // The hardening migration revokes EXECUTE on every public function, then
@@ -1037,9 +1097,9 @@ describe("wave A: streaks and weekly counts", () => {
 });
 
 describe("wave A: quiet hours (IST)", () => {
-  it("both TS call sites share one IST helper", async () => {
+  it("server call sites share one IST helper", async () => {
     const { readFileSync } = await import("node:fs");
-    for (const p of ["app/api/notify/route.ts", "lib/data/notifications.ts"]) {
+    for (const p of ["app/api/challenges/[id]/remind/route.ts", "app/api/cron/streak-nudges/route.ts"]) {
       const src = stripComments(readFileSync(p, "utf8"));
       assert.ok(
         /inQuietHoursIST|quietHours/.test(src),
@@ -1057,14 +1117,16 @@ describe("wave A: quiet hours (IST)", () => {
 });
 
 describe("wave A: challenge and reminder races", () => {
-  it("suggestion writes are guarded to pending rows", async () => {
+  it("suggestion writes and challenge reminders are guarded to pending rows", async () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync("lib/data/suggestions.ts", "utf8");
     const guards = (src.match(/\.eq\("status", "pending"\)/g) || []).length;
-    assert.ok(guards >= 3, `accept/remind/complete/dismiss need pending guards (found ${guards})`);
+    assert.ok(guards >= 3, `accept/complete/dismiss need pending guards (found ${guards})`);
+    const reminder = readFileSync("app/api/challenges/[id]/remind/route.ts", "utf8");
+    assert.ok(/\.eq\("status", "pending"\)/.test(reminder), "reminders must refuse completed challenges");
     assert.ok(
-      /reminded_at\.is\.null,reminded_at\.lt\./.test(src),
-      "reminders must enforce the 24h window in WHERE"
+      /reminded_at\.is\.null,reminded_at\.lt\./.test(reminder),
+      "reminders must atomically enforce the 24h window in WHERE"
     );
   });
 
@@ -1075,6 +1137,17 @@ describe("wave A: challenge and reminder races", () => {
     assert.ok(dismissIdx >= 0, "dismissSuggestion must exist");
     const window = src.slice(dismissIdx, dismissIdx + 1200);
     assert.ok(!/completed_at/.test(window), "dismiss must leave completed_at alone (no dismissed_at column exists)");
+  });
+
+  it("reminder timestamps are protected from direct client writes", async () => {
+    const { readFileSync } = await import("node:fs");
+    const migration = readFileSync(
+      "supabase/migrations/20261120000001_guard_suggestion_reminded_at.sql",
+      "utf8"
+    );
+    assert.ok(/current_user in \('anon', 'authenticated'\)/.test(migration));
+    assert.ok(/new\.reminded_at is distinct from old\.reminded_at/.test(migration));
+    assert.ok(/before update of reminded_at on public\.suggestions/i.test(migration));
   });
 
   it("stuck reminders are throttled in WHERE on open rows", async () => {

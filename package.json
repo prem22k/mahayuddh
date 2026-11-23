@@ -45,6 +45,7 @@
     "test:integration:lcverify": "node --no-warnings tests/integration/leetcodeVerify.mjs",
     "test:integration:policies": "node --no-warnings tests/integration/dbPolicies.mjs",
     "test:cache": "node --no-warnings --test tests/cache/keys.test.mjs",
+    "test:notifications": "node --no-warnings --experimental-strip-types --test tests/notifications/preferences.test.mjs",
     "test:routes": "node --no-warnings --test tests/routes/appRoutes.test.mjs",
     "test:auth": "node --no-warnings --test tests/auth/emailLinkSession.test.mjs",
     "test:posthog": "node --no-warnings --test tests/posthog/scrub.test.mjs"

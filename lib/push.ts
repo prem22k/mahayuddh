@@ -1,4 +1,6 @@
 import webpush from "web-push";
+import type { NotificationKind } from "@/types/database";
+import { DEFAULT_PREFS, isNotificationCategoryEnabled } from "@/lib/notifications/preferences";
 import { isAllowedPushHost } from "@/lib/security/pushEndpoint";
 
 /** Hostname or "" when the endpoint will not parse. Never throws. */
@@ -100,7 +102,7 @@ export async function sendPushNotification(
  */
 export async function sendPushToUser(
   userId: string,
-  payload: { title: string; body?: string; url?: string }
+  payload: { kind: NotificationKind; dedupeKey?: string; title: string; body?: string; url?: string }
 ): Promise<{ sent: number; retired: number }> {
   if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
     return { sent: 0, retired: 0 };
@@ -109,6 +111,19 @@ export async function sendPushToUser(
   const { getServiceClient } = await import("@/lib/supabase/service");
   const supabase = getServiceClient();
   if (!supabase) return { sent: 0, retired: 0 };
+
+  // Preferences are checked at the final server-side delivery boundary so
+  // callers cannot accidentally bypass a user's device or category switches.
+  const { data: savedPrefs, error: prefsError } = await supabase
+    .from("user_notification_prefs")
+    .select("push_enabled,challenge,squad,practice,contests")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (prefsError) return { sent: 0, retired: 0 };
+  const prefs = { ...DEFAULT_PREFS, ...(savedPrefs ?? {}) };
+  if (!prefs.push_enabled || !isNotificationCategoryEnabled(prefs, payload.kind, payload.dedupeKey)) {
+    return { sent: 0, retired: 0 };
+  }
 
   const { data: subs, error } = await supabase
     .from("push_subscriptions")

@@ -88,7 +88,7 @@ export async function resolveUser(bearerToken: string | null): Promise<User | nu
  *
  * Every state-changing route needs the same two things — prove a caller, and
  * leave evidence when there is none — so they are one call. `context` is a short
- * route name (`/api/notify`), never a payload.
+ * route name (`/api/challenges/[id]/remind`), never a payload.
  */
 export async function requireUser(
   request: Request,

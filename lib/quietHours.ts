@@ -3,12 +3,11 @@
  *
  * Default: 22:00–08:00 in the user's local day, which for the current user
  * base is Asia/Kolkata (IST, UTC+5:30). IST has no DST, so a fixed offset is
- * exact. All call sites (API route, client notify helper) use this module;
- * nothing computes quiet hours from viewer-local getHours() anymore.
+ * exact. Server call sites use this module; nothing computes quiet hours from
+ * viewer-local getHours().
  *
  * The DB `in_quiet_hours()` function still uses UTC 22–08 until a migration
- * lands — see the note in app/api/notify/route.ts. That path is deliberately
- * left untouched here (no migrations in this wave).
+ * lands. Trigger-based notices continue to follow that database function.
  */
 
 export const QUIET_TZ = "Asia/Kolkata";

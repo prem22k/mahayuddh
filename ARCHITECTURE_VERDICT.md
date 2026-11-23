@@ -1,6 +1,8 @@
 # Architecture Verdict — Mahayuddh Production Readiness
 
-**Date:** 2026-10-14 · **Status:** review, being executed in waves A–F · **Scope:** full system (Next.js 15 + Supabase Postgres 17 + Vercel Hobby + GitHub Actions + dormant Render free)
+> **Historical assessment — not a current deployment or readiness status.** Written 2026-10-14 and not fully revalidated against the current repository. Since then, the repository has added a Render web-service configuration, a nightly encrypted-backup workflow, a CI build step, and migrations through `20261120000001`. Re-check the current workflows, `render.yaml`, and migration history before relying on any operational claim or unfinished-work list below.
+
+**Date:** 2026-10-14 · **Status at time of review:** review, being executed in waves A–F · **Scope at time of review:** full system (Next.js 15 + Supabase Postgres 17 + Vercel Hobby + GitHub Actions + dormant Render free)
 **Method:** 5 parallel adversarial reviews (HLD systems, LLD data, LLD app, reliability, cost/scale) + live Supabase advisor scans + platform-docs verification. All claims carry file:line evidence.
 
 ## 1. Overall verdict

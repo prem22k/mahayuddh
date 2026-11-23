@@ -9,10 +9,10 @@ services:
     plan: free
     buildCommand: npm ci && npm run build
     startCommand: npm run start
-    healthCheckPath: /
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
-        value: "22"
+        value: "26"
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY

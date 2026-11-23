@@ -263,61 +263,28 @@ export async function acceptSuggestion(
 }
 
 /**
- * Remind the other party at most once per 24h (plan Step 10). Low-noise: this
- * is the only "nudge" primitive, and the throttle is enforced server-side.
+ * Remind the other party at most once per 24h (plan Step 10). The server
+ * authenticates the caller, verifies they are part of this pending challenge,
+ * claims the throttle, and derives the notification recipient and content.
  */
 export async function remindSuggestion(
-  suggestionId: string,
-  callerUserId: string
+  suggestionId: string
 ): Promise<{ ok: boolean; reason?: "not_party" | "throttled" | "not_pending" }> {
-  const supabase = createClient();
-  const { data: row } = await supabase
-    .from("suggestions")
-    .select("id, from_user, to_user, status, reminded_at")
-    .eq("id", suggestionId)
-    .maybeSingle();
-
-  if (!row) return { ok: false, reason: "not_party" };
-  if (row.from_user !== callerUserId && row.to_user !== callerUserId) {
-    return { ok: false, reason: "not_party" };
-  }
-  if (row.status !== "pending") return { ok: false, reason: "not_pending" };
-  if (row.reminded_at && Date.now() - new Date(row.reminded_at).getTime() < 86_400_000) {
-    return { ok: false, reason: "throttled" };
-  }
-
-  // Race-safe throttle: the 24h window is enforced in the WHERE clause
-  // (reminded_at IS NULL OR reminded_at < now()-24h), and the affected row
-  // count decides. Two tabs nudging together send one reminder, not two.
-  const cutoffISO = new Date(Date.now() - 86_400_000).toISOString();
-  const { data: updated, error } = await supabase
-    .from("suggestions")
-    .update({ reminded_at: new Date().toISOString() })
-    .eq("id", suggestionId)
-    .eq("status", "pending")
-    .or(`reminded_at.is.null,reminded_at.lt.${cutoffISO}`)
-    .select("id");
-  if (error) {
-    throw new DataError("suggestions", "Couldn't send that reminder. Try again.", { cause: error });
-  }
-  if (!updated || (Array.isArray(updated) && updated.length === 0)) {
-    return { ok: false, reason: "throttled" };
-  }
-
-  // Tell the other party, if they are a real user with notifications on.
-  const recipient = row.from_user === callerUserId ? row.to_user : row.from_user;
+  let response: Response;
   try {
-    const { notify } = await import("@/lib/data/notifications");
-    await notify({
-      userId: recipient,
-      kind: "challenge",
-      title: "Challenge reminder",
-      body: `Someone nudged you about a pending challenge.`,
-      deepLink: `/c/${suggestionId}`,
-      actorId: callerUserId,
+    response = await fetch(`/api/challenges/${encodeURIComponent(suggestionId)}/remind`, {
+      method: "POST",
+      credentials: "same-origin",
     });
-  } catch {
-    // Notification is best-effort; the reminder is already recorded.
+  } catch (cause) {
+    throw new DataError("suggestions", "Couldn't send that reminder. Try again.", { cause });
+  }
+
+  if (response.status === 404) return { ok: false, reason: "not_party" };
+  if (response.status === 409) return { ok: false, reason: "not_pending" };
+  if (response.status === 429) return { ok: false, reason: "throttled" };
+  if (!response.ok) {
+    throw new DataError("suggestions", "Couldn't send that reminder. Try again.");
   }
   return { ok: true };
 }

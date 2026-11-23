@@ -1,4 +1,8 @@
 import { createClient } from "@/lib/supabase/client";
+import { DEFAULT_PREFS, type NotificationPrefs } from "@/lib/notifications/preferences";
+
+export { DEFAULT_PREFS };
+export type { NotificationPrefs };
 
 /**
  * Server-side notification preferences (own rows only, RLS).
@@ -7,22 +11,6 @@ import { createClient } from "@/lib/supabase/client";
  * localStorage as an offline fallback, but this module is the source of truth
  * whenever the server answers.
  */
-
-export interface NotificationPrefs {
-  push_enabled: boolean;
-  challenge: boolean;
-  squad: boolean;
-  practice: boolean;
-  contests: boolean;
-}
-
-export const DEFAULT_PREFS: NotificationPrefs = {
-  push_enabled: true,
-  challenge: true,
-  squad: true,
-  practice: true,
-  contests: true,
-};
 
 export type PrefsPatch = Partial<NotificationPrefs>;
 
